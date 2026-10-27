@@ -204,10 +204,21 @@ function move<T>(arr: T[], i: number, d: number) {
 
 /* ---------- Edición directa sobre la vista previa (solo escritorio) ---------- */
 
-type Edit = { sel: string | null; pick: (k: string | null) => void; drop: (k: string, dx: number, dy: number) => void };
+type Edit = {
+  sel: string | null;
+  pick: (k: string | null) => void;
+  drop: (k: string, dx: number, dy: number) => void;
+  resize: (i: number, w: number) => void;
+};
 const EditCtx = createContext<Edit | null>(null);
 
 const halfMm = (v: number) => Math.round(v * 2) / 2;
+
+// px de pantalla por mm de hoja, sea cual sea el zoom de la vista previa o la escala de la copia
+function pxPerMm(el: Element) {
+  const page = el.closest<HTMLElement>("[data-page]")!;
+  return page.getBoundingClientRect().width / (parseFloat(getComputedStyle(page).getPropertyValue("--page-w")) || 210);
+}
 
 // Texto o imagen que se coloca con un desplazamiento en mm. Con EditCtx (vista previa de escritorio) además se arrastra y se selecciona.
 function Movable(props: { k: string; look?: Look; className?: string; style?: React.CSSProperties; children: React.ReactNode }) {
@@ -220,15 +231,15 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
     if (!edit || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    // preventDefault no quita el foco del último campo: sin esto, Supr se quedaría en ese campo
+    (document.activeElement as HTMLElement | null)?.blur();
     edit.pick(k);
     const el = e.currentTarget;
-    // px de pantalla por mm de hoja, sea cual sea el zoom de la vista previa o la escala de la copia
-    const page = el.closest<HTMLElement>("[data-page]")!;
-    const pxPerMm = page.getBoundingClientRect().width / (parseFloat(getComputedStyle(page).getPropertyValue("--page-w")) || 210);
+    const k1 = pxPerMm(el);
     const [x0, y0] = [e.clientX, e.clientY];
     let pos: [number, number] = [dx, dy];
     el.setPointerCapture(e.pointerId);
-    el.onpointermove = (ev) => setLive((pos = [halfMm(dx + (ev.clientX - x0) / pxPerMm), halfMm(dy + (ev.clientY - y0) / pxPerMm)]));
+    el.onpointermove = (ev) => setLive((pos = [halfMm(dx + (ev.clientX - x0) / k1), halfMm(dy + (ev.clientY - y0) / k1)]));
     el.onpointerup = el.onpointercancel = () => {
       el.onpointermove = el.onpointerup = el.onpointercancel = null;
       setLive(null);
@@ -429,12 +440,47 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
 
       {/* PNG decorativos, encima de todo */}
       {m.stickers.map((s, i) => (
-        <Movable key={i} k={`img${i}`} look={{ dx: s.x, dy: s.y }} className="absolute top-0 left-0 z-10" style={{ width: `${s.w}mm` }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={s.src} alt="" draggable={false} className="block w-full" />
-        </Movable>
+        <StickerImg key={i} s={s} i={i} />
       ))}
     </div>
+  );
+}
+
+// Imagen del menú; seleccionada en escritorio, se agranda o reduce arrastrando el tirador de la esquina
+function StickerImg({ s, i }: { s: Sticker; i: number }) {
+  const edit = useContext(EditCtx);
+  const k = `img${i}`;
+  const [live, setLive] = useState<number | null>(null);
+
+  const onResize = (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (!edit || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation(); // no mover la imagen
+    const el = e.currentTarget;
+    const k1 = pxPerMm(el);
+    const x0 = e.clientX;
+    let w = s.w;
+    el.setPointerCapture(e.pointerId);
+    el.onpointermove = (ev) => setLive((w = Math.min(200, Math.max(5, Math.round(s.w + (ev.clientX - x0) / k1)))));
+    el.onpointerup = el.onpointercancel = () => {
+      el.onpointermove = el.onpointerup = el.onpointercancel = null;
+      setLive(null);
+      if (w !== s.w) edit.resize(i, w);
+    };
+  };
+
+  return (
+    <Movable k={k} look={{ dx: s.x, dy: s.y }} className="absolute top-0 left-0 z-10" style={{ width: `${live ?? s.w}mm` }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={s.src} alt="" draggable={false} className="block w-full" />
+      {edit?.sel === k && (
+        <span
+          data-resize
+          onPointerDown={onResize}
+          className="absolute -right-[2mm] -bottom-[2mm] size-[4mm] cursor-nwse-resize touch-none rounded-[1mm] border-[0.6mm] border-mare bg-white"
+        />
+      )}
+    </Movable>
   );
 }
 
@@ -1147,6 +1193,7 @@ export default function Editor() {
         sel,
         pick: setSel,
         drop: (k, dx, dy) => (k.startsWith("img") ? setSticker(Number(k.slice(3)), { x: dx, y: dy }) : setLook(k, { dx, dy })),
+        resize: (i, w) => setSticker(i, { w }),
       }
     : null;
 
@@ -1158,6 +1205,19 @@ export default function Editor() {
     return String(t.el[b as Exclude<keyof Dict["el"], "section">] ?? b);
   };
   const selSticker = sel?.startsWith("img") ? Number(sel.slice(3)) : -1;
+
+  // Supr / tecla de borrar del Mac: elimina la imagen seleccionada (salvo mientras se escribe en un campo)
+  useEffect(() => {
+    if (selSticker < 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key === "Delete" || e.key === "Backspace") && !(e.target as Element).closest("input,textarea,select,[contenteditable]")) {
+        e.preventDefault();
+        removeSticker(selSticker);
+      }
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  });
   const selLook = (sel && m.looks[sel]) || {};
 
   // Abre una carta del archivo sin cambiar su fecha (solo se actualiza al editarla)
@@ -1618,7 +1678,9 @@ export default function Editor() {
                         <Icon d={ICONS.trash} />
                       </button>
                     </div>
-                    {(
+                    {/* En escritorio se mueve y redimensiona arrastrando en la vista previa */}
+                    {!desktop &&
+                      (
                       [
                         ["w", t.size, 10, 150],
                         ["x", t.posX, -20, 200],
@@ -1669,17 +1731,7 @@ export default function Editor() {
                       <span className="font-semibold">{elName(sel)}</span>
                       {selSticker >= 0 ? (
                         <>
-                          <label className="flex items-center gap-2 text-sm">
-                            {t.size}
-                            <input
-                              type="range"
-                              className="accent-mare"
-                              min={10}
-                              max={150}
-                              value={m.stickers[selSticker].w}
-                              onChange={(e) => setSticker(selSticker, { w: Number(e.target.value) })}
-                            />
-                          </label>
+                          <p className="text-sm text-ink/60">{t.imageHint}</p>
                           <button className={secondary} onClick={() => removeSticker(selSticker)}>
                             <Icon d={ICONS.trash} className="size-4" />
                             {t.remove}
