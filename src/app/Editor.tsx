@@ -470,7 +470,7 @@ function Preview({ layout, scale, children }: { layout: Layout; scale: number; c
   const sheetPx = SHEETS[layout].w * 3.7795; // mm → px CSS
   useEffect(() => {
     const el = ref.current!;
-    const ro = new ResizeObserver(([e]) => setFit(Math.min(0.75, e.contentRect.width / sheetPx)));
+    const ro = new ResizeObserver(([e]) => setFit(Math.min(1.25, e.contentRect.width / sheetPx)));
     ro.observe(el);
     return () => ro.disconnect();
   }, [sheetPx]);
@@ -888,18 +888,17 @@ function Login({ onLogin, lang, onLang }: { onLogin: (email: string) => void; la
   );
 }
 
-// Selector de formato con un dibujo de cómo queda la hoja
 const ZOOMS = [1, 1.5, 2, 3, 4];
 
 function ZoomControl({ value, onChange }: { value: number; onChange: (z: number) => void }) {
   const t = useT();
   const i = ZOOMS.indexOf(value);
   return (
-    <div role="group" aria-label={t.zoom} className="mx-auto flex items-center gap-1 rounded-lg bg-white p-1 shadow-sm ring-1 ring-laguna/60">
+    <div role="group" aria-label={t.zoom} className="flex items-center rounded-lg bg-laguna/30 p-1">
       <button className={iconBtn} aria-label={t.zoomOut} disabled={i === 0} onClick={() => onChange(ZOOMS[i - 1])}>
         <Icon d={ICONS.minus} />
       </button>
-      <button className={`min-w-16 rounded-md px-2 py-1.5 text-sm font-semibold tabular-nums hover:bg-laguna/30 ${focus}`} title={t.zoomFit} onClick={() => onChange(1)}>
+      <button className={`min-w-14 rounded-md px-1 py-1.5 text-sm font-semibold tabular-nums hover:bg-laguna/30 ${focus}`} title={t.zoomFit} onClick={() => onChange(1)}>
         {value * 100}%
       </button>
       <button className={iconBtn} aria-label={t.zoomIn} disabled={i === ZOOMS.length - 1} onClick={() => onChange(ZOOMS[i + 1])}>
@@ -909,10 +908,11 @@ function ZoomControl({ value, onChange }: { value: number; onChange: (z: number)
   );
 }
 
+// Selector de formato compacto: dibujo de la hoja + nombre corto; el nombre completo en title/aria
 function LayoutPicker({ value, onChange }: { value: Layout; onChange: (l: Layout) => void }) {
   const t = useT();
   return (
-    <fieldset className="relative flex justify-center gap-2">
+    <fieldset className="flex gap-1 rounded-lg bg-laguna/30 p-1">
       <legend className="sr-only">{t.formatLegend}</legend>
       {(Object.keys(SHEETS) as Layout[]).map((l) => {
         const s = SHEETS[l];
@@ -920,22 +920,22 @@ function LayoutPicker({ value, onChange }: { value: Layout; onChange: (l: Layout
         return (
           <label
             key={l}
-            className={`relative flex cursor-pointer flex-col items-center gap-1.5 rounded-xl px-3 py-2 text-sm transition-colors focus-within:outline-2 focus-within:outline-ink ${
-              on ? "bg-white font-semibold shadow-sm ring-2 ring-mare" : "hover:bg-white/60"
+            title={t.layouts[l]}
+            className={`relative flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-sm transition-colors focus-within:outline-2 focus-within:outline-ink ${
+              on ? "bg-white font-semibold shadow-sm" : "text-ink/70 hover:bg-white/60"
             }`}
           >
-            <input type="radio" name="layout" className="sr-only" checked={on} onChange={() => onChange(l)} />
-            <span className="grid h-10 place-items-center">
+            <input type="radio" name="layout" className="sr-only" checked={on} onChange={() => onChange(l)} aria-label={t.layouts[l]} />
             <span
-              className="grid gap-[2px] rounded-[3px] border border-ink/50 bg-white p-[2px]"
-              style={{ width: s.w / 8, height: s.h / 8, gridTemplateColumns: `repeat(${s.cols}, 1fr)` }}
+              aria-hidden
+              className="grid gap-px rounded-[2px] border border-ink/50 bg-white p-px"
+              style={{ width: s.w / 14, height: s.h / 14, gridTemplateColumns: `repeat(${s.cols}, 1fr)` }}
             >
               {Array.from({ length: Number(l) }, (_, i) => (
                 <span key={i} className={`rounded-[1px] ${on ? "bg-mare" : "bg-laguna/70"}`} />
               ))}
             </span>
-            </span>
-            {t.layouts[l]}
+            <span aria-hidden>{l === "1" ? "A4" : `×${l}`}</span>
           </label>
         );
       })}
@@ -1324,7 +1324,7 @@ export default function Editor() {
           </main>
         ) : (
           <div className="flex flex-1 flex-col md:min-h-0 md:flex-row">
-            <aside data-scroll="edit" className={`${tab === "edit" ? "block" : "hidden"} bg-white md:block md:w-[420px] md:shrink-0 md:overflow-y-auto md:border-r md:border-laguna/60`}>
+            <aside data-scroll="edit" className={`${tab === "edit" ? "block" : "hidden"} bg-white md:block md:w-[360px] md:shrink-0 md:overflow-y-auto md:border-r md:border-laguna/60`}>
             <Group title={t.venue} hint={t.venueHint}>
               <Field label={t.name}>
                 <input className={input} value={m.name} onChange={(e) => set("name", e.target.value)} />
@@ -1639,18 +1639,17 @@ export default function Editor() {
 
             <main
               data-scroll="preview"
-              className={`${tab === "preview" ? "flex" : "hidden"} flex-1 flex-col gap-6 bg-laguna/35 px-4 py-5 md:flex md:overflow-auto md:px-8`}
+              className={`${tab === "preview" ? "flex" : "hidden"} flex-1 flex-col gap-5 bg-laguna/35 px-4 pb-6 md:flex md:overflow-auto md:px-6`}
               onPointerDown={(e) => desktop && !(e.target as Element).closest("[data-k],[data-toolbar]") && setSel(null)}
             >
-              <LayoutPicker value={layout} onChange={setLayout} />
-              <ZoomControl value={zoom} onChange={setZoom} />
-              {overflow && <OverflowWarning />}
-
-              {/* Barra de retoque del elemento seleccionado (escritorio) */}
-              {desktop && (
-                <div data-toolbar className="sticky top-0 z-10 mx-auto flex min-h-14 w-full max-w-3xl flex-wrap items-center gap-3 rounded-xl bg-white px-4 py-2 shadow-sm ring-1 ring-laguna/60">
+              {/* Una sola barra fija: formato, zoom y retoque del elemento seleccionado; el resto es hoja */}
+              <div data-toolbar className="sticky top-0 z-10 -mx-4 flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b border-laguna/60 bg-white px-4 py-2 md:-mx-6 md:px-6">
+                <LayoutPicker value={layout} onChange={setLayout} />
+                <ZoomControl value={zoom} onChange={setZoom} />
+                {desktop && (
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 border-l border-laguna/60 pl-3">
                   {!sel || (sel.startsWith("img") && !m.stickers[selSticker]) ? (
-                    <p className="text-sm text-ink/70">{t.dragHint}</p>
+                    <p className="truncate text-sm text-ink/60">{t.dragHint}</p>
                   ) : (
                     <>
                       <span className="font-semibold">{elName(sel)}</span>
@@ -1702,7 +1701,9 @@ export default function Editor() {
                     </>
                   )}
                 </div>
-              )}
+                )}
+              </div>
+              {overflow && <OverflowWarning />}
 
               <EditCtx value={edit}>
                 {pages.map((p, i) => (
