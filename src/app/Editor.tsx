@@ -135,7 +135,7 @@ function loadLang(): Lang {
 }
 
 // Reduce la imagen: las fotos del iPhone pesan varios MB y no caben en localStorage
-async function readImage(file: File | undefined, maxPx: number, type: "image/jpeg" | "image/png", done: (url: string) => void) {
+async function readImage(file: Blob | undefined, maxPx: number, type: "image/jpeg" | "image/png", done: (url: string) => void) {
   if (!file) return;
   const bmp = await createImageBitmap(file);
   const k = Math.min(1, maxPx / Math.max(bmp.width, bmp.height));
@@ -650,6 +650,230 @@ function ImagePicker(props: { label: string; value: string; maxPx: number; type:
   );
 }
 
+// Busca PNG transparentes en Pixabay (vía /api/images) y añade el elegido como imagen del menú
+function ImageSearch({ onPick }: { onPick: (img: Blob) => void }) {
+  const t = useT();
+  const lang = useContext(LangCtx);
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<{ id: number; thumb: string; src: string }[]>([]);
+  const [status, setStatus] = useState<"" | "searching" | "noResults" | "searchError" | "searchNoKey">("");
+  const [adding, setAdding] = useState<number | null>(null);
+
+  const search = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!q.trim()) return;
+    setStatus("searching");
+    try {
+      const r = await fetch(`/api/images?lang=${lang}&q=${encodeURIComponent(q)}`);
+      const data = await r.json();
+      if (!r.ok) return setStatus(data.error === "nokey" ? "searchNoKey" : "searchError");
+      setHits(data);
+      setStatus(data.length ? "" : "noResults");
+    } catch {
+      setStatus("searchError");
+    }
+  };
+
+  const pick = async (h: (typeof hits)[number]) => {
+    setAdding(h.id);
+    try {
+      const r = await fetch(`/api/images?img=${encodeURIComponent(h.src)}`);
+      if (!r.ok) throw new Error();
+      onPick(await r.blob());
+    } catch {
+      setStatus("searchError");
+    }
+    setAdding(null);
+  };
+
+  return (
+    <div className="space-y-3">
+      <form role="search" className="flex gap-2" onSubmit={search}>
+        <input className={input} type="search" aria-label={t.searchImages} placeholder={t.searchPlaceholder} value={q} onChange={(e) => setQ(e.target.value)} />
+        <button className={`${primary} px-4`} disabled={status === "searching"}>
+          {t.search}
+        </button>
+      </form>
+      <p className="text-sm text-ink/65" aria-live="polite">
+        {status && t[status]}
+      </p>
+      {hits.length > 0 && (
+        <>
+          <div className="grid grid-cols-4 gap-2">
+            {hits.map((h) => (
+              <button
+                key={h.id}
+                className={`aspect-square rounded-lg bg-[repeating-conic-gradient(#e5eef0_0_25%,#fff_0_50%)] bg-[length:16px_16px] p-1 ring-1 ring-laguna transition hover:ring-2 hover:ring-mare disabled:opacity-40 ${focus}`}
+                aria-label={t.addImage}
+                disabled={adding !== null}
+                onClick={() => pick(h)}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={h.thumb} alt="" loading="lazy" className="h-full w-full object-contain" />
+              </button>
+            ))}
+          </div>
+          {/* Pixabay exige indicar el origen junto a los resultados */}
+          <a href="https://pixabay.com/" target="_blank" rel="noreferrer" className="text-sm text-ink/65 underline underline-offset-2">
+            {t.fromPixabay}
+          </a>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Acceso (modo desarrollador) ---------- */
+// ponytail: cuentas solo en este navegador y el código de verificación se muestra en pantalla en vez de enviarse por email.
+// Para producción: cuentas en servidor (base de datos + envío de email) y sesión con cookie.
+type Account = { hash: string; code: string | null }; // code null = email verificado
+const USERS_KEY = "menudo:users";
+const SESSION_KEY = "menudo:session";
+
+function loadAccounts(): Record<string, Account> {
+  try {
+    return JSON.parse(localStorage.getItem(USERS_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+function loadSession() {
+  try {
+    return localStorage.getItem(SESSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+async function hashPassword(email: string, pw: string) {
+  // crypto.subtle no existe en http (p. ej. iPhone en la red local): en ese caso, sin hash (solo desarrollo)
+  if (!crypto.subtle) return pw;
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${email}\n${pw}`));
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function LangToggle({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
+  const t = T[lang];
+  return (
+    <div role="group" aria-label={t.lang} className="flex shrink-0 gap-1 rounded-lg bg-laguna/30 p-1 text-sm">
+      {(["it", "es"] as const).map((l) => (
+        <button
+          key={l}
+          aria-pressed={lang === l}
+          className={`rounded-md px-2.5 py-1.5 uppercase ${focus} ${lang === l ? "bg-white font-semibold shadow-sm" : "text-ink/70"}`}
+          onClick={() => onChange(l)}
+        >
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Login({ onLogin, lang, onLang }: { onLogin: (email: string) => void; lang: Lang; onLang: (l: Lang) => void }) {
+  const t = T[lang];
+  const [mode, setMode] = useState<"login" | "signup" | "verify">("login");
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [code, setCode] = useState("");
+  const [error, setError] = useState<"" | "badLogin" | "accountExists" | "badCode">("");
+
+  const save = (accounts: Record<string, Account>) => localStorage.setItem(USERS_KEY, JSON.stringify(accounts));
+  const enter = (e: string) => {
+    localStorage.setItem(SESSION_KEY, e);
+    onLogin(e);
+  };
+
+  const submit = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    setError("");
+    const e = email.trim().toLowerCase();
+    const accounts = loadAccounts();
+    if (mode === "verify") {
+      if (code.trim() !== accounts[e]?.code) return setError("badCode");
+      save({ ...accounts, [e]: { ...accounts[e], code: null } });
+      return enter(e);
+    }
+    const hash = await hashPassword(e, pw);
+    if (mode === "signup") {
+      if (accounts[e]) return setError("accountExists");
+      save({ ...accounts, [e]: { hash, code: String(100000 + Math.floor(Math.random() * 900000)) } });
+      return setMode("verify");
+    }
+    if (accounts[e]?.hash !== hash) return setError("badLogin");
+    if (accounts[e].code) return setMode("verify");
+    enter(e);
+  };
+
+  const devCode = mode === "verify" ? loadAccounts()[email.trim().toLowerCase()]?.code : null;
+  const title = { login: t.login, signup: t.signup, verify: t.verifyTitle }[mode];
+
+  return (
+    <LangCtx value={lang}>
+      <div className="flex min-h-dvh flex-col bg-laguna/35">
+        <header className="bg-white pt-[env(safe-area-inset-top)]">
+          <Tile color="#68A7AD" k={0.42} style={{ height: 16 }} />
+          <div className="flex items-center justify-between border-b border-laguna/60 px-5 py-3">
+            <p className="font-display text-[28px] leading-none font-semibold">Menudo</p>
+            <LangToggle lang={lang} onChange={onLang} />
+          </div>
+        </header>
+        <main className="grid flex-1 place-items-center px-4 py-8">
+          <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-laguna/60">
+            <h1 className="font-display text-[28px] leading-tight font-semibold">{title}</h1>
+            {mode === "verify" ? (
+              <>
+                <p className="text-ink/70">{t.verifyIntro(email.trim())}</p>
+                <p role="status" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">
+                  {t.devCode(devCode ?? "")}
+                </p>
+                <Field label={t.code}>
+                  <input className={input} required inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" value={code} onChange={(e) => setCode(e.target.value)} />
+                </Field>
+              </>
+            ) : (
+              <>
+                <Field label={t.email}>
+                  <input className={input} type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                </Field>
+                <Field label={t.password}>
+                  <input
+                    className={input}
+                    type="password"
+                    required
+                    minLength={mode === "signup" ? 8 : undefined}
+                    autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                    value={pw}
+                    onChange={(e) => setPw(e.target.value)}
+                  />
+                </Field>
+                {mode === "signup" && <p className="-mt-2 text-sm text-ink/65">{t.passwordHint}</p>}
+              </>
+            )}
+            {error && (
+              <p role="alert" className="text-sm font-semibold text-red-700">
+                {t[error]}
+              </p>
+            )}
+            <button className={`${primary} w-full`}>{mode === "verify" ? t.verify : title}</button>
+            <button
+              type="button"
+              className={`w-full rounded py-2 text-sm text-ink/70 underline underline-offset-2 hover:text-ink ${focus}`}
+              onClick={() => {
+                setError("");
+                setMode(mode === "login" ? "signup" : "login");
+              }}
+            >
+              {mode === "login" ? t.noAccount : t.haveAccount}
+            </button>
+          </form>
+        </main>
+      </div>
+    </LangCtx>
+  );
+}
+
 // Selector de formato con un dibujo de cómo queda la hoja
 function LayoutPicker({ value, onChange }: { value: Layout; onChange: (l: Layout) => void }) {
   const t = useT();
@@ -785,6 +1009,7 @@ export default function Editor() {
   // Arrastrar textos e imágenes solo con ratón y pantalla ancha
   const [desktop] = useState(() => matchMedia("(min-width: 768px) and (pointer: fine)").matches);
   const [sel, setSel] = useState<string | null>(null);
+  const [user, setUser] = useState(loadSession);
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -862,6 +1087,7 @@ export default function Editor() {
     set("looks", looks);
   };
   const setSticker = (i: number, patch: Partial<Sticker>) => set("stickers", m.stickers.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  const addSticker = (src: string) => set("stickers", [...m.stickers, { src, x: 80, y: 120, w: 50 }]);
   const removeSticker = (i: number) => {
     setSel(null);
     set("stickers", m.stickers.filter((_, j) => j !== i));
@@ -935,6 +1161,15 @@ export default function Editor() {
     { id: "archive", label: t.archive, icon: ICONS.archive },
   ] as const;
 
+  if (!user) return <Login onLogin={setUser} lang={lang} onLang={changeLang} />;
+
+  const logout = () => {
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch {}
+    setUser(null);
+  };
+
   return (
     <LangCtx value={lang}>
       <style>{`@page { size: A4 ${SHEETS[layout].orient}; margin: 0; }`}</style>
@@ -972,18 +1207,10 @@ export default function Editor() {
               ))}
             </nav>
 
-            <div role="group" aria-label={t.lang} className="flex shrink-0 gap-1 rounded-lg bg-laguna/30 p-1 text-sm">
-              {(["it", "es"] as const).map((l) => (
-                <button
-                  key={l}
-                  aria-pressed={lang === l}
-                  className={`rounded-md px-2.5 py-1.5 uppercase ${focus} ${lang === l ? "bg-white font-semibold shadow-sm" : "text-ink/70"}`}
-                  onClick={() => changeLang(l)}
-                >
-                  {l}
-                </button>
-              ))}
-            </div>
+            <LangToggle lang={lang} onChange={changeLang} />
+            <button className={`shrink-0 rounded px-1 py-2 text-sm text-ink/70 underline underline-offset-2 hover:text-ink ${focus}`} title={user} onClick={logout}>
+              {t.logout}
+            </button>
 
             <div className="hidden md:block">
               <button className={primary} onClick={() => window.print()}>
@@ -1366,11 +1593,12 @@ export default function Editor() {
                   className="sr-only"
                   onChange={(e) => {
                     // PNG: conserva la transparencia
-                    readImage(e.target.files?.[0], 800, "image/png", (src) => set("stickers", [...m.stickers, { src, x: 80, y: 120, w: 50 }]));
+                    readImage(e.target.files?.[0], 800, "image/png", addSticker);
                     e.target.value = "";
                   }}
                 />
               </label>
+              <ImageSearch onPick={(img) => readImage(img, 800, "image/png", addSticker)} />
             </Group>
             </aside>
 
