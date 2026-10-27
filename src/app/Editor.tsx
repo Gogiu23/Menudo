@@ -463,19 +463,21 @@ function Sheet({ layout, page }: { layout: Layout; page: (copy: number) => React
 }
 
 // Escala la hoja para que quepa en el ancho disponible (móvil incluido)
-function Preview({ layout, children }: { layout: Layout; children: React.ReactNode }) {
-  const [zoom, setZoom] = useState(0.6);
+// scale: zoom elegido por el usuario sobre el ajuste a la pantalla (1 = ajustada)
+function Preview({ layout, scale, children }: { layout: Layout; scale: number; children: React.ReactNode }) {
+  const [fit, setFit] = useState(0.6);
   const ref = useRef<HTMLDivElement>(null);
   const sheetPx = SHEETS[layout].w * 3.7795; // mm → px CSS
   useEffect(() => {
     const el = ref.current!;
-    const ro = new ResizeObserver(([e]) => setZoom(Math.min(0.75, e.contentRect.width / sheetPx)));
+    const ro = new ResizeObserver(([e]) => setFit(Math.min(0.75, e.contentRect.width / sheetPx)));
     ro.observe(el);
     return () => ro.disconnect();
   }, [sheetPx]);
   return (
-    <div ref={ref} className="flex w-full justify-center">
-      <div className="w-fit shadow-[0_18px_40px_-18px_rgb(23_48_51/0.45)]" style={{ zoom }}>
+    // justify-center-safe: con zoom, la hoja se desplaza en vez de cortarse por la izquierda
+    <div ref={ref} className="flex w-full justify-center-safe overflow-x-auto">
+      <div className="w-fit shadow-[0_18px_40px_-18px_rgb(23_48_51/0.45)]" style={{ zoom: fit * scale }}>
         {children}
       </div>
     </div>
@@ -499,6 +501,7 @@ const ICONS = {
   down: "M6 9l6 6 6-6",
   trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
   plus: "M12 5v14M5 12h14",
+  minus: "M5 12h14",
   print: "M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z",
   image: "M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5M15 9.5a.5.5 0 1 0 0-1",
   edit: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
@@ -886,6 +889,26 @@ function Login({ onLogin, lang, onLang }: { onLogin: (email: string) => void; la
 }
 
 // Selector de formato con un dibujo de cómo queda la hoja
+const ZOOMS = [1, 1.5, 2, 3, 4];
+
+function ZoomControl({ value, onChange }: { value: number; onChange: (z: number) => void }) {
+  const t = useT();
+  const i = ZOOMS.indexOf(value);
+  return (
+    <div role="group" aria-label={t.zoom} className="mx-auto flex items-center gap-1 rounded-lg bg-white p-1 shadow-sm ring-1 ring-laguna/60">
+      <button className={iconBtn} aria-label={t.zoomOut} disabled={i === 0} onClick={() => onChange(ZOOMS[i - 1])}>
+        <Icon d={ICONS.minus} />
+      </button>
+      <button className={`min-w-16 rounded-md px-2 py-1.5 text-sm font-semibold tabular-nums hover:bg-laguna/30 ${focus}`} title={t.zoomFit} onClick={() => onChange(1)}>
+        {value * 100}%
+      </button>
+      <button className={iconBtn} aria-label={t.zoomIn} disabled={i === ZOOMS.length - 1} onClick={() => onChange(ZOOMS[i + 1])}>
+        <Icon d={ICONS.plus} />
+      </button>
+    </div>
+  );
+}
+
 function LayoutPicker({ value, onChange }: { value: Layout; onChange: (l: Layout) => void }) {
   const t = useT();
   return (
@@ -1021,6 +1044,7 @@ export default function Editor() {
   const [desktop] = useState(() => matchMedia("(min-width: 768px) and (pointer: fine)").matches);
   const [sel, setSel] = useState<string | null>(null);
   const [user, setUser] = useState(loadSession);
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -1619,6 +1643,7 @@ export default function Editor() {
               onPointerDown={(e) => desktop && !(e.target as Element).closest("[data-k],[data-toolbar]") && setSel(null)}
             >
               <LayoutPicker value={layout} onChange={setLayout} />
+              <ZoomControl value={zoom} onChange={setZoom} />
               {overflow && <OverflowWarning />}
 
               {/* Barra de retoque del elemento seleccionado (escritorio) */}
@@ -1681,7 +1706,7 @@ export default function Editor() {
 
               <EditCtx value={edit}>
                 {pages.map((p, i) => (
-                  <Preview key={i} layout={layout}>
+                  <Preview key={i} layout={layout} scale={zoom}>
                     <Sheet layout={layout} page={p} />
                   </Preview>
                 ))}
