@@ -1,17 +1,28 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { formatPrice } from "./price";
+import { LangCtx, T, useT, type Dict, type Lang } from "./i18n";
 
 type Item = { name: string; desc: string; price: string };
 type Section = { title: string; items: Item[] };
+type Frame = "none" | "line" | "double";
+// Desplazamiento (mm), letra y color propios de un texto retocado en escritorio
+type Look = { dx?: number; dy?: number; font?: string; color?: string };
+// PNG decorativo: posición y ancho en mm sobre la hoja
+type Sticker = { src: string; x: number; y: number; w: number };
 type Menu = {
   name: string;
   subtitle: string;
   logo: string;
   coverOn: boolean;
   tiles: boolean;
+  frame: Frame;
+  font: string;
+  bodyFont: string;
+  ink: string;
+  indent: number;
   priceMode: "dish" | "total";
   align: "center" | "left";
   textSize: number;
@@ -25,6 +36,8 @@ type Menu = {
   cover: string;
   accent: string;
   sections: Section[];
+  stickers: Sticker[];
+  looks: Record<string, Look>;
   address: string;
   phone: string;
   email: string;
@@ -33,17 +46,24 @@ type Menu = {
 type Layout = "1" | "2" | "4";
 
 const INK = "#173033";
-const PALETTE = [
-  { name: "Mare", hex: "#68A7AD" },
-  { name: "Laguna", hex: "#99C4C8" },
-  { name: "Sabbia", hex: "#E5CB9F" },
-  { name: "Limone", hex: "#EEE4AB" },
-  { name: "Bianco", hex: "#FFFFFF" },
-];
+const PALETTE = ["#68A7AD", "#99C4C8", "#E5CB9F", "#EEE4AB", "#FFFFFF"];
 
 const isWhite = (c: string) => c.toLowerCase() === "#ffffff";
 
+// Variables CSS definidas en layout.tsx
+const FONTS: [string, string][] = [
+  ["bodoni", "Bodoni"],
+  ["titillium", "Titillium"],
+  ["playfair", "Playfair"],
+  ["lora", "Lora"],
+  ["montserrat", "Montserrat"],
+  ["greatvibes", "Great Vibes"],
+  ["dancing", "Dancing Script"],
+];
+const fontVar = (f: string) => `var(--font-${f}), serif`;
+
 const STORAGE_KEY = "menudo:menu";
+const LANG_KEY = "menudo:lang";
 
 const EMPTY: Menu = {
   name: "Il Mio Ristorante",
@@ -51,6 +71,11 @@ const EMPTY: Menu = {
   logo: "",
   coverOn: false,
   tiles: true,
+  frame: "none",
+  font: "bodoni",
+  bodyFont: "titillium",
+  ink: INK,
+  indent: 0,
   priceMode: "dish",
   align: "center",
   textSize: 1,
@@ -69,24 +94,27 @@ const EMPTY: Menu = {
       items: [{ name: "Bruschetta al pomodoro", desc: "Pane casereccio, pomodoro, basilico", price: "6,50" }],
     },
   ],
+  stickers: [],
+  looks: {},
   address: "Via Roma 1, Milano",
   phone: "+39 02 0000 0000",
   email: "",
   web: "",
 };
 
-// Hoja A4 en mm y tamaño de cada hueco según cuántas copias caben
-const SHEETS: Record<Layout, { w: number; h: number; cols: number; scale: number; orient: string; label: string }> = {
-  "1": { w: 210, h: 297, cols: 1, scale: 1, orient: "portrait", label: "A4" },
-  "2": { w: 297, h: 210, cols: 2, scale: 148.5 / 210, orient: "landscape", label: "2 per foglio" },
-  "4": { w: 210, h: 297, cols: 2, scale: 0.5, orient: "portrait", label: "4 per foglio" },
+// Diseños aplicables: solo tocan el estilo, nunca el contenido
+const DESIGNS: Record<keyof Dict["designs"], Partial<Menu>> = {
+  amalfi: { tiles: true, frame: "none", font: "bodoni", bodyFont: "titillium", accent: "#68A7AD", ink: INK, align: "center" },
+  elegante: { tiles: false, frame: "double", font: "playfair", bodyFont: "lora", accent: "#B08D57", ink: "#2B2118", align: "center" },
+  moderno: { tiles: false, frame: "none", font: "montserrat", bodyFont: "montserrat", accent: "#173033", ink: "#111111", align: "left" },
+  trattoria: { tiles: false, frame: "line", font: "greatvibes", bodyFont: "lora", accent: "#8C2F2F", ink: "#5A1E1E", align: "center" },
 };
 
-// Posición de cada copia en la hoja, en el mismo orden en que las pinta Sheet
-const COPY_NAMES: Record<Layout, string[]> = {
-  "1": ["Tavolo"],
-  "2": ["A sinistra", "A destra"],
-  "4": ["In alto a sinistra", "In alto a destra", "In basso a sinistra", "In basso a destra"],
+// Hoja A4 en mm y tamaño de cada hueco según cuántas copias caben
+const SHEETS: Record<Layout, { w: number; h: number; cols: number; scale: number; orient: string }> = {
+  "1": { w: 210, h: 297, cols: 1, scale: 1, orient: "portrait" },
+  "2": { w: 297, h: 210, cols: 2, scale: 148.5 / 210, orient: "landscape" },
+  "4": { w: 210, h: 297, cols: 2, scale: 0.5, orient: "portrait" },
 };
 
 function load(): Menu {
@@ -96,6 +124,14 @@ function load(): Menu {
   } catch {
     return EMPTY;
   }
+}
+
+function loadLang(): Lang {
+  try {
+    const l = localStorage.getItem(LANG_KEY);
+    if (l === "it" || l === "es") return l;
+  } catch {}
+  return navigator.language.startsWith("es") ? "es" : "it";
 }
 
 // Reduce la imagen: las fotos del iPhone pesan varios MB y no caben en localStorage
@@ -153,13 +189,66 @@ const archive = {
   remove: (id: string) => idb("readwrite", (s) => s.delete(id)),
 };
 
-const itDate = (t: number) => new Date(t).toLocaleDateString("it-IT", { day: "numeric", month: "long" });
-const itTime = (t: number) => new Date(t).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+const fmtDate = (t: number, locale: string) => new Date(t).toLocaleDateString(locale, { day: "numeric", month: "long" });
+const fmtTime = (t: number, locale: string) => new Date(t).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
 
 function move<T>(arr: T[], i: number, d: number) {
   const j = i + d;
   if (j >= 0 && j < arr.length) [arr[i], arr[j]] = [arr[j], arr[i]];
   return arr;
+}
+
+/* ---------- Edición directa sobre la vista previa (solo escritorio) ---------- */
+
+type Edit = { sel: string | null; pick: (k: string | null) => void; drop: (k: string, dx: number, dy: number) => void };
+const EditCtx = createContext<Edit | null>(null);
+
+const halfMm = (v: number) => Math.round(v * 2) / 2;
+
+// Texto o imagen que se coloca con un desplazamiento en mm. Con EditCtx (vista previa de escritorio) además se arrastra y se selecciona.
+function Movable(props: { k: string; look?: Look; className?: string; style?: React.CSSProperties; children: React.ReactNode }) {
+  const { k, look, className = "", style, children } = props;
+  const edit = useContext(EditCtx);
+  const [live, setLive] = useState<[number, number] | null>(null);
+  const [dx, dy] = live ?? [look?.dx ?? 0, look?.dy ?? 0];
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!edit || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    edit.pick(k);
+    const el = e.currentTarget;
+    // px de pantalla por mm de hoja, sea cual sea el zoom de la vista previa o la escala de la copia
+    const pxPerMm = el.closest("[data-page]")!.getBoundingClientRect().width / 210;
+    const [x0, y0] = [e.clientX, e.clientY];
+    let pos: [number, number] = [dx, dy];
+    el.setPointerCapture(e.pointerId);
+    el.onpointermove = (ev) => setLive((pos = [halfMm(dx + (ev.clientX - x0) / pxPerMm), halfMm(dy + (ev.clientY - y0) / pxPerMm)]));
+    el.onpointerup = el.onpointercancel = () => {
+      el.onpointermove = el.onpointerup = el.onpointercancel = null;
+      setLive(null);
+      if (pos[0] !== dx || pos[1] !== dy) edit.drop(k, ...pos);
+    };
+  };
+
+  const ring = !edit ? "" : edit.sel === k ? "outline-2 outline-dashed outline-mare" : "hover:outline-1 hover:outline-dashed hover:outline-mare/70";
+  return (
+    <div
+      data-k={k}
+      onPointerDown={onPointerDown}
+      className={`${className} ${edit ? "cursor-move touch-none select-none" : ""} ${ring}`}
+      style={
+        {
+          ...style,
+          translate: dx || dy ? `${dx}mm ${dy}mm` : undefined,
+          ...(look?.font && { fontFamily: fontVar(look.font), "--font-display": fontVar(look.font), "--font-sans": fontVar(look.font) }),
+          ...(look?.color && { color: look.color, "--color-ink": look.color }),
+        } as React.CSSProperties
+      }
+    >
+      {children}
+    </div>
+  );
 }
 
 /* ---------- Carta impresa ---------- */
@@ -194,23 +283,42 @@ function Tile({ color, k = 1, className = "", style }: { color: string; k?: numb
   );
 }
 
-function Masthead({ m, size }: { m: Menu; size: "cover" | "page" }) {
+// Letras y color de toda la hoja: se redefinen las variables que usan font-display, font-sans y text-ink
+const pageVars = (m: Menu) =>
+  ({ "--font-display": fontVar(m.font), "--font-sans": fontVar(m.bodyFont), "--color-ink": m.ink }) as React.CSSProperties;
+
+const decoColor = (m: Menu) => (isWhite(m.accent) ? "rgb(23 48 51 / 0.25)" : m.accent);
+const frameBorder = (m: Menu) => (m.frame === "double" ? `1.6mm double ${decoColor(m)}` : `0.5mm solid ${decoColor(m)}`);
+
+// p: prefijo de las claves, para que portada y página interior se muevan por separado
+function Masthead({ m, size, p = "" }: { m: Menu; size: "cover" | "page"; p?: string }) {
   const cover = size === "cover";
+  const mv = (k: string) => ({ k: p + k, look: m.looks[p + k] });
   return (
     <div className="text-center">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      {m.logo && <img src={m.logo} alt="" className={`mx-auto object-contain ${cover ? "mb-[6mm] max-h-[38mm] max-w-[80mm]" : "mb-[4mm] max-h-[24mm] max-w-[60mm]"}`} />}
-      <h1 className={`font-display leading-[1.05] font-semibold text-balance ${cover ? "text-[15mm]" : "text-[11mm]"}`} style={{ zoom: m.titleSize }}>
-        {m.name}
-      </h1>
-      {m.subtitle && <p className={`mt-[2mm] font-display italic ${cover ? "text-[7mm]" : "text-[5.5mm]"}`}>{m.subtitle}</p>}
+      {m.logo && (
+        <Movable {...mv("logo")}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={m.logo} alt="" draggable={false} className={`mx-auto object-contain ${cover ? "mb-[6mm] max-h-[38mm] max-w-[80mm]" : "mb-[4mm] max-h-[24mm] max-w-[60mm]"}`} />
+        </Movable>
+      )}
+      <Movable {...mv("name")}>
+        <h1 className={`font-display leading-[1.05] font-semibold text-balance ${cover ? "text-[15mm]" : "text-[11mm]"}`} style={{ zoom: m.titleSize }}>
+          {m.name}
+        </h1>
+      </Movable>
+      {m.subtitle && (
+        <Movable {...mv("subtitle")}>
+          <p className={`mt-[2mm] font-display italic ${cover ? "text-[7mm]" : "text-[5.5mm]"}`}>{m.subtitle}</p>
+        </Movable>
+      )}
     </div>
   );
 }
 
 function CoverPage({ m }: { m: Menu }) {
   return (
-    <div className="relative grid h-[297mm] w-[210mm] place-items-center overflow-hidden bg-white text-ink">
+    <div data-page className="relative grid h-[297mm] w-[210mm] place-items-center overflow-hidden bg-white font-sans text-ink" style={pageVars(m)}>
       {m.cover ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={m.cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
@@ -219,8 +327,8 @@ function CoverPage({ m }: { m: Menu }) {
       )}
       <div className="relative w-[150mm] bg-white">
         {m.tiles && <Tile color={m.accent} style={{ height: "8mm" }} k={0.8} />}
-        <div className="px-[14mm] py-[14mm]">
-          <Masthead m={m} size="cover" />
+        <div className="px-[14mm] py-[14mm]" style={m.frame === "none" || m.tiles ? undefined : { border: frameBorder(m) }}>
+          <Masthead m={m} size="cover" p="cover-" />
         </div>
       </div>
     </div>
@@ -228,22 +336,36 @@ function CoverPage({ m }: { m: Menu }) {
 }
 
 function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
+  const t = useT();
   const contacts = [m.phone, m.email, m.web].filter(Boolean);
   const total = m.priceMode === "total";
   const center = m.align === "center";
-  const bar = isWhite(m.accent) ? "rgb(23 48 51 / 0.25)" : m.accent;
+  const bar = decoColor(m);
+  const mv = (k: string) => ({ k, look: m.looks[k] });
+  const framed = m.frame !== "none";
   return (
-    <div className="flex h-[297mm] w-[210mm] flex-col overflow-hidden bg-white text-ink">
+    <div data-page className="relative flex h-[297mm] w-[210mm] flex-col overflow-hidden bg-white font-sans text-ink" style={pageVars(m)}>
       {m.tiles && <Tile color={m.accent} style={{ height: "10mm" }} />}
-      <div className={`relative flex flex-1 flex-col overflow-hidden px-[20mm] pb-[8mm] ${m.tableBox ? "pt-[18mm]" : "pt-[11mm]"}`}>
+      {framed && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-[7mm]"
+          style={{ top: m.tiles ? "13mm" : "7mm", bottom: m.tiles ? "9mm" : "7mm", border: frameBorder(m) }}
+        />
+      )}
+      {/* Con marco, la mesa y el contenido se apartan para no pisar la línea */}
+      <div className={`relative flex flex-1 flex-col overflow-hidden px-[20mm] pb-[8mm] ${m.tableBox ? (framed ? "pt-[26mm]" : "pt-[18mm]") : framed ? "pt-[15mm]" : "pt-[11mm]"}`}>
         {/* Recuadro vacío para escribir a boli el número de mesa (hasta 4 cifras) */}
         {m.tableBox && (
-          <div className="absolute top-[2mm] right-[10mm] flex items-center gap-[2mm] text-[4.6mm] font-semibold">
-            <span className="mr-[1mm]">Tavolo n.:</span>
+          <Movable
+            {...mv("table")}
+            className={`absolute flex items-center gap-[2mm] text-[4.6mm] font-semibold ${framed ? "top-[10mm] right-[13mm]" : "top-[2mm] right-[10mm]"}`}
+          >
+            <span className="mr-[1mm]">{t.tableLabel}</span>
             <span className="grid h-[13mm] w-[32mm] place-items-center rounded-[1mm] border-[0.5mm] border-ink font-display text-[8mm] leading-none">
               {table}
             </span>
-          </div>
+          </Movable>
         )}
         <Masthead m={m} size="page" />
 
@@ -254,11 +376,12 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
           style={{ zoom: m.textSize }}
         >
           {m.sections.map((s, i) => (
-            <section key={i} className="break-inside-avoid">
+            // ponytail: la clave es la posición; al reordenar secciones, el retoque se queda en el hueco. Ids por sección si molesta.
+            <Movable key={i} {...mv(`s${i}`)} className="break-inside-avoid">
               <h2 className={`font-display text-[7.5mm] italic ${center ? "text-center" : ""}`}>{s.title}</h2>
               <div className={`mt-[1.5mm] mb-[5mm] h-[0.9mm] w-[14mm] rounded-full ${center ? "mx-auto" : ""}`} style={{ background: bar }} />
               {s.items.map((it, j) => (
-                <div key={j} className="mb-[3.5mm] last:mb-0">
+                <div key={j} className="mb-[3.5mm] last:mb-0" style={{ paddingLeft: `${m.indent}mm` }}>
                   <div className="flex items-baseline gap-[2mm] text-[4.4mm] font-semibold">
                     <span>{it.name}</span>
                     <span className="flex-1 translate-y-[-0.8mm] border-b-[0.6mm] border-dotted border-ink/55" />
@@ -267,12 +390,12 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
                   {it.desc && <p className="mt-[0.5mm] text-[3.7mm] font-light italic text-ink/75">{it.desc}</p>}
                 </div>
               ))}
-            </section>
+            </Movable>
           ))}
         </div>
 
         {total && m.totalPrice && (
-          <div className="mb-[7mm] text-center" style={{ zoom: m.textSize }}>
+          <Movable {...mv("total")} className="mb-[7mm] text-center" style={{ zoom: m.textSize }}>
             <div className="mx-auto mb-[4mm] h-[0.9mm] w-[14mm] rounded-full" style={{ background: bar }} />
             {m.totalLabel && <p className="font-display text-[5.5mm] italic">{m.totalLabel}</p>}
             <p className="font-display text-[11mm] leading-tight font-semibold tabular-nums">{formatPrice(m.totalPrice)}</p>
@@ -281,21 +404,31 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
                 {m.totalNote}
               </p>
             )}
-          </div>
+          </Movable>
         )}
 
-        <footer className="text-center text-[3.7mm] leading-relaxed">
-          {m.address && <p className="font-semibold">{m.address}</p>}
-          {contacts.length > 0 && (
-            <p className="flex flex-wrap justify-center gap-x-[6mm]">
-              {contacts.map((c) => (
-                <span key={c}>{c}</span>
-              ))}
-            </p>
-          )}
-        </footer>
+        <Movable {...mv("footer")} className="text-center text-[3.7mm] leading-relaxed">
+          <footer>
+            {m.address && <p className="font-semibold">{m.address}</p>}
+            {contacts.length > 0 && (
+              <p className="flex flex-wrap justify-center gap-x-[6mm]">
+                {contacts.map((c) => (
+                  <span key={c}>{c}</span>
+                ))}
+              </p>
+            )}
+          </footer>
+        </Movable>
       </div>
       {m.tiles && <Tile color={m.accent} style={{ height: "6mm" }} k={0.6} />}
+
+      {/* PNG decorativos, encima de todo */}
+      {m.stickers.map((s, i) => (
+        <Movable key={i} k={`img${i}`} look={{ dx: s.x, dy: s.y }} className="absolute top-0 left-0 z-10" style={{ width: `${s.w}mm` }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={s.src} alt="" draggable={false} className="block w-full" />
+        </Movable>
+      ))}
     </div>
   );
 }
@@ -379,28 +512,24 @@ const primary = `inline-flex items-center justify-center gap-2 rounded-lg bg-mar
 // relative: contiene el input sr-only (absolute) del botón de subir imagen
 const secondary = `relative inline-flex cursor-pointer items-center gap-2 rounded-lg border border-mare bg-white px-3 py-2 text-sm font-semibold transition-colors hover:bg-laguna/25 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink`;
 const iconBtn = `grid size-11 shrink-0 place-items-center rounded-lg text-ink/70 transition-colors hover:bg-laguna/30 hover:text-ink disabled:pointer-events-none disabled:opacity-25 md:size-9 ${focus}`;
+const colorSwatch =
+  "size-11 cursor-pointer appearance-none rounded-full border-0 bg-transparent p-0 ring-1 ring-ink/15 ring-offset-2 [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0";
 
-const TEXT_SIZES: [number, string][] = [
-  [0.85, "Piccolo"],
-  [1, "Normale"],
-  [1.15, "Grande"],
-  [1.3, "Molto grande"],
-  [1.5, "Grandissimo"],
-  [1.75, "Enorme"],
-];
+const TEXT_SIZES = [0.85, 1, 1.15, 1.3, 1.5, 1.75];
 
-const sizeName = (v: number) => TEXT_SIZES.find(([s]) => s === v)?.[1];
+const sizeName = (t: Dict, v: number) => t.sizes[TEXT_SIZES.indexOf(v)];
 
 // Seis «A» de tamaño creciente
 function SizePicker({ name, value, onChange }: { name: string; value: number; onChange: (v: number) => void }) {
+  const t = useT();
   return (
     <Segmented
       name={name}
       value={String(value)}
-      options={TEXT_SIZES.map(([v, label], i) => [
+      options={TEXT_SIZES.map((v, i) => [
         String(v),
-        <span key={v} className="font-display leading-none font-semibold" style={{ fontSize: 13 + i * 3.5 }} title={label}>
-          A<span className="sr-only"> {label}</span>
+        <span key={v} className="font-display leading-none font-semibold" style={{ fontSize: 13 + i * 3.5 }} title={t.sizes[i]}>
+          A<span className="sr-only"> {t.sizes[i]}</span>
         </span>,
       ])}
       onChange={(v) => onChange(Number(v))}
@@ -409,9 +538,10 @@ function SizePicker({ name, value, onChange }: { name: string; value: number; on
 }
 
 function OverflowWarning() {
+  const t = useT();
   return (
     <p role="status" className="mx-auto w-full max-w-md rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">
-      Il menù non entra nella pagina: riduci la dimensione del testo o togli qualche piatto.
+      {t.overflow}
     </p>
   );
 }
@@ -432,6 +562,18 @@ function Segmented<T extends string>(props: { name: string; value: T; options: [
         </label>
       ))}
     </div>
+  );
+}
+
+function FontSelect({ value, onChange, className = input }: { value: string; onChange: (v: string) => void; className?: string }) {
+  return (
+    <select className={className} value={value} onChange={(e) => onChange(e.target.value)}>
+      {FONTS.map(([id, label]) => (
+        <option key={id} value={id} style={{ fontFamily: fontVar(id) }}>
+          {label}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -478,6 +620,7 @@ function Group({ title, hint, children }: { title: string; hint?: string; childr
 
 function ImagePicker(props: { label: string; value: string; maxPx: number; type: "image/jpeg" | "image/png"; onChange: (url: string) => void }) {
   const { label, value, maxPx, type, onChange } = props;
+  const t = useT();
   return (
     <div className="flex items-center gap-4">
       <div className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-dashed border-mare bg-laguna/15 text-mare">
@@ -486,7 +629,7 @@ function ImagePicker(props: { label: string; value: string; maxPx: number; type:
       </div>
       <div className="flex flex-col items-start gap-1">
         <label className={secondary}>
-          {value ? "Cambia immagine" : label}
+          {value ? t.changeImage : label}
           <input
             type="file"
             accept="image/*"
@@ -499,7 +642,7 @@ function ImagePicker(props: { label: string; value: string; maxPx: number; type:
         </label>
         {value && (
           <button className={`rounded px-1 py-2 text-sm text-ink/70 underline underline-offset-2 hover:text-ink ${focus}`} onClick={() => onChange("")}>
-            Rimuovi
+            {t.remove}
           </button>
         )}
       </div>
@@ -509,9 +652,10 @@ function ImagePicker(props: { label: string; value: string; maxPx: number; type:
 
 // Selector de formato con un dibujo de cómo queda la hoja
 function LayoutPicker({ value, onChange }: { value: Layout; onChange: (l: Layout) => void }) {
+  const t = useT();
   return (
     <fieldset className="relative flex justify-center gap-2">
-      <legend className="sr-only">Formato di stampa</legend>
+      <legend className="sr-only">{t.formatLegend}</legend>
       {(Object.keys(SHEETS) as Layout[]).map((l) => {
         const s = SHEETS[l];
         const on = value === l;
@@ -533,7 +677,7 @@ function LayoutPicker({ value, onChange }: { value: Layout; onChange: (l: Layout
               ))}
             </span>
             </span>
-            {s.label}
+            {t.layouts[l]}
           </label>
         );
       })}
@@ -556,6 +700,7 @@ function isDismissed() {
 
 // Android/Chrome/Edge: botón que abre el instalador. iPhone: Safari no tiene API de instalación, así que explicamos los pasos.
 function InstallPrompt() {
+  const t = useT();
   const [event, setEvent] = useState<InstallEvent | null>(null);
   const [iosHelp, setIosHelp] = useState(() => {
     const standalone = matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone;
@@ -596,27 +741,28 @@ function InstallPrompt() {
   if (!event && !iosHelp) return null;
   return (
     <aside
-      aria-label="Installa Menudo"
+      aria-label={t.install}
       className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 flex items-start gap-3 rounded-2xl bg-white p-4 shadow-[0_18px_40px_-12px_rgb(23_48_51/0.45)] ring-1 ring-laguna md:inset-x-auto md:right-6 md:bottom-6 md:w-96 print:hidden"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/icon-192.png" alt="" className="size-12 shrink-0 rounded-xl" />
       <div className="min-w-0 flex-1">
-        <p className="font-semibold">Installa Menudo</p>
+        <p className="font-semibold">{t.install}</p>
         {event ? (
           <>
-            <p className="text-sm text-ink/70">Aprila dalla schermata Home, anche senza connessione.</p>
+            <p className="text-sm text-ink/70">{t.installHint}</p>
             <button className={`${primary} mt-3 py-2`} onClick={install}>
-              Installa
+              {t.installBtn}
             </button>
           </>
         ) : (
           <p className="text-sm text-ink/70">
-            Tocca <Icon d={ICONS.share} className="inline size-4 -translate-y-0.5" /> <b>Condividi</b>, poi «Aggiungi alla schermata Home».
+            {t.iosTap} <Icon d={ICONS.share} className="inline size-4 -translate-y-0.5" /> <b>{t.iosShare}</b>
+            {t.iosThen}
           </p>
         )}
       </div>
-      <button className={`${iconBtn} -mt-2 -mr-2`} aria-label="Chiudi" onClick={dismiss}>
+      <button className={`${iconBtn} -mt-2 -mr-2`} aria-label={t.close} onClick={dismiss}>
         <Icon d={ICONS.close} />
       </button>
     </aside>
@@ -625,15 +771,31 @@ function InstallPrompt() {
 
 export default function Editor() {
   const [m, setM] = useState<Menu>(load);
+  const [lang, setLang] = useState<Lang>(loadLang);
+  const t = T[lang];
   const [currentId, setCurrentId] = useState(loadCurrentId);
   const [layout, setLayout] = useState<Layout>("1");
   const [saveError, setSaveError] = useState(false);
   const [tab, setTab] = useState<"edit" | "preview" | "archive">("edit");
   const [saved, setSaved] = useState<Saved[]>([]);
   const [pending, setPending] = useState(false);
-  const [archiveError, setArchiveError] = useState("");
+  const [archiveError, setArchiveError] = useState<"" | "archiveFull" | "archiveUnavailable">("");
   const [query, setQuery] = useState("");
   const [overflow, setOverflow] = useState(false);
+  // Arrastrar textos e imágenes solo con ratón y pantalla ancha
+  const [desktop] = useState(() => matchMedia("(min-width: 768px) and (pointer: fine)").matches);
+  const [sel, setSel] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
+
+  const changeLang = (l: Lang) => {
+    setLang(l);
+    try {
+      localStorage.setItem(LANG_KEY, l);
+    } catch {}
+  };
 
   // Posición de desplazamiento de cada pantalla: la ventana (móvil) y los paneles con data-scroll (escritorio)
   const scrollPos = useRef<Record<string, number>>({});
@@ -664,7 +826,7 @@ export default function Editor() {
   const timer = useRef<number>(undefined);
 
   useEffect(() => {
-    archive.list().then(setSaved, () => setArchiveError("Archivio non disponibile su questo browser."));
+    archive.list().then(setSaved, () => setArchiveError("archiveUnavailable"));
   }, []);
 
   // Borrador al instante en localStorage; en el archivo, 800 ms después del último cambio
@@ -685,7 +847,7 @@ export default function Editor() {
         setSaved(await archive.list());
         setArchiveError("");
       } catch {
-        setArchiveError("Menù non salvato nell'archivio: spazio esaurito. Elimina qualche menù vecchio.");
+        setArchiveError("archiveFull");
       }
       setPending(false);
     }, 800);
@@ -693,6 +855,35 @@ export default function Editor() {
 
   const set = <K extends keyof Menu>(k: K, v: Menu[K]) => update({ ...m, [k]: v });
   const setSections = (fn: (s: Section[]) => Section[]) => update({ ...m, sections: fn(structuredClone(m.sections)) });
+  const setLook = (k: string, patch: Look | null) => {
+    const looks = { ...m.looks };
+    if (patch) looks[k] = { ...looks[k], ...patch };
+    else delete looks[k];
+    set("looks", looks);
+  };
+  const setSticker = (i: number, patch: Partial<Sticker>) => set("stickers", m.stickers.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  const removeSticker = (i: number) => {
+    setSel(null);
+    set("stickers", m.stickers.filter((_, j) => j !== i));
+  };
+
+  const edit: Edit | null = desktop
+    ? {
+        sel,
+        pick: setSel,
+        drop: (k, dx, dy) => (k.startsWith("img") ? setSticker(Number(k.slice(3)), { x: dx, y: dy }) : setLook(k, { dx, dy })),
+      }
+    : null;
+
+  // Nombre legible del elemento seleccionado en la vista previa
+  const elName = (k: string) => {
+    const b = k.replace(/^cover-/, "");
+    if (b.startsWith("img")) return t.imageN(Number(b.slice(3)) + 1);
+    if (/^s\d+$/.test(b)) return t.el.section(Number(b.slice(1)) + 1);
+    return String(t.el[b as Exclude<keyof Dict["el"], "section">] ?? b);
+  };
+  const selSticker = sel?.startsWith("img") ? Number(sel.slice(3)) : -1;
+  const selLook = (sel && m.looks[sel]) || {};
 
   // Abre una carta del archivo sin cambiar su fecha (solo se actualiza al editarla)
   const openSaved = (a: Saved, thenPrint = false) => {
@@ -700,6 +891,7 @@ export default function Editor() {
     flushSync(() => {
       setM(menu);
       setCurrentId(a.id);
+      setSel(null);
     });
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(menu));
@@ -725,69 +917,84 @@ export default function Editor() {
   };
 
   const current = saved.find((a) => a.id === currentId);
-  const status = pending ? "Salvataggio…" : current ? `Salvato alle ${itTime(current.savedAt)}` : "Le modifiche si salvano da sole";
+  const status = pending ? t.saving : current ? t.savedAt(fmtTime(current.savedAt, t.locale)) : t.autosave;
 
   const q = query.trim().toLowerCase();
   const found = q
-    ? saved.filter((a) => [a.menu.name, a.menu.subtitle, itDate(a.savedAt), ...a.menu.sections.map((s) => s.title)].join(" ").toLowerCase().includes(q))
+    ? saved.filter((a) =>
+        [a.menu.name, a.menu.subtitle, fmtDate(a.savedAt, t.locale), ...a.menu.sections.map((s) => s.title)].join(" ").toLowerCase().includes(q),
+      )
     : saved;
 
   const content = (copy: number) => <ContentPage m={m} table={m.tableNumbers[copy]} />;
   const pages = m.coverOn ? [() => <CoverPage m={m} />, content] : [content];
 
   const tabs = [
-    { id: "edit", label: "Modifica", icon: ICONS.edit },
-    { id: "preview", label: "Anteprima", icon: ICONS.eye },
-    { id: "archive", label: "Archivio", icon: ICONS.archive },
+    { id: "edit", label: t.edit, icon: ICONS.edit },
+    { id: "preview", label: t.preview, icon: ICONS.eye },
+    { id: "archive", label: t.archive, icon: ICONS.archive },
   ] as const;
 
   return (
-    <>
+    <LangCtx value={lang}>
       <style>{`@page { size: A4 ${SHEETS[layout].orient}; margin: 0; }`}</style>
 
       <div className="flex min-h-dvh flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:h-dvh md:pb-0 print:hidden">
         <header className="shrink-0 bg-white pt-[env(safe-area-inset-top)]">
           <Tile color="#68A7AD" k={0.42} style={{ height: 16 }} />
-          <div className="flex items-center gap-6 border-b border-laguna/60 px-5 py-3">
+          <div className="flex items-center gap-4 border-b border-laguna/60 px-5 py-3 md:gap-6">
             <div className="min-w-0 flex-1 md:flex-none">
               <p className="font-display text-[28px] leading-none font-semibold">Menudo</p>
-              <p className="mt-1 text-sm text-ink/65" aria-live="polite">
+              <p className="mt-1 truncate text-sm text-ink/65" aria-live="polite">
                 {status}
               </p>
             </div>
 
             {/* Pestañas de escritorio */}
-            <nav className="hidden flex-1 gap-1 md:flex" aria-label="Sezioni">
+            <nav className="hidden flex-1 gap-1 md:flex" aria-label={t.sections}>
               {(
                 [
-                  { label: "Menù", target: "edit", on: tab !== "archive" },
-                  { label: "Archivio", target: "archive", on: tab === "archive" },
+                  { label: t.menu, target: "edit", on: tab !== "archive" },
+                  { label: t.archive, target: "archive", on: tab === "archive" },
                 ] as const
-              ).map((t) => (
+              ).map((x) => (
                 <button
-                  key={t.label}
-                  aria-current={t.on ? "page" : undefined}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${focus} ${t.on ? "bg-laguna/40 font-semibold" : "text-ink/70 hover:bg-laguna/20"}`}
-                  onClick={() => go(t.target)}
+                  key={x.target}
+                  aria-current={x.on ? "page" : undefined}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${focus} ${x.on ? "bg-laguna/40 font-semibold" : "text-ink/70 hover:bg-laguna/20"}`}
+                  onClick={() => go(x.target)}
                 >
-                  {t.label}
-                  {t.label === "Archivio" && saved.length > 0 && (
+                  {x.label}
+                  {x.target === "archive" && saved.length > 0 && (
                     <span className="rounded-full bg-white px-2 text-xs font-semibold ring-1 ring-laguna">{saved.length}</span>
                   )}
                 </button>
               ))}
             </nav>
 
+            <div role="group" aria-label={t.lang} className="flex shrink-0 gap-1 rounded-lg bg-laguna/30 p-1 text-sm">
+              {(["it", "es"] as const).map((l) => (
+                <button
+                  key={l}
+                  aria-pressed={lang === l}
+                  className={`rounded-md px-2.5 py-1.5 uppercase ${focus} ${lang === l ? "bg-white font-semibold shadow-sm" : "text-ink/70"}`}
+                  onClick={() => changeLang(l)}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+
             <div className="hidden md:block">
               <button className={primary} onClick={() => window.print()}>
                 <Icon d={ICONS.print} />
-                Stampa
+                {t.print}
               </button>
             </div>
           </div>
           {(saveError || archiveError) && (
             <p role="alert" className="bg-sabbia px-5 py-2 text-sm font-semibold">
-              {archiveError || "Modifiche non salvate: le immagini sono troppo grandi. Usa immagini più leggere."}
+              {archiveError ? t[archiveError] : t.imgTooBig}
             </p>
           )}
         </header>
@@ -797,25 +1004,25 @@ export default function Editor() {
             <div className="mx-auto max-w-5xl space-y-5">
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                  <h1 className="font-display text-[32px] leading-tight font-semibold">Archivio</h1>
-                  <p className="mt-1 max-w-prose text-ink/70">I tuoi menù si salvano qui da soli mentre li modifichi. Dopo 30 giorni senza modifiche si eliminano.</p>
+                  <h1 className="font-display text-[32px] leading-tight font-semibold">{t.archive}</h1>
+                  <p className="mt-1 max-w-prose text-ink/70">{t.archiveIntro}</p>
                 </div>
                 <button className={primary} onClick={newMenu}>
                   <Icon d={ICONS.plus} />
-                  Nuovo menù
+                  {t.newMenu}
                 </button>
               </div>
 
               <label className="relative block max-w-md">
-                <span className="sr-only">Cerca nell&apos;archivio</span>
+                <span className="sr-only">{t.searchLabel}</span>
                 <Icon d={ICONS.search} className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink/50" />
-                <input className={`${input} pl-10`} type="search" placeholder="Cerca per nome, sezione o data" value={query} onChange={(e) => setQuery(e.target.value)} />
+                <input className={`${input} pl-10`} type="search" placeholder={t.searchPh} value={query} onChange={(e) => setQuery(e.target.value)} />
               </label>
 
               {saved.length === 0 ? (
-                <p className="rounded-xl bg-white p-6 text-ink/70">Ancora nessun menù. Inizia a modificare e lo troverai qui.</p>
+                <p className="rounded-xl bg-white p-6 text-ink/70">{t.emptyArchive}</p>
               ) : found.length === 0 ? (
-                <p className="rounded-xl bg-white p-6 text-ink/70">Nessun menù trovato per «{query}».</p>
+                <p className="rounded-xl bg-white p-6 text-ink/70">{t.notFound(query)}</p>
               ) : (
                 <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {found.map((a) => {
@@ -823,26 +1030,24 @@ export default function Editor() {
                     const am = { ...EMPTY, ...a.menu };
                     return (
                       <li key={a.id} className={`flex gap-4 rounded-xl bg-white p-3 shadow-sm ${inUse ? "ring-2 ring-mare" : "ring-1 ring-laguna/60"}`}>
-                        <button className={`rounded-sm ${focus}`} aria-label={`Apri ${am.name}`} onClick={() => openSaved(a)}>
+                        <button className={`rounded-sm ${focus}`} aria-label={t.openA(am.name)} onClick={() => openSaved(a)}>
                           <Thumbnail m={am} />
                         </button>
                         <div className="flex min-w-0 flex-1 flex-col">
-                          {inUse && <span className="mb-1 w-fit rounded-full bg-mare/25 px-2 text-xs font-semibold">Aperto ora</span>}
+                          {inUse && <span className="mb-1 w-fit rounded-full bg-mare/25 px-2 text-xs font-semibold">{t.openNow}</span>}
                           <p className="truncate font-display text-lg leading-tight font-semibold">{am.name}</p>
                           {am.subtitle && <p className="truncate text-sm text-ink/70">{am.subtitle}</p>}
-                          <p className="mt-2 text-sm text-ink/70">
-                            Modificato il {itDate(a.savedAt)} alle {itTime(a.savedAt)}
-                          </p>
-                          <p className="text-sm text-ink/70">Si elimina il {itDate(a.savedAt + TTL)}</p>
+                          <p className="mt-2 text-sm text-ink/70">{t.modified(fmtDate(a.savedAt, t.locale), fmtTime(a.savedAt, t.locale))}</p>
+                          <p className="text-sm text-ink/70">{t.deletesOn(fmtDate(a.savedAt + TTL, t.locale))}</p>
                           <div className="mt-auto flex items-center gap-1 pt-3">
                             <button className={`${secondary} py-1.5`} onClick={() => openSaved(a)}>
-                              Apri
+                              {t.open}
                             </button>
-                            <button className={iconBtn} aria-label={`Stampa ${am.name}`} onClick={() => openSaved(a, true)}>
+                            <button className={iconBtn} aria-label={t.printA(am.name)} onClick={() => openSaved(a, true)}>
                               <Icon d={ICONS.print} />
                             </button>
                             {!inUse && (
-                              <button className={iconBtn} aria-label={`Elimina ${am.name} del ${itDate(a.savedAt)}`} onClick={() => removeSaved(a.id)}>
+                              <button className={iconBtn} aria-label={t.deleteA(am.name, fmtDate(a.savedAt, t.locale))} onClick={() => removeSaved(a.id)}>
                                 <Icon d={ICONS.trash} />
                               </button>
                             )}
@@ -858,68 +1063,68 @@ export default function Editor() {
         ) : (
           <div className="flex flex-1 flex-col md:min-h-0 md:flex-row">
             <aside data-scroll="edit" className={`${tab === "edit" ? "block" : "hidden"} bg-white md:block md:w-[420px] md:shrink-0 md:overflow-y-auto md:border-r md:border-laguna/60`}>
-            <Group title="Il locale" hint="Il nome e il logo compaiono in alto nel menù.">
-              <Field label="Nome del locale">
+            <Group title={t.venue} hint={t.venueHint}>
+              <Field label={t.name}>
                 <input className={input} value={m.name} onChange={(e) => set("name", e.target.value)} />
               </Field>
               <fieldset className="space-y-2">
-                <legend className="mb-1 text-sm font-semibold">Dimensione del nome</legend>
+                <legend className="mb-1 text-sm font-semibold">{t.nameSize}</legend>
                 <SizePicker name="titleSize" value={m.titleSize} onChange={(v) => set("titleSize", v)} />
-                <p className="text-sm text-ink/65">{sizeName(m.titleSize)}.</p>
+                <p className="text-sm text-ink/65">{sizeName(t, m.titleSize)}.</p>
               </fieldset>
-              <Field label="Sottotitolo">
-                <input className={input} value={m.subtitle} placeholder="Menù, Carta dei vini…" onChange={(e) => set("subtitle", e.target.value)} />
+              <Field label={t.subtitle}>
+                <input className={input} value={m.subtitle} placeholder={t.subtitlePh} onChange={(e) => set("subtitle", e.target.value)} />
               </Field>
-              <ImagePicker label="Carica logo" value={m.logo} maxPx={600} type="image/png" onChange={(u) => set("logo", u)} />
+              <ImagePicker label={t.uploadLogo} value={m.logo} maxPx={600} type="image/png" onChange={(u) => set("logo", u)} />
             </Group>
 
-            <Group title="Copertina" hint="Una pagina iniziale, con una foto oppure semplice.">
+            <Group title={t.cover} hint={t.coverHint}>
               <label className="flex cursor-pointer items-center gap-3">
                 <input type="checkbox" className="size-5 accent-mare" checked={m.coverOn} onChange={(e) => set("coverOn", e.target.checked)} />
-                <span className="font-semibold">Stampa la copertina</span>
+                <span className="font-semibold">{t.printCover}</span>
               </label>
               {m.coverOn && (
-                <ImagePicker label="Aggiungi una foto" value={m.cover} maxPx={1600} type="image/jpeg" onChange={(u) => set("cover", u)} />
+                <ImagePicker label={t.addPhoto} value={m.cover} maxPx={1600} type="image/jpeg" onChange={(u) => set("cover", u)} />
               )}
             </Group>
 
-            <Group title="Piatti" hint="Organizza il menù in sezioni, per esempio Antipasti o Dolci.">
+            <Group title={t.dishes} hint={t.dishesHint}>
               {m.sections.map((s, i) => (
                 <div key={i} className="space-y-3 rounded-xl border border-sabbia bg-sabbia/15 p-3">
                   <div className="flex items-center gap-1">
                     <input
                       className={`${input} font-display text-lg font-semibold md:text-lg`}
-                      aria-label="Nome della sezione"
+                      aria-label={t.sectionName}
                       value={s.title}
                       onChange={(e) => setSections((ss) => ((ss[i].title = e.target.value), ss))}
                     />
-                    <button className={iconBtn} aria-label="Sposta su" disabled={i === 0} onClick={() => setSections((ss) => move(ss, i, -1))}>
+                    <button className={iconBtn} aria-label={t.moveUp} disabled={i === 0} onClick={() => setSections((ss) => move(ss, i, -1))}>
                       <Icon d={ICONS.up} />
                     </button>
-                    <button className={iconBtn} aria-label="Sposta giù" disabled={i === m.sections.length - 1} onClick={() => setSections((ss) => move(ss, i, 1))}>
+                    <button className={iconBtn} aria-label={t.moveDown} disabled={i === m.sections.length - 1} onClick={() => setSections((ss) => move(ss, i, 1))}>
                       <Icon d={ICONS.down} />
                     </button>
-                    <button className={iconBtn} aria-label={`Elimina la sezione ${s.title}`} onClick={() => setSections((ss) => ss.filter((_, k) => k !== i))}>
+                    <button className={iconBtn} aria-label={t.deleteSection(s.title)} onClick={() => setSections((ss) => ss.filter((_, k) => k !== i))}>
                       <Icon d={ICONS.trash} />
                     </button>
                   </div>
 
-                  {s.items.length === 0 && <p className="px-1 text-sm text-ink/65">Nessun piatto. Aggiungi il primo qui sotto.</p>}
+                  {s.items.length === 0 && <p className="px-1 text-sm text-ink/65">{t.noDishes}</p>}
 
                   {s.items.map((it, j) => (
                     <div key={j} className="space-y-2 rounded-lg bg-white p-2 ring-1 ring-laguna/60">
                       <div className="flex gap-2">
                         <input
                           className={`${input} min-w-0 flex-1 font-semibold`}
-                          aria-label="Nome del piatto"
-                          placeholder="Nome del piatto"
+                          aria-label={t.dishName}
+                          placeholder={t.dishName}
                           value={it.name}
                           onChange={(e) => setSections((ss) => ((ss[i].items[j].name = e.target.value), ss))}
                         />
                         {m.priceMode === "dish" && (
                           <PriceInput
                             className="w-24 shrink-0"
-                            label="Prezzo"
+                            label={t.price}
                             value={it.price}
                             onChange={(v) => setSections((ss) => ((ss[i].items[j].price = v), ss))}
                           />
@@ -928,14 +1133,14 @@ export default function Editor() {
                       <div className="flex gap-1">
                         <input
                           className={`${input} min-w-0 flex-1`}
-                          aria-label="Descrizione"
-                          placeholder="Ingredienti o descrizione (facoltativo)"
+                          aria-label={t.desc}
+                          placeholder={t.descPh}
                           value={it.desc}
                           onChange={(e) => setSections((ss) => ((ss[i].items[j].desc = e.target.value), ss))}
                         />
                         <button
                           className={iconBtn}
-                          aria-label={`Elimina ${it.name || "piatto"}`}
+                          aria-label={t.deleteDish(it.name)}
                           onClick={() => setSections((ss) => (ss[i].items.splice(j, 1), ss))}
                         >
                           <Icon d={ICONS.trash} />
@@ -946,26 +1151,26 @@ export default function Editor() {
 
                   <button className={secondary} onClick={() => setSections((ss) => (ss[i].items.push({ name: "", desc: "", price: "" }), ss))}>
                     <Icon d={ICONS.plus} className="size-4" />
-                    Aggiungi piatto
+                    {t.addDish}
                   </button>
                 </div>
               ))}
               <button
                 className={`${secondary} w-full justify-center border-dashed py-3`}
-                onClick={() => setSections((ss) => [...ss, { title: "Nuova sezione", items: [{ name: "", desc: "", price: "" }] }])}
+                onClick={() => setSections((ss) => [...ss, { title: t.newSection, items: [{ name: "", desc: "", price: "" }] }])}
               >
                 <Icon d={ICONS.plus} className="size-4" />
-                Aggiungi sezione
+                {t.addSection}
               </button>
 
               <fieldset className="space-y-3 rounded-xl border border-laguna p-3">
-                <legend className="px-1 font-semibold">Prezzo</legend>
+                <legend className="px-1 font-semibold">{t.price}</legend>
                 <Segmented
                   name="priceMode"
                   value={m.priceMode}
                   options={[
-                    ["dish", "Per ogni piatto"],
-                    ["total", "Unico per il menù"],
+                    ["dish", t.perDish],
+                    ["total", t.single],
                   ]}
                   onChange={(v) => set("priceMode", v)}
                 />
@@ -973,58 +1178,56 @@ export default function Editor() {
                   <>
                     <div className="flex gap-2">
                       <div className="min-w-0 flex-1">
-                        <Field label="Testo">
-                          <input className={input} value={m.totalLabel} placeholder="Prezzo a persona" onChange={(e) => set("totalLabel", e.target.value)} />
+                        <Field label={t.text}>
+                          <input className={input} value={m.totalLabel} placeholder={t.totalLabelPh} onChange={(e) => set("totalLabel", e.target.value)} />
                         </Field>
                       </div>
                       <div className="w-28 shrink-0">
-                        <Field label="Prezzo">
+                        <Field label={t.price}>
                           <PriceInput placeholder="25,00" value={m.totalPrice} onChange={(v) => set("totalPrice", v)} />
                         </Field>
                       </div>
                     </div>
-                    <Field label="Nota (facoltativa)">
-                      <input className={input} value={m.totalNote} placeholder="Bevande escluse" onChange={(e) => set("totalNote", e.target.value)} />
+                    <Field label={t.note}>
+                      <input className={input} value={m.totalNote} placeholder={t.notePh} onChange={(e) => set("totalNote", e.target.value)} />
                     </Field>
                     <fieldset className="space-y-2">
-                      <legend className="mb-1 text-sm font-semibold">Dimensione della nota</legend>
+                      <legend className="mb-1 text-sm font-semibold">{t.noteSize}</legend>
                       <SizePicker name="noteSize" value={m.noteSize} onChange={(v) => set("noteSize", v)} />
-                      <p className="text-sm text-ink/65">{sizeName(m.noteSize)}.</p>
+                      <p className="text-sm text-ink/65">{sizeName(t, m.noteSize)}.</p>
                     </fieldset>
-                    <p className="text-sm text-ink/65">Il prezzo compare in fondo al menù, sopra i contatti.</p>
+                    <p className="text-sm text-ink/65">{t.totalHint}</p>
                   </>
                 )}
               </fieldset>
             </Group>
 
-            <Group title="Contatti" hint="Compaiono in fondo al menù.">
-              <Field label="Indirizzo">
+            <Group title={t.contacts} hint={t.contactsHint}>
+              <Field label={t.address}>
                 <input className={input} value={m.address} autoComplete="street-address" onChange={(e) => set("address", e.target.value)} />
               </Field>
-              <Field label="Telefono">
+              <Field label={t.phone}>
                 <input className={input} type="tel" value={m.phone} onChange={(e) => set("phone", e.target.value)} />
               </Field>
-              <Field label="Email">
+              <Field label={t.email}>
                 <input className={input} type="email" value={m.email} onChange={(e) => set("email", e.target.value)} />
               </Field>
-              <Field label="Sito web o Instagram">
+              <Field label={t.web}>
                 <input className={input} inputMode="url" value={m.web} placeholder="@ristorante" onChange={(e) => set("web", e.target.value)} />
               </Field>
             </Group>
 
-            <Group title="Tavolo" hint="Il numero del tavolo in alto a destra del menù (fino a 4 cifre).">
+            <Group title={t.table} hint={t.tableHint}>
               <label className="flex cursor-pointer items-center gap-3">
                 <input type="checkbox" className="size-5 accent-mare" checked={m.tableBox} onChange={(e) => set("tableBox", e.target.checked)} />
-                <span className="font-semibold">Mostra «Tavolo n.» nel menù</span>
+                <span className="font-semibold">{t.showTable}</span>
               </label>
               {m.tableBox && (
                 <fieldset className="space-y-3">
-                  <legend className="mb-1 text-sm font-semibold">Numero del tavolo</legend>
-                  <p className="text-sm text-ink/65">
-                    Una casella per ogni copia del foglio ({SHEETS[layout].label}). Lasciala vuota per scriverlo a penna.
-                  </p>
+                  <legend className="mb-1 text-sm font-semibold">{t.tableNumber}</legend>
+                  <p className="text-sm text-ink/65">{t.tableCopies(t.layouts[layout])}</p>
                   <div className="grid grid-cols-2 gap-2">
-                    {COPY_NAMES[layout].map((where, c) => (
+                    {t.copies[layout].map((where, c) => (
                       <Field key={c} label={where}>
                         <input
                           className={`${input} text-center font-display text-lg`}
@@ -1033,9 +1236,9 @@ export default function Editor() {
                           placeholder="—"
                           value={m.tableNumbers[c] ?? ""}
                           onChange={(e) => {
-                            const t = [...m.tableNumbers];
-                            t[c] = e.target.value;
-                            set("tableNumbers", t);
+                            const nums = [...m.tableNumbers];
+                            nums[c] = e.target.value;
+                            set("tableNumbers", nums);
                           }}
                         />
                       </Field>
@@ -1045,85 +1248,232 @@ export default function Editor() {
               )}
             </Group>
 
-            <Group title="Stile" hint="Allineamento, testo, piastrelle e colore del menù.">
+            <Group title={t.design} hint={t.designHint}>
+              <div className="grid grid-cols-4 gap-1">
+                {(Object.keys(DESIGNS) as (keyof typeof DESIGNS)[]).map((d) => (
+                  <button
+                    key={d}
+                    className={`flex flex-col items-center gap-1.5 rounded-lg p-1.5 text-sm transition-colors hover:bg-laguna/25 ${focus}`}
+                    onClick={() => update({ ...m, ...DESIGNS[d] })}
+                  >
+                    <Thumbnail m={{ ...m, ...DESIGNS[d] }} k={0.075} />
+                    {t.designs[d]}
+                  </button>
+                ))}
+              </div>
+            </Group>
+
+            <Group title={t.style} hint={t.styleHint}>
               <fieldset className="space-y-2">
-                <legend className="mb-1 text-sm font-semibold">Allineamento dei titoli delle sezioni</legend>
+                <legend className="mb-1 text-sm font-semibold">{t.align}</legend>
                 <Segmented
                   name="align"
                   value={m.align}
                   options={[
-                    ["center", "Al centro"],
-                    ["left", "A sinistra"],
+                    ["center", t.center],
+                    ["left", t.left],
                   ]}
                   onChange={(v) => set("align", v)}
                 />
               </fieldset>
+              <Field label={`${t.indent}: ${m.indent} mm`}>
+                <input type="range" className="w-full accent-mare" min={0} max={30} value={m.indent} onChange={(e) => set("indent", Number(e.target.value))} />
+              </Field>
               <fieldset className="space-y-2">
-                <legend className="mb-1 text-sm font-semibold">Dimensione del testo</legend>
+                <legend className="mb-1 text-sm font-semibold">{t.textSize}</legend>
                 <SizePicker name="textSize" value={m.textSize} onChange={(v) => set("textSize", v)} />
-                <p className="text-sm text-ink/65">Vale per sezioni, piatti e prezzo. {sizeName(m.textSize)}.</p>
+                <p className="text-sm text-ink/65">{t.textSizeHint(sizeName(t, m.textSize))}</p>
                 {overflow && <OverflowWarning />}
+              </fieldset>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label={t.titleFont}>
+                  <FontSelect value={m.font} onChange={(v) => set("font", v)} />
+                </Field>
+                <Field label={t.bodyFont}>
+                  <FontSelect value={m.bodyFont} onChange={(v) => set("bodyFont", v)} />
+                </Field>
+              </div>
+              <label className="flex cursor-pointer items-center gap-3">
+                <input type="color" className={colorSwatch} value={m.ink} onChange={(e) => set("ink", e.target.value)} />
+                <span className="font-semibold">{t.inkColor}</span>
+              </label>
+              <fieldset className="space-y-2">
+                <legend className="mb-1 text-sm font-semibold">{t.frame}</legend>
+                <Segmented
+                  name="frame"
+                  value={m.frame}
+                  options={(["none", "line", "double"] as const).map((f) => [f, t.frames[f]])}
+                  onChange={(v) => set("frame", v)}
+                />
               </fieldset>
               <label className="flex cursor-pointer items-center gap-3">
                 <input type="checkbox" className="size-5 accent-mare" checked={m.tiles} onChange={(e) => set("tiles", e.target.checked)} />
-                <span className="font-semibold">Bordi con piastrelle</span>
+                <span className="font-semibold">{t.tiles}</span>
               </label>
-              <div className="flex flex-wrap items-start gap-1">
-                {PALETTE.map((c) => {
-                  const on = m.accent.toLowerCase() === c.hex.toLowerCase();
-                  return (
-                    <button key={c.hex} className={`flex flex-col items-center gap-1 rounded-lg p-1 text-sm ${focus}`} aria-pressed={on} onClick={() => set("accent", c.hex)}>
-                      <span className={`block size-11 rounded-full ring-offset-2 ${on ? "ring-2 ring-ink" : "ring-1 ring-ink/15"}`} style={{ background: c.hex }} />
-                      <span className={on ? "font-semibold" : ""}>{c.name}</span>
-                    </button>
-                  );
-                })}
-                <label className="flex cursor-pointer flex-col items-center gap-1 p-1 text-sm">
-                  <input
-                    type="color"
-                    className="size-11 cursor-pointer appearance-none rounded-full border-0 bg-transparent p-0 ring-1 ring-ink/15 ring-offset-2 [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
-                    value={m.accent} onChange={(e) => set("accent", e.target.value)} />
-                  Altro
-                </label>
-              </div>
+              <fieldset>
+                <legend className="mb-1 text-sm font-semibold">{t.accent}</legend>
+                <div className="flex flex-wrap items-start gap-1">
+                  {PALETTE.map((hex, i) => {
+                    const on = m.accent.toLowerCase() === hex.toLowerCase();
+                    return (
+                      <button key={hex} className={`flex flex-col items-center gap-1 rounded-lg p-1 text-sm ${focus}`} aria-pressed={on} onClick={() => set("accent", hex)}>
+                        <span className={`block size-11 rounded-full ring-offset-2 ${on ? "ring-2 ring-ink" : "ring-1 ring-ink/15"}`} style={{ background: hex }} />
+                        <span className={on ? "font-semibold" : ""}>{t.palette[i]}</span>
+                      </button>
+                    );
+                  })}
+                  <label className="flex cursor-pointer flex-col items-center gap-1 p-1 text-sm">
+                    <input type="color" className={colorSwatch} value={m.accent} onChange={(e) => set("accent", e.target.value)} />
+                    {t.other}
+                  </label>
+                </div>
+              </fieldset>
+            </Group>
+
+            <Group title={t.images} hint={t.imagesHint}>
+              {m.stickers.map((s, i) => (
+                <div key={i} className="flex gap-3 rounded-xl border border-laguna p-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={s.src} alt="" className="size-16 shrink-0 rounded-lg bg-laguna/15 object-contain" />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">{t.imageN(i + 1)}</span>
+                      <button className={iconBtn} aria-label={`${t.remove} ${t.imageN(i + 1)}`} onClick={() => removeSticker(i)}>
+                        <Icon d={ICONS.trash} />
+                      </button>
+                    </div>
+                    {(
+                      [
+                        ["w", t.size, 10, 150],
+                        ["x", t.posX, -20, 200],
+                        ["y", t.posY, -20, 290],
+                      ] as const
+                    ).map(([f, label, min, max]) => (
+                      <label key={f} className="flex items-center gap-2 text-sm">
+                        <span className="w-24 shrink-0">{label}</span>
+                        <input type="range" className="min-w-0 flex-1 accent-mare" min={min} max={max} value={s[f]} onChange={(e) => setSticker(i, { [f]: Number(e.target.value) })} />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <label className={secondary}>
+                <Icon d={ICONS.plus} className="size-4" />
+                {t.addImage}
+                <input
+                  type="file"
+                  accept="image/png,image/webp,image/svg+xml"
+                  className="sr-only"
+                  onChange={(e) => {
+                    // PNG: conserva la transparencia
+                    readImage(e.target.files?.[0], 800, "image/png", (src) => set("stickers", [...m.stickers, { src, x: 80, y: 120, w: 50 }]));
+                    e.target.value = "";
+                  }}
+                />
+              </label>
             </Group>
             </aside>
 
-            <main data-scroll="preview" className={`${tab === "preview" ? "flex" : "hidden"} flex-1 flex-col gap-6 bg-laguna/35 px-4 py-5 md:flex md:overflow-auto md:px-8`}>
+            <main
+              data-scroll="preview"
+              className={`${tab === "preview" ? "flex" : "hidden"} flex-1 flex-col gap-6 bg-laguna/35 px-4 py-5 md:flex md:overflow-auto md:px-8`}
+              onPointerDown={(e) => desktop && !(e.target as Element).closest("[data-k],[data-toolbar]") && setSel(null)}
+            >
               <LayoutPicker value={layout} onChange={setLayout} />
               {overflow && <OverflowWarning />}
-              {pages.map((p, i) => (
-                <Preview key={i} layout={layout}>
-                  <Sheet layout={layout} page={p} />
-                </Preview>
-              ))}
+
+              {/* Barra de retoque del elemento seleccionado (escritorio) */}
+              {desktop && (
+                <div data-toolbar className="sticky top-0 z-10 mx-auto flex min-h-14 w-full max-w-3xl flex-wrap items-center gap-3 rounded-xl bg-white px-4 py-2 shadow-sm ring-1 ring-laguna/60">
+                  {!sel || (sel.startsWith("img") && !m.stickers[selSticker]) ? (
+                    <p className="text-sm text-ink/70">{t.dragHint}</p>
+                  ) : (
+                    <>
+                      <span className="font-semibold">{elName(sel)}</span>
+                      {selSticker >= 0 ? (
+                        <>
+                          <label className="flex items-center gap-2 text-sm">
+                            {t.size}
+                            <input
+                              type="range"
+                              className="accent-mare"
+                              min={10}
+                              max={150}
+                              value={m.stickers[selSticker].w}
+                              onChange={(e) => setSticker(selSticker, { w: Number(e.target.value) })}
+                            />
+                          </label>
+                          <button className={secondary} onClick={() => removeSticker(selSticker)}>
+                            <Icon d={ICONS.trash} className="size-4" />
+                            {t.remove}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <label className="flex items-center gap-2 text-sm">
+                            {t.font}
+                            <FontSelect
+                              className="rounded-lg border border-laguna bg-white px-2 py-1.5"
+                              value={selLook.font ?? (/(^|-)(name|subtitle|s\d+)$/.test(sel) ? m.font : m.bodyFont)}
+                              onChange={(v) => setLook(sel, { font: v })}
+                            />
+                          </label>
+                          <label className="flex items-center gap-2 text-sm">
+                            {t.color}
+                            <input
+                              type="color"
+                              className="size-8 cursor-pointer rounded border border-laguna bg-white p-0.5"
+                              value={selLook.color ?? m.ink}
+                              onChange={(e) => setLook(sel, { color: e.target.value })}
+                            />
+                          </label>
+                          <button className={secondary} onClick={() => setLook(sel, null)}>
+                            {t.reset}
+                          </button>
+                        </>
+                      )}
+                      <button className={`${iconBtn} ml-auto`} aria-label={t.close} onClick={() => setSel(null)}>
+                        <Icon d={ICONS.close} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              <EditCtx value={edit}>
+                {pages.map((p, i) => (
+                  <Preview key={i} layout={layout}>
+                    <Sheet layout={layout} page={p} />
+                  </Preview>
+                ))}
+              </EditCtx>
             </main>
           </div>
         )}
 
         {/* Barra de pestañas en móvil, como en iOS: zona del pulgar y safe area del iPhone */}
         <nav
-          aria-label="Sezioni"
+          aria-label={t.sections}
           className="fixed inset-x-0 bottom-0 grid grid-cols-4 border-t border-laguna/60 bg-white/95 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden"
         >
-          {tabs.map((t) => (
+          {tabs.map((x) => (
             <button
-              key={t.id}
-              aria-current={tab === t.id ? "page" : undefined}
-              className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs ${focus} ${tab === t.id ? "font-semibold" : "text-ink/65"}`}
-              onClick={() => go(t.id)}
+              key={x.id}
+              aria-current={tab === x.id ? "page" : undefined}
+              className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs ${focus} ${tab === x.id ? "font-semibold" : "text-ink/65"}`}
+              onClick={() => go(x.id)}
             >
-              <span className={`grid h-7 w-12 place-items-center rounded-full transition-colors ${tab === t.id ? "bg-laguna/50" : ""}`}>
-                <Icon d={t.icon} />
+              <span className={`grid h-7 w-12 place-items-center rounded-full transition-colors ${tab === x.id ? "bg-laguna/50" : ""}`}>
+                <Icon d={x.icon} />
               </span>
-              {t.label}
+              {x.label}
             </button>
           ))}
           <button className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs font-semibold ${focus}`} onClick={() => window.print()}>
             <span className="grid h-7 w-12 place-items-center rounded-full bg-mare">
               <Icon d={ICONS.print} />
             </span>
-            Stampa
+            {t.print}
           </button>
         </nav>
       </div>
@@ -1141,6 +1491,6 @@ export default function Editor() {
           </div>
         ))}
       </div>
-    </>
+    </LangCtx>
   );
 }
