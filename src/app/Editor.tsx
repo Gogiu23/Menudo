@@ -116,9 +116,9 @@ const SHEETS: Record<Layout, { w: number; h: number; cols: number; scale: number
   "1": { w: 210, h: 297, cols: 1, scale: 1, orient: "portrait" },
   "2": { w: 297, h: 210, cols: 2, scale: 148.5 / 210, orient: "landscape" },
   "4": { w: 210, h: 297, cols: 2, scale: 0.5, orient: "portrait" },
-  // Tarjetas de plato: 3×2 en apaisado, 99×105 mm cada una. Maquetadas más estrechas que un A4
-  // (140×148,5 mm) para escalarlas al 71 % y no al 35 %: el texto sigue siendo legible
-  "6": { w: 297, h: 210, cols: 3, scale: 99 / 140, orient: "landscape", pw: 140, ph: 148.5 },
+  // Tarjetas de plato: 3×2 en vertical, 70×148,5 mm cada una (estrechas). Maquetadas a 100 mm de ancho
+  // para escalarlas al 70 % y no al 33 %: el texto sigue siendo legible
+  "6": { w: 210, h: 297, cols: 3, scale: 0.7, orient: "portrait", pw: 100, ph: 148.5 / 0.7 },
 };
 
 function load(): Menu {
