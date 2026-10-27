@@ -111,12 +111,14 @@ const DESIGNS: Record<keyof Dict["designs"], Partial<Menu>> = {
 };
 
 // Hoja A4 en mm y tamaño de cada hueco según cuántas copias caben
-const SHEETS: Record<Layout, { w: number; h: number; cols: number; scale: number; orient: string }> = {
+// pw/ph: tamaño en mm con el que se maqueta cada copia antes de escalarla (por defecto A4)
+const SHEETS: Record<Layout, { w: number; h: number; cols: number; scale: number; orient: string; pw?: number; ph?: number }> = {
   "1": { w: 210, h: 297, cols: 1, scale: 1, orient: "portrait" },
   "2": { w: 297, h: 210, cols: 2, scale: 148.5 / 210, orient: "landscape" },
   "4": { w: 210, h: 297, cols: 2, scale: 0.5, orient: "portrait" },
-  // 3×2 en apaisado: cada carta mide 74×105 mm (A7)
-  "6": { w: 297, h: 210, cols: 3, scale: 105 / 297, orient: "landscape" },
+  // Tarjetas de plato: 3×2 en apaisado, 99×105 mm cada una. Maquetadas más estrechas que un A4
+  // (140×148,5 mm) para escalarlas al 71 % y no al 35 %: el texto sigue siendo legible
+  "6": { w: 297, h: 210, cols: 3, scale: 99 / 140, orient: "landscape", pw: 140, ph: 148.5 },
 };
 
 function load(): Menu {
@@ -221,7 +223,8 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
     edit.pick(k);
     const el = e.currentTarget;
     // px de pantalla por mm de hoja, sea cual sea el zoom de la vista previa o la escala de la copia
-    const pxPerMm = el.closest("[data-page]")!.getBoundingClientRect().width / 210;
+    const page = el.closest<HTMLElement>("[data-page]")!;
+    const pxPerMm = page.getBoundingClientRect().width / (parseFloat(getComputedStyle(page).getPropertyValue("--page-w")) || 210);
     const [x0, y0] = [e.clientX, e.clientY];
     let pos: [number, number] = [dx, dy];
     el.setPointerCapture(e.pointerId);
@@ -320,7 +323,7 @@ function Masthead({ m, size, p = "" }: { m: Menu; size: "cover" | "page"; p?: st
 
 function CoverPage({ m }: { m: Menu }) {
   return (
-    <div data-page className="relative grid h-[297mm] w-[210mm] place-items-center overflow-hidden bg-white font-sans text-ink" style={pageVars(m)}>
+    <div data-page className="relative grid h-[var(--page-h,297mm)] w-[var(--page-w,210mm)] place-items-center overflow-hidden bg-white font-sans text-ink" style={pageVars(m)}>
       {m.cover ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={m.cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
@@ -346,7 +349,7 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
   const mv = (k: string) => ({ k, look: m.looks[k] });
   const framed = m.frame !== "none";
   return (
-    <div data-page className="relative flex h-[297mm] w-[210mm] flex-col overflow-hidden bg-white font-sans text-ink" style={pageVars(m)}>
+    <div data-page className="relative flex h-[var(--page-h,297mm)] w-[var(--page-w,210mm)] flex-col overflow-hidden bg-white font-sans text-ink" style={pageVars(m)}>
       {m.tiles && <Tile color={m.accent} style={{ height: "10mm" }} />}
       {framed && (
         <div
@@ -435,6 +438,12 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
   );
 }
 
+// Variables CSS que fijan el tamaño de la página (ContentPage y CoverPage las leen)
+const pageSize = (layout: Layout) => {
+  const s = SHEETS[layout];
+  return { "--page-w": `${s.pw ?? 210}mm`, "--page-h": `${s.ph ?? 297}mm` } as React.CSSProperties;
+};
+
 function Sheet({ layout, page }: { layout: Layout; page: (copy: number) => React.ReactNode }) {
   const s = SHEETS[layout];
   return (
@@ -444,8 +453,8 @@ function Sheet({ layout, page }: { layout: Layout; page: (copy: number) => React
     >
       {Array.from({ length: Number(layout) }, (_, i) => (
         <div key={i} className="flex items-center justify-center overflow-hidden outline-1 outline-laguna outline-dashed print:outline-none">
-          <div style={{ width: `${210 * s.scale}mm`, height: `${297 * s.scale}mm` }}>
-            <div style={{ transform: `scale(${s.scale})`, transformOrigin: "top left" }}>{page(i)}</div>
+          <div style={{ width: `${(s.pw ?? 210) * s.scale}mm`, height: `${(s.ph ?? 297) * s.scale}mm` }}>
+            <div style={{ ...pageSize(layout), transform: `scale(${s.scale})`, transformOrigin: "top left" }}>{page(i)}</div>
           </div>
         </div>
       ))}
@@ -1710,7 +1719,7 @@ export default function Editor() {
 
       <InstallPrompt />
 
-      <div ref={measure} aria-hidden className="pointer-events-none invisible fixed top-0 left-[-10000px] print:hidden">
+      <div ref={measure} aria-hidden className="pointer-events-none invisible fixed top-0 left-[-10000px] print:hidden" style={pageSize(layout)}>
         <ContentPage m={m} />
       </div>
 
