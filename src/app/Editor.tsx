@@ -43,7 +43,7 @@ type Menu = {
   email: string;
   web: string;
 };
-type Layout = "1" | "2" | "4";
+type Layout = "1" | "2" | "4" | "6";
 
 const INK = "#173033";
 const PALETTE = ["#68A7AD", "#99C4C8", "#E5CB9F", "#EEE4AB", "#FFFFFF"];
@@ -115,6 +115,8 @@ const SHEETS: Record<Layout, { w: number; h: number; cols: number; scale: number
   "1": { w: 210, h: 297, cols: 1, scale: 1, orient: "portrait" },
   "2": { w: 297, h: 210, cols: 2, scale: 148.5 / 210, orient: "landscape" },
   "4": { w: 210, h: 297, cols: 2, scale: 0.5, orient: "portrait" },
+  // 3×2 en apaisado: cada carta mide 74×105 mm (A7)
+  "6": { w: 297, h: 210, cols: 3, scale: 105 / 297, orient: "landscape" },
 };
 
 function load(): Menu {
