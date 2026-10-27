@@ -510,6 +510,14 @@ const ICONS = {
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5",
   share: "M12 3v12M8 7l4-4 4 4M7 11H5v10h14V11h-2",
   close: "M6 6l12 12M18 6L6 18",
+  // Secciones del panel lateral
+  venue: "M3 10l2-6h14l2 6M4 10v10h16V10M3 10h18M9 20v-6h6v6",
+  cover: "M6 3h12v18H6zM9 8h6",
+  dishes: "M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 3c-2 2-2 6 0 8v10",
+  contacts: "M5 4h4l2 5-3 2a11 11 0 0 0 5 5l2-3 5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2",
+  table: "M5 9h14M5 15h14M10 4L8 20M16 4l-2 16",
+  design: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
+  style: "M12 3a9 9 0 1 0 0 18c1 0 1.5-.8 1.5-1.5 0-1.2-1-1.5-1-2.5s.8-1.5 2-1.5H17a4 4 0 0 0 4-4c0-4.7-4-8.5-9-8.5zM7.5 11.5h.01M10 7.5h.01M15 7.5h.01",
 };
 
 function Icon({ d, className = "size-5" }: { d: string; className?: string }) {
@@ -620,15 +628,21 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function Group({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+// Sección plegable del panel lateral: <details> nativo, se abre al hacer clic en el título
+function Group(props: { title: string; hint?: string; icon: string; open?: boolean; children: React.ReactNode }) {
+  const { title, hint, icon, open, children } = props;
   return (
-    <section className="space-y-4 border-t border-laguna/50 px-5 py-6 first:border-t-0">
-      <div>
-        <h2 className="font-display text-[22px] leading-tight font-semibold">{title}</h2>
-        {hint && <p className="mt-1 text-sm text-ink/65">{hint}</p>}
+    <details open={open} className="group border-b border-laguna/50">
+      <summary className={`flex cursor-pointer list-none items-center gap-3 px-5 py-4 transition-colors hover:bg-laguna/15 [&::-webkit-details-marker]:hidden ${focus}`}>
+        <Icon d={icon} className="size-5 shrink-0 text-mare" />
+        <h2 className="flex-1 font-display text-[20px] leading-tight font-semibold">{title}</h2>
+        <Icon d={ICONS.down} className="size-4 shrink-0 text-ink/50 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="space-y-4 px-5 pb-6">
+        {hint && <p className="text-sm text-ink/65">{hint}</p>}
+        {children}
       </div>
-      {children}
-    </section>
+    </details>
   );
 }
 
@@ -1325,7 +1339,7 @@ export default function Editor() {
         ) : (
           <div className="flex flex-1 flex-col md:min-h-0 md:flex-row">
             <aside data-scroll="edit" className={`${tab === "edit" ? "block" : "hidden"} bg-white md:block md:w-[360px] md:shrink-0 md:overflow-y-auto md:border-r md:border-laguna/60`}>
-            <Group title={t.venue} hint={t.venueHint}>
+            <Group title={t.venue} hint={t.venueHint} icon={ICONS.venue} open>
               <Field label={t.name}>
                 <input className={input} value={m.name} onChange={(e) => set("name", e.target.value)} />
               </Field>
@@ -1340,7 +1354,7 @@ export default function Editor() {
               <ImagePicker label={t.uploadLogo} value={m.logo} maxPx={600} type="image/png" onChange={(u) => set("logo", u)} />
             </Group>
 
-            <Group title={t.cover} hint={t.coverHint}>
+            <Group title={t.cover} hint={t.coverHint} icon={ICONS.cover}>
               <label className="flex cursor-pointer items-center gap-3">
                 <input type="checkbox" className="size-5 accent-mare" checked={m.coverOn} onChange={(e) => set("coverOn", e.target.checked)} />
                 <span className="font-semibold">{t.printCover}</span>
@@ -1350,7 +1364,7 @@ export default function Editor() {
               )}
             </Group>
 
-            <Group title={t.dishes} hint={t.dishesHint}>
+            <Group title={t.dishes} hint={t.dishesHint} icon={ICONS.dishes}>
               {m.sections.map((s, i) => (
                 <div key={i} className="space-y-3 rounded-xl border border-sabbia bg-sabbia/15 p-3">
                   <div className="flex items-center gap-1">
@@ -1464,7 +1478,7 @@ export default function Editor() {
               </fieldset>
             </Group>
 
-            <Group title={t.contacts} hint={t.contactsHint}>
+            <Group title={t.contacts} hint={t.contactsHint} icon={ICONS.contacts}>
               <Field label={t.address}>
                 <input className={input} value={m.address} autoComplete="street-address" onChange={(e) => set("address", e.target.value)} />
               </Field>
@@ -1479,7 +1493,7 @@ export default function Editor() {
               </Field>
             </Group>
 
-            <Group title={t.table} hint={t.tableHint}>
+            <Group title={t.table} hint={t.tableHint} icon={ICONS.table}>
               <label className="flex cursor-pointer items-center gap-3">
                 <input type="checkbox" className="size-5 accent-mare" checked={m.tableBox} onChange={(e) => set("tableBox", e.target.checked)} />
                 <span className="font-semibold">{t.showTable}</span>
@@ -1510,7 +1524,7 @@ export default function Editor() {
               )}
             </Group>
 
-            <Group title={t.design} hint={t.designHint}>
+            <Group title={t.design} hint={t.designHint} icon={ICONS.design}>
               <div className="grid grid-cols-4 gap-1">
                 {(Object.keys(DESIGNS) as (keyof typeof DESIGNS)[]).map((d) => (
                   <button
@@ -1525,7 +1539,7 @@ export default function Editor() {
               </div>
             </Group>
 
-            <Group title={t.style} hint={t.styleHint}>
+            <Group title={t.style} hint={t.styleHint} icon={ICONS.style}>
               <fieldset className="space-y-2">
                 <legend className="mb-1 text-sm font-semibold">{t.align}</legend>
                 <Segmented
@@ -1592,7 +1606,7 @@ export default function Editor() {
               </fieldset>
             </Group>
 
-            <Group title={t.images} hint={t.imagesHint}>
+            <Group title={t.images} hint={t.imagesHint} icon={ICONS.image}>
               {m.stickers.map((s, i) => (
                 <div key={i} className="flex gap-3 rounded-xl border border-laguna p-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
