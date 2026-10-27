@@ -513,13 +513,22 @@ function Sheet({ layout, page }: { layout: Layout; page: (copy: number) => React
 function Preview({ layout, scale, children }: { layout: Layout; scale: number; children: React.ReactNode }) {
   const [fit, setFit] = useState(0.6);
   const ref = useRef<HTMLDivElement>(null);
-  const sheetPx = SHEETS[layout].w * 3.7795; // mm → px CSS
+  const [sheetW, sheetH] = [SHEETS[layout].w * 3.7795, SHEETS[layout].h * 3.7795]; // mm → px CSS
   useEffect(() => {
     const el = ref.current!;
-    const ro = new ResizeObserver(([e]) => setFit(Math.min(1.5, e.contentRect.width / sheetPx)));
+    const main = el.closest("main")!;
+    // Al 100 % la hoja entera cabe: de ancho siempre; de alto solo en escritorio, donde la vista previa
+    // tiene su propio scroll (en móvil se desplaza toda la pantalla). 44 px = hueco bajo la barra + margen inferior
+    const update = () => {
+      const bar = main.querySelector<HTMLElement>("[data-toolbar]")?.offsetHeight ?? 0;
+      const h = matchMedia("(min-width: 768px)").matches ? (main.clientHeight - bar - 44) / sheetH : Infinity;
+      setFit(Math.min(1.5, el.clientWidth / sheetW, h));
+    };
+    const ro = new ResizeObserver(update);
     ro.observe(el);
+    ro.observe(main);
     return () => ro.disconnect();
-  }, [sheetPx]);
+  }, [sheetW, sheetH]);
   return (
     // justify-center-safe: con zoom, la hoja se desplaza en vez de cortarse por la izquierda
     <div ref={ref} className="flex w-full justify-center-safe overflow-x-auto">
@@ -675,15 +684,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 // Sección plegable del panel lateral: <details> nativo, se abre al hacer clic en el título
-function Group(props: { title: string; hint?: string; icon: string; open?: boolean; children: React.ReactNode }) {
-  const { title, hint, icon, open, children } = props;
+function Group(props: { title: string; hint?: string; icon: string; children: React.ReactNode }) {
+  const { title, hint, icon, children } = props;
   return (
-    <details open={open} className="group border-b border-laguna/50">
+    <details className="group border-b border-laguna/50 md:group-[:not(:hover):not(:has(:focus-visible))]/side:border-transparent">
       <summary
         title={title}
-        className={`flex cursor-pointer list-none items-center gap-3 px-5 py-4 transition-colors hover:bg-laguna/15 md:pl-[22px] [&::-webkit-details-marker]:hidden ${focus}`}
+        className={`flex cursor-pointer list-none items-center gap-3 px-5 py-3 transition-colors hover:bg-laguna/15 md:pl-3 [&::-webkit-details-marker]:hidden ${focus}`}
       >
-        <Icon d={icon} className="size-5 shrink-0 text-mare" />
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-laguna/25 text-mare transition-colors group-open:bg-mare group-open:text-white">
+          <Icon d={icon} className="size-5" />
+        </span>
         <h2 className={`flex-1 font-display text-[20px] leading-tight font-semibold md:group-[:not(:hover):not(:has(:focus-visible))]/side:opacity-0 md:transition-opacity md:duration-300`}>{title}</h2>
         <Icon d={ICONS.down} className="size-4 shrink-0 text-ink/50 transition-transform group-open:rotate-180" />
       </summary>
@@ -1409,8 +1420,8 @@ export default function Editor() {
               data-scroll="edit"
               className="group/side md:absolute md:inset-y-0 md:left-0 md:z-30 md:w-16 md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-laguna/60 md:bg-white md:transition-[width,box-shadow] md:duration-300 md:ease-out md:hover:w-[360px] md:hover:shadow-[12px_0_40px_-12px_rgb(23_48_51/0.35)] md:has-[:focus-visible]:w-[360px]"
             >
-            <div className="md:w-[360px]">
-            <Group title={t.venue} hint={t.venueHint} icon={ICONS.venue} open>
+            <div className="md:flex md:min-h-full md:w-[360px] md:flex-col md:justify-center-safe">
+            <Group title={t.venue} hint={t.venueHint} icon={ICONS.venue}>
               <Field label={t.name}>
                 <input className={input} value={m.name} onChange={(e) => set("name", e.target.value)} />
               </Field>
