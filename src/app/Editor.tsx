@@ -1,0 +1,1146 @@
+"use client";
+
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { formatPrice } from "./price";
+
+type Item = { name: string; desc: string; price: string };
+type Section = { title: string; items: Item[] };
+type Menu = {
+  name: string;
+  subtitle: string;
+  logo: string;
+  coverOn: boolean;
+  tiles: boolean;
+  priceMode: "dish" | "total";
+  align: "center" | "left";
+  textSize: number;
+  titleSize: number;
+  noteSize: number;
+  tableBox: boolean;
+  tableNumbers: string[];
+  totalLabel: string;
+  totalPrice: string;
+  totalNote: string;
+  cover: string;
+  accent: string;
+  sections: Section[];
+  address: string;
+  phone: string;
+  email: string;
+  web: string;
+};
+type Layout = "1" | "2" | "4";
+
+const INK = "#173033";
+const PALETTE = [
+  { name: "Mare", hex: "#68A7AD" },
+  { name: "Laguna", hex: "#99C4C8" },
+  { name: "Sabbia", hex: "#E5CB9F" },
+  { name: "Limone", hex: "#EEE4AB" },
+  { name: "Bianco", hex: "#FFFFFF" },
+];
+
+const isWhite = (c: string) => c.toLowerCase() === "#ffffff";
+
+const STORAGE_KEY = "menudo:menu";
+
+const EMPTY: Menu = {
+  name: "Il Mio Ristorante",
+  subtitle: "Menù",
+  logo: "",
+  coverOn: false,
+  tiles: true,
+  priceMode: "dish",
+  align: "center",
+  textSize: 1,
+  titleSize: 1,
+  noteSize: 1,
+  tableBox: true,
+  tableNumbers: [],
+  totalLabel: "Prezzo a persona",
+  totalPrice: "",
+  totalNote: "",
+  cover: "",
+  accent: "#68A7AD",
+  sections: [
+    {
+      title: "Antipasti",
+      items: [{ name: "Bruschetta al pomodoro", desc: "Pane casereccio, pomodoro, basilico", price: "6,50" }],
+    },
+  ],
+  address: "Via Roma 1, Milano",
+  phone: "+39 02 0000 0000",
+  email: "",
+  web: "",
+};
+
+// Hoja A4 en mm y tamaño de cada hueco según cuántas copias caben
+const SHEETS: Record<Layout, { w: number; h: number; cols: number; scale: number; orient: string; label: string }> = {
+  "1": { w: 210, h: 297, cols: 1, scale: 1, orient: "portrait", label: "A4" },
+  "2": { w: 297, h: 210, cols: 2, scale: 148.5 / 210, orient: "landscape", label: "2 per foglio" },
+  "4": { w: 210, h: 297, cols: 2, scale: 0.5, orient: "portrait", label: "4 per foglio" },
+};
+
+// Posición de cada copia en la hoja, en el mismo orden en que las pinta Sheet
+const COPY_NAMES: Record<Layout, string[]> = {
+  "1": ["Tavolo"],
+  "2": ["A sinistra", "A destra"],
+  "4": ["In alto a sinistra", "In alto a destra", "In basso a sinistra", "In basso a destra"],
+};
+
+function load(): Menu {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? { ...EMPTY, ...JSON.parse(raw) } : EMPTY;
+  } catch {
+    return EMPTY;
+  }
+}
+
+// Reduce la imagen: las fotos del iPhone pesan varios MB y no caben en localStorage
+async function readImage(file: File | undefined, maxPx: number, type: "image/jpeg" | "image/png", done: (url: string) => void) {
+  if (!file) return;
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, maxPx / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bmp.width * k);
+  canvas.height = Math.round(bmp.height * k);
+  canvas.getContext("2d")!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  done(canvas.toDataURL(type, 0.85));
+}
+
+/* ---------- Archivo: cada carta se guarda sola y se borra 30 días después de su último cambio ---------- */
+/* IndexedDB y no localStorage: con logo y foto, localStorage (~5 MB) se llena con pocas cartas */
+
+type Saved = { id: string; savedAt: number; menu: Menu };
+const TTL = 30 * 24 * 60 * 60 * 1000;
+const CURRENT_KEY = "menudo:current";
+
+// id sin crypto.randomUUID: no existe en http (p. ej. iPhone en la red local)
+const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+function loadCurrentId() {
+  try {
+    return localStorage.getItem(CURRENT_KEY) ?? newId();
+  } catch {
+    return newId();
+  }
+}
+
+function idb<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open("menudo", 1);
+    open.onupgradeneeded = () => open.result.createObjectStore("archive", { keyPath: "id" });
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const req = fn(open.result.transaction("archive", mode).objectStore("archive"));
+      req.onsuccess = () => resolve(req.result as T);
+      req.onerror = () => reject(req.error);
+    };
+  });
+}
+
+const archive = {
+  // Devuelve las cartas de los últimos 30 días (más recientes primero) y borra las caducadas
+  async list(): Promise<Saved[]> {
+    const all = await idb<Saved[]>("readonly", (s) => s.getAll());
+    const expired = all.filter((a) => Date.now() - a.savedAt > TTL);
+    await Promise.all(expired.map((a) => idb("readwrite", (s) => s.delete(a.id))));
+    return all.filter((a) => !expired.includes(a)).sort((a, b) => b.savedAt - a.savedAt);
+  },
+  save: (id: string, menu: Menu) => idb("readwrite", (s) => s.put({ id, savedAt: Date.now(), menu } satisfies Saved)),
+  remove: (id: string) => idb("readwrite", (s) => s.delete(id)),
+};
+
+const itDate = (t: number) => new Date(t).toLocaleDateString("it-IT", { day: "numeric", month: "long" });
+const itTime = (t: number) => new Date(t).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+
+function move<T>(arr: T[], i: number, d: number) {
+  const j = i + d;
+  if (j >= 0 && j < arr.length) [arr[i], arr[j]] = [arr[j], arr[i]];
+  return arr;
+}
+
+/* ---------- Carta impresa ---------- */
+
+// Baldosa de mayólica (costa amalfitana) en el color elegido; k escala el tamaño de la baldosa
+function Tile({ color, k = 1, className = "", style }: { color: string; k?: number; className?: string; style?: React.CSSProperties }) {
+  const id = `tile-${color.slice(1)}-${Math.round(k * 10)}`;
+  return (
+    <svg aria-hidden className={`block w-full shrink-0 ${className}`} style={style}>
+      <defs>
+        <pattern id={id} width="38" height="38" patternUnits="userSpaceOnUse" patternTransform={`scale(${k})`}>
+          <rect width="38" height="38" fill={color} />
+          <g fill={isWhite(color) ? INK : "#fff"} fillOpacity={isWhite(color) ? 0.12 : 1}>
+            {[[0, 0], [38, 0], [0, 38], [38, 38]].map(([x, y]) => (
+              <circle key={`${x}${y}`} cx={x} cy={y} r="9" />
+            ))}
+            <ellipse cx="19" cy="10" rx="3.6" ry="6.5" />
+            <ellipse cx="19" cy="28" rx="3.6" ry="6.5" />
+            <ellipse cx="10" cy="19" rx="6.5" ry="3.6" />
+            <ellipse cx="28" cy="19" rx="6.5" ry="3.6" />
+          </g>
+          <g fill={INK}>
+            <circle cx="19" cy="19" r="2.6" />
+            {[[0, 0], [38, 0], [0, 38], [38, 38]].map(([x, y]) => (
+              <circle key={`${x}${y}`} cx={x} cy={y} r="2.2" />
+            ))}
+          </g>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill={`url(#${id})`} />
+    </svg>
+  );
+}
+
+function Masthead({ m, size }: { m: Menu; size: "cover" | "page" }) {
+  const cover = size === "cover";
+  return (
+    <div className="text-center">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {m.logo && <img src={m.logo} alt="" className={`mx-auto object-contain ${cover ? "mb-[6mm] max-h-[38mm] max-w-[80mm]" : "mb-[4mm] max-h-[24mm] max-w-[60mm]"}`} />}
+      <h1 className={`font-display leading-[1.05] font-semibold text-balance ${cover ? "text-[15mm]" : "text-[11mm]"}`} style={{ zoom: m.titleSize }}>
+        {m.name}
+      </h1>
+      {m.subtitle && <p className={`mt-[2mm] font-display italic ${cover ? "text-[7mm]" : "text-[5.5mm]"}`}>{m.subtitle}</p>}
+    </div>
+  );
+}
+
+function CoverPage({ m }: { m: Menu }) {
+  return (
+    <div className="relative grid h-[297mm] w-[210mm] place-items-center overflow-hidden bg-white text-ink">
+      {m.cover ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={m.cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      ) : (
+        m.tiles && <Tile color={m.accent} k={1.6} className="absolute inset-0 h-full" />
+      )}
+      <div className="relative w-[150mm] bg-white">
+        {m.tiles && <Tile color={m.accent} style={{ height: "8mm" }} k={0.8} />}
+        <div className="px-[14mm] py-[14mm]">
+          <Masthead m={m} size="cover" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
+  const contacts = [m.phone, m.email, m.web].filter(Boolean);
+  const total = m.priceMode === "total";
+  const center = m.align === "center";
+  const bar = isWhite(m.accent) ? "rgb(23 48 51 / 0.25)" : m.accent;
+  return (
+    <div className="flex h-[297mm] w-[210mm] flex-col overflow-hidden bg-white text-ink">
+      {m.tiles && <Tile color={m.accent} style={{ height: "10mm" }} />}
+      <div className={`relative flex flex-1 flex-col overflow-hidden px-[20mm] pb-[8mm] ${m.tableBox ? "pt-[18mm]" : "pt-[11mm]"}`}>
+        {/* Recuadro vacío para escribir a boli el número de mesa (hasta 4 cifras) */}
+        {m.tableBox && (
+          <div className="absolute top-[2mm] right-[10mm] flex items-center gap-[2mm] text-[4.6mm] font-semibold">
+            <span className="mr-[1mm]">Tavolo n.:</span>
+            <span className="grid h-[13mm] w-[32mm] place-items-center rounded-[1mm] border-[0.5mm] border-ink font-display text-[8mm] leading-none">
+              {table}
+            </span>
+          </div>
+        )}
+        <Masthead m={m} size="page" />
+
+        {/* justify-evenly: las secciones se reparten solas por todo el alto disponible */}
+        <div
+          data-sections
+          className="mt-[9mm] flex flex-1 flex-col justify-evenly gap-[6mm] overflow-hidden"
+          style={{ zoom: m.textSize }}
+        >
+          {m.sections.map((s, i) => (
+            <section key={i} className="break-inside-avoid">
+              <h2 className={`font-display text-[7.5mm] italic ${center ? "text-center" : ""}`}>{s.title}</h2>
+              <div className={`mt-[1.5mm] mb-[5mm] h-[0.9mm] w-[14mm] rounded-full ${center ? "mx-auto" : ""}`} style={{ background: bar }} />
+              {s.items.map((it, j) => (
+                <div key={j} className="mb-[3.5mm] last:mb-0">
+                  <div className="flex items-baseline gap-[2mm] text-[4.4mm] font-semibold">
+                    <span>{it.name}</span>
+                    <span className="flex-1 translate-y-[-0.8mm] border-b-[0.6mm] border-dotted border-ink/55" />
+                    {!total && <span className="tabular-nums">{formatPrice(it.price)}</span>}
+                  </div>
+                  {it.desc && <p className="mt-[0.5mm] text-[3.7mm] font-light italic text-ink/75">{it.desc}</p>}
+                </div>
+              ))}
+            </section>
+          ))}
+        </div>
+
+        {total && m.totalPrice && (
+          <div className="mb-[7mm] text-center" style={{ zoom: m.textSize }}>
+            <div className="mx-auto mb-[4mm] h-[0.9mm] w-[14mm] rounded-full" style={{ background: bar }} />
+            {m.totalLabel && <p className="font-display text-[5.5mm] italic">{m.totalLabel}</p>}
+            <p className="font-display text-[11mm] leading-tight font-semibold tabular-nums">{formatPrice(m.totalPrice)}</p>
+            {m.totalNote && (
+              <p className="mt-[0.5mm] text-[3.7mm] text-black italic" style={{ zoom: m.noteSize }}>
+                {m.totalNote}
+              </p>
+            )}
+          </div>
+        )}
+
+        <footer className="text-center text-[3.7mm] leading-relaxed">
+          {m.address && <p className="font-semibold">{m.address}</p>}
+          {contacts.length > 0 && (
+            <p className="flex flex-wrap justify-center gap-x-[6mm]">
+              {contacts.map((c) => (
+                <span key={c}>{c}</span>
+              ))}
+            </p>
+          )}
+        </footer>
+      </div>
+      {m.tiles && <Tile color={m.accent} style={{ height: "6mm" }} k={0.6} />}
+    </div>
+  );
+}
+
+function Sheet({ layout, page }: { layout: Layout; page: (copy: number) => React.ReactNode }) {
+  const s = SHEETS[layout];
+  return (
+    <div
+      className="grid overflow-hidden bg-white"
+      style={{ width: `${s.w}mm`, height: `${s.h}mm`, gridTemplateColumns: `repeat(${s.cols}, 1fr)` }}
+    >
+      {Array.from({ length: Number(layout) }, (_, i) => (
+        <div key={i} className="flex items-center justify-center overflow-hidden outline-1 outline-laguna outline-dashed print:outline-none">
+          <div style={{ width: `${210 * s.scale}mm`, height: `${297 * s.scale}mm` }}>
+            <div style={{ transform: `scale(${s.scale})`, transformOrigin: "top left" }}>{page(i)}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Escala la hoja para que quepa en el ancho disponible (móvil incluido)
+function Preview({ layout, children }: { layout: Layout; children: React.ReactNode }) {
+  const [zoom, setZoom] = useState(0.6);
+  const ref = useRef<HTMLDivElement>(null);
+  const sheetPx = SHEETS[layout].w * 3.7795; // mm → px CSS
+  useEffect(() => {
+    const el = ref.current!;
+    const ro = new ResizeObserver(([e]) => setZoom(Math.min(0.75, e.contentRect.width / sheetPx)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [sheetPx]);
+  return (
+    <div ref={ref} className="flex w-full justify-center">
+      <div className="w-fit shadow-[0_18px_40px_-18px_rgb(23_48_51/0.45)]" style={{ zoom }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Thumbnail({ m, k = 0.12 }: { m: Menu; k?: number }) {
+  return (
+    <div className="shrink-0 overflow-hidden rounded-sm bg-white shadow ring-1 ring-ink/10" style={{ width: `${210 * k}mm`, height: `${297 * k}mm` }}>
+      <div style={{ transform: `scale(${k})`, transformOrigin: "top left" }}>
+        <ContentPage m={m} />
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Interfaz del editor ---------- */
+
+const ICONS = {
+  up: "M6 15l6-6 6 6",
+  down: "M6 9l6 6 6-6",
+  trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
+  plus: "M12 5v14M5 12h14",
+  print: "M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z",
+  image: "M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5M15 9.5a.5.5 0 1 0 0-1",
+  edit: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
+  eye: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+  archive: "M3 4h18v4H3zM5 8v12h14V8M10 12h4",
+  search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5",
+  share: "M12 3v12M8 7l4-4 4 4M7 11H5v10h14V11h-2",
+  close: "M6 6l12 12M18 6L6 18",
+};
+
+function Icon({ d, className = "size-5" }: { d: string; className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d={d} />
+    </svg>
+  );
+}
+
+const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink";
+const input = `w-full rounded-lg border border-laguna bg-white px-3 py-2.5 text-base placeholder:text-ink/40 md:py-2 md:text-[15px] focus:border-mare focus:outline-2 focus:outline-offset-0 focus:outline-mare/40`;
+const primary = `inline-flex items-center justify-center gap-2 rounded-lg bg-mare px-5 py-2.5 font-semibold text-ink transition-colors hover:bg-laguna ${focus}`;
+// relative: contiene el input sr-only (absolute) del botón de subir imagen
+const secondary = `relative inline-flex cursor-pointer items-center gap-2 rounded-lg border border-mare bg-white px-3 py-2 text-sm font-semibold transition-colors hover:bg-laguna/25 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink`;
+const iconBtn = `grid size-11 shrink-0 place-items-center rounded-lg text-ink/70 transition-colors hover:bg-laguna/30 hover:text-ink disabled:pointer-events-none disabled:opacity-25 md:size-9 ${focus}`;
+
+const TEXT_SIZES: [number, string][] = [
+  [0.85, "Piccolo"],
+  [1, "Normale"],
+  [1.15, "Grande"],
+  [1.3, "Molto grande"],
+  [1.5, "Grandissimo"],
+  [1.75, "Enorme"],
+];
+
+const sizeName = (v: number) => TEXT_SIZES.find(([s]) => s === v)?.[1];
+
+// Seis «A» de tamaño creciente
+function SizePicker({ name, value, onChange }: { name: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <Segmented
+      name={name}
+      value={String(value)}
+      options={TEXT_SIZES.map(([v, label], i) => [
+        String(v),
+        <span key={v} className="font-display leading-none font-semibold" style={{ fontSize: 13 + i * 3.5 }} title={label}>
+          A<span className="sr-only"> {label}</span>
+        </span>,
+      ])}
+      onChange={(v) => onChange(Number(v))}
+    />
+  );
+}
+
+function OverflowWarning() {
+  return (
+    <p role="status" className="mx-auto w-full max-w-md rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">
+      Il menù non entra nella pagina: riduci la dimensione del testo o togli qualche piatto.
+    </p>
+  );
+}
+
+function Segmented<T extends string>(props: { name: string; value: T; options: [T, React.ReactNode][]; onChange: (v: T) => void }) {
+  const { name, value, options, onChange } = props;
+  return (
+    <div className="grid gap-1 rounded-lg bg-laguna/30 p-1" style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}>
+      {options.map(([v, label]) => (
+        <label
+          key={v}
+          className={`relative grid cursor-pointer place-items-center rounded-md py-2 text-center text-sm transition-colors focus-within:outline-2 focus-within:outline-ink ${
+            value === v ? "bg-white font-semibold shadow-sm" : "text-ink/70"
+          }`}
+        >
+          <input type="radio" name={name} className="sr-only" checked={value === v} onChange={() => onChange(v)} />
+          {label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+// Precio sin escribir el €: el símbolo se ve fijo en el campo y se añade al imprimir (formatPrice)
+function PriceInput(props: { value: string; onChange: (v: string) => void; label?: string; placeholder?: string; className?: string }) {
+  const { value, onChange, label, placeholder = "0,00", className = "" } = props;
+  return (
+    <div className={`relative ${className}`}>
+      <input
+        className={`${input} pr-7 text-right tabular-nums`}
+        aria-label={label}
+        placeholder={placeholder}
+        inputMode="decimal"
+        value={value.replace(/\s*€\s*/g, "")}
+        onChange={(e) => onChange(e.target.value.replace(/€/g, ""))}
+      />
+      <span aria-hidden className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-ink/60">
+        €
+      </span>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-sm font-semibold">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function Group({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-4 border-t border-laguna/50 px-5 py-6 first:border-t-0">
+      <div>
+        <h2 className="font-display text-[22px] leading-tight font-semibold">{title}</h2>
+        {hint && <p className="mt-1 text-sm text-ink/65">{hint}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ImagePicker(props: { label: string; value: string; maxPx: number; type: "image/jpeg" | "image/png"; onChange: (url: string) => void }) {
+  const { label, value, maxPx, type, onChange } = props;
+  return (
+    <div className="flex items-center gap-4">
+      <div className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-dashed border-mare bg-laguna/15 text-mare">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {value ? <img src={value} alt="" className="h-full w-full object-contain" /> : <Icon d={ICONS.image} className="size-7" />}
+      </div>
+      <div className="flex flex-col items-start gap-1">
+        <label className={secondary}>
+          {value ? "Cambia immagine" : label}
+          <input
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={(e) => {
+              readImage(e.target.files?.[0], maxPx, type, onChange);
+              e.target.value = ""; // permite volver a elegir el mismo archivo
+            }}
+          />
+        </label>
+        {value && (
+          <button className={`rounded px-1 py-2 text-sm text-ink/70 underline underline-offset-2 hover:text-ink ${focus}`} onClick={() => onChange("")}>
+            Rimuovi
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Selector de formato con un dibujo de cómo queda la hoja
+function LayoutPicker({ value, onChange }: { value: Layout; onChange: (l: Layout) => void }) {
+  return (
+    <fieldset className="relative flex justify-center gap-2">
+      <legend className="sr-only">Formato di stampa</legend>
+      {(Object.keys(SHEETS) as Layout[]).map((l) => {
+        const s = SHEETS[l];
+        const on = value === l;
+        return (
+          <label
+            key={l}
+            className={`relative flex cursor-pointer flex-col items-center gap-1.5 rounded-xl px-3 py-2 text-sm transition-colors focus-within:outline-2 focus-within:outline-ink ${
+              on ? "bg-white font-semibold shadow-sm ring-2 ring-mare" : "hover:bg-white/60"
+            }`}
+          >
+            <input type="radio" name="layout" className="sr-only" checked={on} onChange={() => onChange(l)} />
+            <span className="grid h-10 place-items-center">
+            <span
+              className="grid gap-[2px] rounded-[3px] border border-ink/50 bg-white p-[2px]"
+              style={{ width: s.w / 8, height: s.h / 8, gridTemplateColumns: `repeat(${s.cols}, 1fr)` }}
+            >
+              {Array.from({ length: Number(l) }, (_, i) => (
+                <span key={i} className={`rounded-[1px] ${on ? "bg-mare" : "bg-laguna/70"}`} />
+              ))}
+            </span>
+            </span>
+            {s.label}
+          </label>
+        );
+      })}
+    </fieldset>
+  );
+}
+
+/* ---------- Instalación como app (PWA) ---------- */
+
+type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
+const INSTALL_KEY = "menudo:install-dismissed";
+
+function isDismissed() {
+  try {
+    return !!localStorage.getItem(INSTALL_KEY);
+  } catch {
+    return false;
+  }
+}
+
+// Android/Chrome/Edge: botón que abre el instalador. iPhone: Safari no tiene API de instalación, así que explicamos los pasos.
+function InstallPrompt() {
+  const [event, setEvent] = useState<InstallEvent | null>(null);
+  const [iosHelp, setIosHelp] = useState(() => {
+    const standalone = matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone;
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    return ios && !standalone && !isDismissed();
+  });
+
+  useEffect(() => {
+    navigator.serviceWorker?.register("/sw.js").catch(() => {});
+    const onPrompt = (e: Event) => {
+      e.preventDefault(); // sustituimos el aviso del navegador por el nuestro
+      if (!isDismissed()) setEvent(e as InstallEvent);
+    };
+    const onInstalled = () => setEvent(null);
+    addEventListener("beforeinstallprompt", onPrompt);
+    addEventListener("appinstalled", onInstalled);
+    return () => {
+      removeEventListener("beforeinstallprompt", onPrompt);
+      removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  const dismiss = () => {
+    try {
+      localStorage.setItem(INSTALL_KEY, "1");
+    } catch {}
+    setEvent(null);
+    setIosHelp(false);
+  };
+
+  const install = async () => {
+    if (!event) return;
+    await event.prompt();
+    await event.userChoice;
+    setEvent(null);
+  };
+
+  if (!event && !iosHelp) return null;
+  return (
+    <aside
+      aria-label="Installa Menudo"
+      className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 flex items-start gap-3 rounded-2xl bg-white p-4 shadow-[0_18px_40px_-12px_rgb(23_48_51/0.45)] ring-1 ring-laguna md:inset-x-auto md:right-6 md:bottom-6 md:w-96 print:hidden"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/icon-192.png" alt="" className="size-12 shrink-0 rounded-xl" />
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">Installa Menudo</p>
+        {event ? (
+          <>
+            <p className="text-sm text-ink/70">Aprila dalla schermata Home, anche senza connessione.</p>
+            <button className={`${primary} mt-3 py-2`} onClick={install}>
+              Installa
+            </button>
+          </>
+        ) : (
+          <p className="text-sm text-ink/70">
+            Tocca <Icon d={ICONS.share} className="inline size-4 -translate-y-0.5" /> <b>Condividi</b>, poi «Aggiungi alla schermata Home».
+          </p>
+        )}
+      </div>
+      <button className={`${iconBtn} -mt-2 -mr-2`} aria-label="Chiudi" onClick={dismiss}>
+        <Icon d={ICONS.close} />
+      </button>
+    </aside>
+  );
+}
+
+export default function Editor() {
+  const [m, setM] = useState<Menu>(load);
+  const [currentId, setCurrentId] = useState(loadCurrentId);
+  const [layout, setLayout] = useState<Layout>("1");
+  const [saveError, setSaveError] = useState(false);
+  const [tab, setTab] = useState<"edit" | "preview" | "archive">("edit");
+  const [saved, setSaved] = useState<Saved[]>([]);
+  const [pending, setPending] = useState(false);
+  const [archiveError, setArchiveError] = useState("");
+  const [query, setQuery] = useState("");
+  const [overflow, setOverflow] = useState(false);
+
+  // Posición de desplazamiento de cada pantalla: la ventana (móvil) y los paneles con data-scroll (escritorio)
+  const scrollPos = useRef<Record<string, number>>({});
+  const go = (next: typeof tab, { top = false } = {}) => {
+    const pos = scrollPos.current;
+    pos[`window:${tab}`] = window.scrollY;
+    document.querySelectorAll<HTMLElement>("[data-scroll]").forEach((el) => (pos[el.dataset.scroll!] = el.scrollTop));
+    if (top) scrollPos.current = {}; // otra carta: empezar arriba
+    setTab(next);
+  };
+  useLayoutEffect(() => {
+    const pos = scrollPos.current;
+    window.scrollTo(0, pos[`window:${tab}`] ?? 0);
+    document.querySelectorAll<HTMLElement>("[data-scroll]").forEach((el) => (el.scrollTop = pos[el.dataset.scroll!] ?? 0));
+  }, [tab]);
+  const measure = useRef<HTMLDivElement>(null);
+
+  // Mide una copia oculta de la carta: si el contenido no cabe en la hoja, avisamos (si no, se cortaría al imprimir)
+  useEffect(() => {
+    const check = () => {
+      const el = measure.current?.querySelector<HTMLElement>("[data-sections]");
+      if (el) setOverflow(el.scrollHeight > el.clientHeight + 2);
+    };
+    const id = requestAnimationFrame(check);
+    document.fonts.ready.then(check);
+    return () => cancelAnimationFrame(id);
+  });
+  const timer = useRef<number>(undefined);
+
+  useEffect(() => {
+    archive.list().then(setSaved, () => setArchiveError("Archivio non disponibile su questo browser."));
+  }, []);
+
+  // Borrador al instante en localStorage; en el archivo, 800 ms después del último cambio
+  const update = (next: Menu, id = currentId) => {
+    setM(next);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      localStorage.setItem(CURRENT_KEY, id);
+      setSaveError(false);
+    } catch {
+      setSaveError(true); // normalmente imágenes demasiado grandes para localStorage (~5 MB)
+    }
+    setPending(true);
+    clearTimeout(timer.current);
+    timer.current = window.setTimeout(async () => {
+      try {
+        await archive.save(id, next);
+        setSaved(await archive.list());
+        setArchiveError("");
+      } catch {
+        setArchiveError("Menù non salvato nell'archivio: spazio esaurito. Elimina qualche menù vecchio.");
+      }
+      setPending(false);
+    }, 800);
+  };
+
+  const set = <K extends keyof Menu>(k: K, v: Menu[K]) => update({ ...m, [k]: v });
+  const setSections = (fn: (s: Section[]) => Section[]) => update({ ...m, sections: fn(structuredClone(m.sections)) });
+
+  // Abre una carta del archivo sin cambiar su fecha (solo se actualiza al editarla)
+  const openSaved = (a: Saved, thenPrint = false) => {
+    const menu = { ...EMPTY, ...a.menu };
+    flushSync(() => {
+      setM(menu);
+      setCurrentId(a.id);
+    });
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(menu));
+      localStorage.setItem(CURRENT_KEY, a.id);
+    } catch {
+      setSaveError(true);
+    }
+    if (thenPrint) window.print();
+    else go("edit", { top: true });
+  };
+
+  // Nueva carta a partir de la actual: conserva logo, contactos y estilo
+  const newMenu = () => {
+    const id = newId();
+    setCurrentId(id);
+    update({ ...m }, id);
+    go("edit", { top: true });
+  };
+
+  const removeSaved = async (id: string) => {
+    await archive.remove(id);
+    setSaved(await archive.list());
+  };
+
+  const current = saved.find((a) => a.id === currentId);
+  const status = pending ? "Salvataggio…" : current ? `Salvato alle ${itTime(current.savedAt)}` : "Le modifiche si salvano da sole";
+
+  const q = query.trim().toLowerCase();
+  const found = q
+    ? saved.filter((a) => [a.menu.name, a.menu.subtitle, itDate(a.savedAt), ...a.menu.sections.map((s) => s.title)].join(" ").toLowerCase().includes(q))
+    : saved;
+
+  const content = (copy: number) => <ContentPage m={m} table={m.tableNumbers[copy]} />;
+  const pages = m.coverOn ? [() => <CoverPage m={m} />, content] : [content];
+
+  const tabs = [
+    { id: "edit", label: "Modifica", icon: ICONS.edit },
+    { id: "preview", label: "Anteprima", icon: ICONS.eye },
+    { id: "archive", label: "Archivio", icon: ICONS.archive },
+  ] as const;
+
+  return (
+    <>
+      <style>{`@page { size: A4 ${SHEETS[layout].orient}; margin: 0; }`}</style>
+
+      <div className="flex min-h-dvh flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:h-dvh md:pb-0 print:hidden">
+        <header className="shrink-0 bg-white pt-[env(safe-area-inset-top)]">
+          <Tile color="#68A7AD" k={0.42} style={{ height: 16 }} />
+          <div className="flex items-center gap-6 border-b border-laguna/60 px-5 py-3">
+            <div className="min-w-0 flex-1 md:flex-none">
+              <p className="font-display text-[28px] leading-none font-semibold">Menudo</p>
+              <p className="mt-1 text-sm text-ink/65" aria-live="polite">
+                {status}
+              </p>
+            </div>
+
+            {/* Pestañas de escritorio */}
+            <nav className="hidden flex-1 gap-1 md:flex" aria-label="Sezioni">
+              {(
+                [
+                  { label: "Menù", target: "edit", on: tab !== "archive" },
+                  { label: "Archivio", target: "archive", on: tab === "archive" },
+                ] as const
+              ).map((t) => (
+                <button
+                  key={t.label}
+                  aria-current={t.on ? "page" : undefined}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${focus} ${t.on ? "bg-laguna/40 font-semibold" : "text-ink/70 hover:bg-laguna/20"}`}
+                  onClick={() => go(t.target)}
+                >
+                  {t.label}
+                  {t.label === "Archivio" && saved.length > 0 && (
+                    <span className="rounded-full bg-white px-2 text-xs font-semibold ring-1 ring-laguna">{saved.length}</span>
+                  )}
+                </button>
+              ))}
+            </nav>
+
+            <div className="hidden md:block">
+              <button className={primary} onClick={() => window.print()}>
+                <Icon d={ICONS.print} />
+                Stampa
+              </button>
+            </div>
+          </div>
+          {(saveError || archiveError) && (
+            <p role="alert" className="bg-sabbia px-5 py-2 text-sm font-semibold">
+              {archiveError || "Modifiche non salvate: le immagini sono troppo grandi. Usa immagini più leggere."}
+            </p>
+          )}
+        </header>
+
+        {tab === "archive" ? (
+          <main data-scroll="archive" className="flex-1 bg-laguna/35 px-4 py-6 md:overflow-auto md:px-8">
+            <div className="mx-auto max-w-5xl space-y-5">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <h1 className="font-display text-[32px] leading-tight font-semibold">Archivio</h1>
+                  <p className="mt-1 max-w-prose text-ink/70">I tuoi menù si salvano qui da soli mentre li modifichi. Dopo 30 giorni senza modifiche si eliminano.</p>
+                </div>
+                <button className={primary} onClick={newMenu}>
+                  <Icon d={ICONS.plus} />
+                  Nuovo menù
+                </button>
+              </div>
+
+              <label className="relative block max-w-md">
+                <span className="sr-only">Cerca nell&apos;archivio</span>
+                <Icon d={ICONS.search} className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink/50" />
+                <input className={`${input} pl-10`} type="search" placeholder="Cerca per nome, sezione o data" value={query} onChange={(e) => setQuery(e.target.value)} />
+              </label>
+
+              {saved.length === 0 ? (
+                <p className="rounded-xl bg-white p-6 text-ink/70">Ancora nessun menù. Inizia a modificare e lo troverai qui.</p>
+              ) : found.length === 0 ? (
+                <p className="rounded-xl bg-white p-6 text-ink/70">Nessun menù trovato per «{query}».</p>
+              ) : (
+                <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {found.map((a) => {
+                    const inUse = a.id === currentId;
+                    const am = { ...EMPTY, ...a.menu };
+                    return (
+                      <li key={a.id} className={`flex gap-4 rounded-xl bg-white p-3 shadow-sm ${inUse ? "ring-2 ring-mare" : "ring-1 ring-laguna/60"}`}>
+                        <button className={`rounded-sm ${focus}`} aria-label={`Apri ${am.name}`} onClick={() => openSaved(a)}>
+                          <Thumbnail m={am} />
+                        </button>
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          {inUse && <span className="mb-1 w-fit rounded-full bg-mare/25 px-2 text-xs font-semibold">Aperto ora</span>}
+                          <p className="truncate font-display text-lg leading-tight font-semibold">{am.name}</p>
+                          {am.subtitle && <p className="truncate text-sm text-ink/70">{am.subtitle}</p>}
+                          <p className="mt-2 text-sm text-ink/70">
+                            Modificato il {itDate(a.savedAt)} alle {itTime(a.savedAt)}
+                          </p>
+                          <p className="text-sm text-ink/70">Si elimina il {itDate(a.savedAt + TTL)}</p>
+                          <div className="mt-auto flex items-center gap-1 pt-3">
+                            <button className={`${secondary} py-1.5`} onClick={() => openSaved(a)}>
+                              Apri
+                            </button>
+                            <button className={iconBtn} aria-label={`Stampa ${am.name}`} onClick={() => openSaved(a, true)}>
+                              <Icon d={ICONS.print} />
+                            </button>
+                            {!inUse && (
+                              <button className={iconBtn} aria-label={`Elimina ${am.name} del ${itDate(a.savedAt)}`} onClick={() => removeSaved(a.id)}>
+                                <Icon d={ICONS.trash} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </main>
+        ) : (
+          <div className="flex flex-1 flex-col md:min-h-0 md:flex-row">
+            <aside data-scroll="edit" className={`${tab === "edit" ? "block" : "hidden"} bg-white md:block md:w-[420px] md:shrink-0 md:overflow-y-auto md:border-r md:border-laguna/60`}>
+            <Group title="Il locale" hint="Il nome e il logo compaiono in alto nel menù.">
+              <Field label="Nome del locale">
+                <input className={input} value={m.name} onChange={(e) => set("name", e.target.value)} />
+              </Field>
+              <fieldset className="space-y-2">
+                <legend className="mb-1 text-sm font-semibold">Dimensione del nome</legend>
+                <SizePicker name="titleSize" value={m.titleSize} onChange={(v) => set("titleSize", v)} />
+                <p className="text-sm text-ink/65">{sizeName(m.titleSize)}.</p>
+              </fieldset>
+              <Field label="Sottotitolo">
+                <input className={input} value={m.subtitle} placeholder="Menù, Carta dei vini…" onChange={(e) => set("subtitle", e.target.value)} />
+              </Field>
+              <ImagePicker label="Carica logo" value={m.logo} maxPx={600} type="image/png" onChange={(u) => set("logo", u)} />
+            </Group>
+
+            <Group title="Copertina" hint="Una pagina iniziale, con una foto oppure semplice.">
+              <label className="flex cursor-pointer items-center gap-3">
+                <input type="checkbox" className="size-5 accent-mare" checked={m.coverOn} onChange={(e) => set("coverOn", e.target.checked)} />
+                <span className="font-semibold">Stampa la copertina</span>
+              </label>
+              {m.coverOn && (
+                <ImagePicker label="Aggiungi una foto" value={m.cover} maxPx={1600} type="image/jpeg" onChange={(u) => set("cover", u)} />
+              )}
+            </Group>
+
+            <Group title="Piatti" hint="Organizza il menù in sezioni, per esempio Antipasti o Dolci.">
+              {m.sections.map((s, i) => (
+                <div key={i} className="space-y-3 rounded-xl border border-sabbia bg-sabbia/15 p-3">
+                  <div className="flex items-center gap-1">
+                    <input
+                      className={`${input} font-display text-lg font-semibold md:text-lg`}
+                      aria-label="Nome della sezione"
+                      value={s.title}
+                      onChange={(e) => setSections((ss) => ((ss[i].title = e.target.value), ss))}
+                    />
+                    <button className={iconBtn} aria-label="Sposta su" disabled={i === 0} onClick={() => setSections((ss) => move(ss, i, -1))}>
+                      <Icon d={ICONS.up} />
+                    </button>
+                    <button className={iconBtn} aria-label="Sposta giù" disabled={i === m.sections.length - 1} onClick={() => setSections((ss) => move(ss, i, 1))}>
+                      <Icon d={ICONS.down} />
+                    </button>
+                    <button className={iconBtn} aria-label={`Elimina la sezione ${s.title}`} onClick={() => setSections((ss) => ss.filter((_, k) => k !== i))}>
+                      <Icon d={ICONS.trash} />
+                    </button>
+                  </div>
+
+                  {s.items.length === 0 && <p className="px-1 text-sm text-ink/65">Nessun piatto. Aggiungi il primo qui sotto.</p>}
+
+                  {s.items.map((it, j) => (
+                    <div key={j} className="space-y-2 rounded-lg bg-white p-2 ring-1 ring-laguna/60">
+                      <div className="flex gap-2">
+                        <input
+                          className={`${input} min-w-0 flex-1 font-semibold`}
+                          aria-label="Nome del piatto"
+                          placeholder="Nome del piatto"
+                          value={it.name}
+                          onChange={(e) => setSections((ss) => ((ss[i].items[j].name = e.target.value), ss))}
+                        />
+                        {m.priceMode === "dish" && (
+                          <PriceInput
+                            className="w-24 shrink-0"
+                            label="Prezzo"
+                            value={it.price}
+                            onChange={(v) => setSections((ss) => ((ss[i].items[j].price = v), ss))}
+                          />
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        <input
+                          className={`${input} min-w-0 flex-1`}
+                          aria-label="Descrizione"
+                          placeholder="Ingredienti o descrizione (facoltativo)"
+                          value={it.desc}
+                          onChange={(e) => setSections((ss) => ((ss[i].items[j].desc = e.target.value), ss))}
+                        />
+                        <button
+                          className={iconBtn}
+                          aria-label={`Elimina ${it.name || "piatto"}`}
+                          onClick={() => setSections((ss) => (ss[i].items.splice(j, 1), ss))}
+                        >
+                          <Icon d={ICONS.trash} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button className={secondary} onClick={() => setSections((ss) => (ss[i].items.push({ name: "", desc: "", price: "" }), ss))}>
+                    <Icon d={ICONS.plus} className="size-4" />
+                    Aggiungi piatto
+                  </button>
+                </div>
+              ))}
+              <button
+                className={`${secondary} w-full justify-center border-dashed py-3`}
+                onClick={() => setSections((ss) => [...ss, { title: "Nuova sezione", items: [{ name: "", desc: "", price: "" }] }])}
+              >
+                <Icon d={ICONS.plus} className="size-4" />
+                Aggiungi sezione
+              </button>
+
+              <fieldset className="space-y-3 rounded-xl border border-laguna p-3">
+                <legend className="px-1 font-semibold">Prezzo</legend>
+                <Segmented
+                  name="priceMode"
+                  value={m.priceMode}
+                  options={[
+                    ["dish", "Per ogni piatto"],
+                    ["total", "Unico per il menù"],
+                  ]}
+                  onChange={(v) => set("priceMode", v)}
+                />
+                {m.priceMode === "total" && (
+                  <>
+                    <div className="flex gap-2">
+                      <div className="min-w-0 flex-1">
+                        <Field label="Testo">
+                          <input className={input} value={m.totalLabel} placeholder="Prezzo a persona" onChange={(e) => set("totalLabel", e.target.value)} />
+                        </Field>
+                      </div>
+                      <div className="w-28 shrink-0">
+                        <Field label="Prezzo">
+                          <PriceInput placeholder="25,00" value={m.totalPrice} onChange={(v) => set("totalPrice", v)} />
+                        </Field>
+                      </div>
+                    </div>
+                    <Field label="Nota (facoltativa)">
+                      <input className={input} value={m.totalNote} placeholder="Bevande escluse" onChange={(e) => set("totalNote", e.target.value)} />
+                    </Field>
+                    <fieldset className="space-y-2">
+                      <legend className="mb-1 text-sm font-semibold">Dimensione della nota</legend>
+                      <SizePicker name="noteSize" value={m.noteSize} onChange={(v) => set("noteSize", v)} />
+                      <p className="text-sm text-ink/65">{sizeName(m.noteSize)}.</p>
+                    </fieldset>
+                    <p className="text-sm text-ink/65">Il prezzo compare in fondo al menù, sopra i contatti.</p>
+                  </>
+                )}
+              </fieldset>
+            </Group>
+
+            <Group title="Contatti" hint="Compaiono in fondo al menù.">
+              <Field label="Indirizzo">
+                <input className={input} value={m.address} autoComplete="street-address" onChange={(e) => set("address", e.target.value)} />
+              </Field>
+              <Field label="Telefono">
+                <input className={input} type="tel" value={m.phone} onChange={(e) => set("phone", e.target.value)} />
+              </Field>
+              <Field label="Email">
+                <input className={input} type="email" value={m.email} onChange={(e) => set("email", e.target.value)} />
+              </Field>
+              <Field label="Sito web o Instagram">
+                <input className={input} inputMode="url" value={m.web} placeholder="@ristorante" onChange={(e) => set("web", e.target.value)} />
+              </Field>
+            </Group>
+
+            <Group title="Tavolo" hint="Il numero del tavolo in alto a destra del menù (fino a 4 cifre).">
+              <label className="flex cursor-pointer items-center gap-3">
+                <input type="checkbox" className="size-5 accent-mare" checked={m.tableBox} onChange={(e) => set("tableBox", e.target.checked)} />
+                <span className="font-semibold">Mostra «Tavolo n.» nel menù</span>
+              </label>
+              {m.tableBox && (
+                <fieldset className="space-y-3">
+                  <legend className="mb-1 text-sm font-semibold">Numero del tavolo</legend>
+                  <p className="text-sm text-ink/65">
+                    Una casella per ogni copia del foglio ({SHEETS[layout].label}). Lasciala vuota per scriverlo a penna.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {COPY_NAMES[layout].map((where, c) => (
+                      <Field key={c} label={where}>
+                        <input
+                          className={`${input} text-center font-display text-lg`}
+                          inputMode="numeric"
+                          maxLength={4}
+                          placeholder="—"
+                          value={m.tableNumbers[c] ?? ""}
+                          onChange={(e) => {
+                            const t = [...m.tableNumbers];
+                            t[c] = e.target.value;
+                            set("tableNumbers", t);
+                          }}
+                        />
+                      </Field>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
+            </Group>
+
+            <Group title="Stile" hint="Allineamento, testo, piastrelle e colore del menù.">
+              <fieldset className="space-y-2">
+                <legend className="mb-1 text-sm font-semibold">Allineamento dei titoli delle sezioni</legend>
+                <Segmented
+                  name="align"
+                  value={m.align}
+                  options={[
+                    ["center", "Al centro"],
+                    ["left", "A sinistra"],
+                  ]}
+                  onChange={(v) => set("align", v)}
+                />
+              </fieldset>
+              <fieldset className="space-y-2">
+                <legend className="mb-1 text-sm font-semibold">Dimensione del testo</legend>
+                <SizePicker name="textSize" value={m.textSize} onChange={(v) => set("textSize", v)} />
+                <p className="text-sm text-ink/65">Vale per sezioni, piatti e prezzo. {sizeName(m.textSize)}.</p>
+                {overflow && <OverflowWarning />}
+              </fieldset>
+              <label className="flex cursor-pointer items-center gap-3">
+                <input type="checkbox" className="size-5 accent-mare" checked={m.tiles} onChange={(e) => set("tiles", e.target.checked)} />
+                <span className="font-semibold">Bordi con piastrelle</span>
+              </label>
+              <div className="flex flex-wrap items-start gap-1">
+                {PALETTE.map((c) => {
+                  const on = m.accent.toLowerCase() === c.hex.toLowerCase();
+                  return (
+                    <button key={c.hex} className={`flex flex-col items-center gap-1 rounded-lg p-1 text-sm ${focus}`} aria-pressed={on} onClick={() => set("accent", c.hex)}>
+                      <span className={`block size-11 rounded-full ring-offset-2 ${on ? "ring-2 ring-ink" : "ring-1 ring-ink/15"}`} style={{ background: c.hex }} />
+                      <span className={on ? "font-semibold" : ""}>{c.name}</span>
+                    </button>
+                  );
+                })}
+                <label className="flex cursor-pointer flex-col items-center gap-1 p-1 text-sm">
+                  <input
+                    type="color"
+                    className="size-11 cursor-pointer appearance-none rounded-full border-0 bg-transparent p-0 ring-1 ring-ink/15 ring-offset-2 [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
+                    value={m.accent} onChange={(e) => set("accent", e.target.value)} />
+                  Altro
+                </label>
+              </div>
+            </Group>
+            </aside>
+
+            <main data-scroll="preview" className={`${tab === "preview" ? "flex" : "hidden"} flex-1 flex-col gap-6 bg-laguna/35 px-4 py-5 md:flex md:overflow-auto md:px-8`}>
+              <LayoutPicker value={layout} onChange={setLayout} />
+              {overflow && <OverflowWarning />}
+              {pages.map((p, i) => (
+                <Preview key={i} layout={layout}>
+                  <Sheet layout={layout} page={p} />
+                </Preview>
+              ))}
+            </main>
+          </div>
+        )}
+
+        {/* Barra de pestañas en móvil, como en iOS: zona del pulgar y safe area del iPhone */}
+        <nav
+          aria-label="Sezioni"
+          className="fixed inset-x-0 bottom-0 grid grid-cols-4 border-t border-laguna/60 bg-white/95 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden"
+        >
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              aria-current={tab === t.id ? "page" : undefined}
+              className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs ${focus} ${tab === t.id ? "font-semibold" : "text-ink/65"}`}
+              onClick={() => go(t.id)}
+            >
+              <span className={`grid h-7 w-12 place-items-center rounded-full transition-colors ${tab === t.id ? "bg-laguna/50" : ""}`}>
+                <Icon d={t.icon} />
+              </span>
+              {t.label}
+            </button>
+          ))}
+          <button className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs font-semibold ${focus}`} onClick={() => window.print()}>
+            <span className="grid h-7 w-12 place-items-center rounded-full bg-mare">
+              <Icon d={ICONS.print} />
+            </span>
+            Stampa
+          </button>
+        </nav>
+      </div>
+
+      <InstallPrompt />
+
+      <div ref={measure} aria-hidden className="pointer-events-none invisible fixed top-0 left-[-10000px] print:hidden">
+        <ContentPage m={m} />
+      </div>
+
+      <div className="hidden [print-color-adjust:exact] print:block">
+        {pages.map((p, i) => (
+          <div key={i} className="break-after-page">
+            <Sheet layout={layout} page={p} />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
