@@ -516,7 +516,7 @@ function Preview({ layout, scale, children }: { layout: Layout; scale: number; c
   const sheetPx = SHEETS[layout].w * 3.7795; // mm → px CSS
   useEffect(() => {
     const el = ref.current!;
-    const ro = new ResizeObserver(([e]) => setFit(Math.min(1.25, e.contentRect.width / sheetPx)));
+    const ro = new ResizeObserver(([e]) => setFit(Math.min(1.5, e.contentRect.width / sheetPx)));
     ro.observe(el);
     return () => ro.disconnect();
   }, [sheetPx]);
@@ -679,12 +679,16 @@ function Group(props: { title: string; hint?: string; icon: string; open?: boole
   const { title, hint, icon, open, children } = props;
   return (
     <details open={open} className="group border-b border-laguna/50">
-      <summary className={`flex cursor-pointer list-none items-center gap-3 px-5 py-4 transition-colors hover:bg-laguna/15 [&::-webkit-details-marker]:hidden ${focus}`}>
+      <summary
+        title={title}
+        className={`flex cursor-pointer list-none items-center gap-3 px-5 py-4 transition-colors hover:bg-laguna/15 md:pl-[22px] [&::-webkit-details-marker]:hidden ${focus}`}
+      >
         <Icon d={icon} className="size-5 shrink-0 text-mare" />
-        <h2 className="flex-1 font-display text-[20px] leading-tight font-semibold">{title}</h2>
+        <h2 className={`flex-1 font-display text-[20px] leading-tight font-semibold md:group-[:not(:hover):not(:has(:focus-visible))]/side:opacity-0 md:transition-opacity md:duration-300`}>{title}</h2>
         <Icon d={ICONS.down} className="size-4 shrink-0 text-ink/50 transition-transform group-open:rotate-180" />
       </summary>
-      <div className="space-y-4 px-5 pb-6">
+      {/* Panel plegado (escritorio, sin ratón encima ni foco de teclado dentro): solo el icono */}
+      <div className="space-y-4 px-5 pb-6 md:group-[:not(:hover):not(:has(:focus-visible))]/side:hidden">
         {hint && <p className="text-sm text-ink/65">{hint}</p>}
         {children}
       </div>
@@ -1398,7 +1402,14 @@ export default function Editor() {
           </main>
         ) : (
           <div className="flex flex-1 flex-col md:min-h-0 md:flex-row">
-            <aside data-scroll="edit" className={`${tab === "edit" ? "block" : "hidden"} bg-white md:block md:w-[360px] md:shrink-0 md:overflow-y-auto md:border-r md:border-laguna/60`}>
+            {/* Escritorio: barra de iconos de 64 px que se despliega encima de la vista previa al pasar el ratón
+                (o al llegar con el teclado); así la hoja no cambia de tamaño */}
+            <aside className={`${tab === "edit" ? "block" : "hidden"} bg-white md:relative md:block md:w-16 md:shrink-0`}>
+            <div
+              data-scroll="edit"
+              className="group/side md:absolute md:inset-y-0 md:left-0 md:z-30 md:w-16 md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-laguna/60 md:bg-white md:transition-[width,box-shadow] md:duration-300 md:ease-out md:hover:w-[360px] md:hover:shadow-[12px_0_40px_-12px_rgb(23_48_51/0.35)] md:has-[:focus-visible]:w-[360px]"
+            >
+            <div className="md:w-[360px]">
             <Group title={t.venue} hint={t.venueHint} icon={ICONS.venue} open>
               <Field label={t.name}>
                 <input className={input} value={m.name} onChange={(e) => set("name", e.target.value)} />
@@ -1711,6 +1722,8 @@ export default function Editor() {
               </label>
               <ImageSearch onPick={(img) => readImage(img, 800, "image/png", addSticker)} />
             </Group>
+            </div>
+            </div>
             </aside>
 
             <main
