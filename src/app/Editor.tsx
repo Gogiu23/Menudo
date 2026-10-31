@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState
 import { flushSync } from "react-dom";
 import { formatPrice } from "./price";
 import { LangCtx, T, useT, type Dict, type Lang } from "./i18n";
+import { CONTACT } from "./Legal";
 
 type Item = { name: string; desc: string; price: string };
 type Section = { title: string; items: Item[] };
@@ -1134,6 +1135,34 @@ async function hashPassword(email: string, pw: string) {
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Pie del archivo (pantalla de inicio): nombre, textos legales y contacto con el desarrollador
+function SiteFooter() {
+  const t = useT();
+  const link = `rounded text-ink/70 underline-offset-4 hover:text-ink hover:underline ${focus}`;
+  return (
+    <footer className="mx-auto mt-auto w-full max-w-5xl border-t border-laguna/60 pt-6 pb-2 text-sm">
+      <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
+        <div>
+          <Brand />
+          <p className="mt-2 text-ink/60">{t.tagline}</p>
+        </div>
+        <nav aria-label={t.legal} className="flex flex-wrap gap-x-6 gap-y-2">
+          <a className={link} href="/privacy">
+            {t.privacy}
+          </a>
+          <a className={link} href="/terms">
+            {t.terms}
+          </a>
+          <a className={link} href={CONTACT}>
+            {t.contact}
+          </a>
+        </nav>
+      </div>
+      <p className="mt-6 text-xs text-ink/50">{t.rights(new Date().getFullYear())}</p>
+    </footer>
+  );
+}
+
 // Marca de la app: el icono (src/app/icon.svg) y el nombre
 function Brand() {
   return (
@@ -1455,7 +1484,7 @@ export default function Editor() {
   const [currentId, setCurrentId] = useState(loadCurrentId);
   const [layout, setLayout] = useState<Layout>("1");
   const [saveError, setSaveError] = useState(false);
-  const [tab, setTab] = useState<"edit" | "preview" | "archive">("edit");
+  const [tab, setTab] = useState<"edit" | "preview" | "archive">("archive");
   const [saved, setSaved] = useState<Saved[]>([]);
   const [pending, setPending] = useState(false);
   const [archiveError, setArchiveError] = useState<"" | "archiveFull" | "archiveUnavailable">("");
@@ -1793,8 +1822,8 @@ export default function Editor() {
         </header>
 
         {tab === "archive" ? (
-          <main data-scroll="archive" className="flex-1 canvas px-4 py-6 md:overflow-auto md:px-8">
-            <div className="mx-auto max-w-5xl space-y-5">
+          <main data-scroll="archive" className="flex flex-1 flex-col gap-10 canvas px-4 py-6 md:overflow-auto md:px-8">
+            <div className="mx-auto w-full max-w-5xl space-y-5">
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
                   <h1 className="font-display text-[32px] leading-tight font-semibold">{t.archive}</h1>
@@ -1852,6 +1881,7 @@ export default function Editor() {
                 </ul>
               )}
             </div>
+            <SiteFooter />
           </main>
         ) : (
           <div className="flex flex-1 flex-col md:min-h-0 md:flex-row">
