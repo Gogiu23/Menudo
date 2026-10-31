@@ -302,6 +302,20 @@ function pxPerMm(el: Element) {
   return page.getBoundingClientRect().width / (parseFloat(getComputedStyle(page).getPropertyValue("--page-w")) || 210);
 }
 
+// Guía de centrado sobre la hoja mientras se arrastra (x: línea vertical en el centro; y: horizontal).
+// DOM directo, como el resto del arrastre: solo existe mientras se arrastra y nace oculta
+const SNAP = 2;
+function guideLine(page: HTMLElement, axis: "x" | "y") {
+  const g = document.createElement("div");
+  g.className =
+    axis === "x"
+      ? "pointer-events-none absolute inset-y-0 left-1/2 z-50 w-0 border-l border-mare print:hidden"
+      : "pointer-events-none absolute inset-x-0 top-1/2 z-50 h-0 border-t border-mare print:hidden";
+  g.hidden = true;
+  page.append(g);
+  return g;
+}
+
 // Texto o imagen que se coloca con un desplazamiento en mm. Con EditCtx (vista previa de escritorio) además se arrastra y se selecciona.
 function Movable(props: { k: string; look?: Look; className?: string; style?: React.CSSProperties; children: React.ReactNode }) {
   const { k, look, className = "", style, children } = props;
@@ -320,13 +334,38 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
     (document.activeElement as HTMLElement | null)?.blur();
     edit.pick(k);
     const el = e.currentTarget;
+    const page = el.closest<HTMLElement>("[data-page]")!;
     const k1 = pxPerMm(el);
+    // Dentro de «Tamaño del texto» (zoom) el desplazamiento en mm también se amplía: se descuenta para que el
+    // bloque vaya a la par del ratón
+    const z = cssZoom(el) / cssZoom(page);
     const [x0, y0] = [e.clientX, e.clientY];
+    // Centro del bloque sin desplazar y centro de la hoja, en mm de hoja
+    const p = page.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const cx = (r.left + r.width / 2 - p.left) / k1 - dx * z;
+    const cy = (r.top + r.height / 2 - p.top) / k1 - dy * z;
+    const [mx, my] = [p.width / k1 / 2, p.height / k1 / 2];
+    const gx = guideLine(page, "x");
+    const gy = guideLine(page, "y");
     let pos: [number, number] = [dx, dy];
     el.setPointerCapture(e.pointerId);
-    el.onpointermove = (ev) => setLive((pos = [halfMm(dx + (ev.clientX - x0) / k1), halfMm(dy + (ev.clientY - y0) / k1)]));
+    el.onpointermove = (ev) => {
+      let nx = halfMm(dx + (ev.clientX - x0) / k1 / z);
+      let ny = halfMm(dy + (ev.clientY - y0) / k1 / z);
+      // Guías: a menos de SNAP mm del centro de la hoja, el bloque se pega al centro y se ve la línea
+      const snapX = Math.abs(cx + nx * z - mx) < SNAP;
+      const snapY = Math.abs(cy + ny * z - my) < SNAP;
+      if (snapX) nx = (mx - cx) / z;
+      if (snapY) ny = (my - cy) / z;
+      gx.hidden = !snapX;
+      gy.hidden = !snapY;
+      setLive((pos = [nx, ny]));
+    };
     el.onpointerup = el.onpointercancel = (ev) => {
       el.onpointermove = el.onpointerup = el.onpointercancel = null;
+      gx.remove();
+      gy.remove();
       setLive(null);
       if (pos[0] !== dx || pos[1] !== dy) edit.drop(k, ...pos);
       // Clic sin arrastrar sobre un texto: a escribir ahí mismo
