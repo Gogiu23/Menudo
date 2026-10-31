@@ -1320,7 +1320,7 @@ const INSTALL_KEY = "menudo:install-dismissed";
 
 // PWA: el service worker se registra en cuanto carga la app, y beforeinstallprompt (llega una sola vez y pronto,
 // a menudo con la pantalla de acceso aún delante) se guarda aquí para que el aviso lo encuentre cuando se monte
-let installEvent: InstallEvent | null = null;
+let installEvent: InstallEvent | null = (window as Window & { __installEvent?: InstallEvent }).__installEvent ?? null;
 const installSubs = new Set<() => void>();
 const setInstallEvent = (e: InstallEvent | null) => {
   installEvent = e;
@@ -1337,9 +1337,10 @@ const onInstallEvent = (f: () => void) => {
   return () => installSubs.delete(f);
 };
 
+// Cerrar el aviso lo calla 7 días (guarda la hora; el antiguo "1" cuenta como caducado)
 function isDismissed() {
   try {
-    return !!localStorage.getItem(INSTALL_KEY);
+    return Date.now() - Number(localStorage.getItem(INSTALL_KEY)) < 7 * 24 * 60 * 60 * 1000;
   } catch {
     return false;
   }
@@ -1350,18 +1351,22 @@ function InstallPrompt() {
   const t = useT();
   const event = useSyncExternalStore(onInstallEvent, () => installEvent);
   const [hidden, setHidden] = useState(isDismissed);
-  const [iosHelp, setIosHelp] = useState(() => {
+  // Sin aviso del navegador (iPhone/iPad y Safari en Mac), la tarjeta explica cómo instalar a mano
+  const [help, setHelp] = useState<"ios" | "mac" | null>(() => {
+    const ua = navigator.userAgent;
     const standalone = matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone;
-    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    return ios && !standalone && !isDismissed();
+    if (standalone || isDismissed()) return null;
+    if (/iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) return "ios";
+    if (/Macintosh/.test(ua) && /Version\/(1[7-9]|[2-9]\d)[\d.]* Safari/.test(ua)) return "mac"; // Safari 17+: Añadir al Dock
+    return null;
   });
 
   const dismiss = () => {
     try {
-      localStorage.setItem(INSTALL_KEY, "1");
+      localStorage.setItem(INSTALL_KEY, String(Date.now()));
     } catch {}
     setHidden(true);
-    setIosHelp(false);
+    setHelp(null);
   };
 
   const install = async () => {
@@ -1371,7 +1376,7 @@ function InstallPrompt() {
     setInstallEvent(null); // prompt() solo vale una vez
   };
 
-  if ((!event || hidden) && !iosHelp) return null;
+  if ((!event || hidden) && !help) return null;
   return (
     <aside
       aria-label={t.install}
@@ -1388,6 +1393,8 @@ function InstallPrompt() {
               {t.installBtn}
             </button>
           </>
+        ) : help === "mac" ? (
+          <p className="text-sm text-ink/70">{t.macHelp}</p>
         ) : (
           <p className="text-sm text-ink/70">
             {t.iosTap} <Icon d={ICONS.share} className="inline size-4 -translate-y-0.5" /> <b>{t.iosShare}</b>

@@ -39,6 +39,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="it"
       className={`${fonts} h-full antialiased`}
     >
+      <head>
+        {/* beforeinstallprompt llega una sola vez y puede hacerlo antes de que cargue el editor (va en un chunk aparte):
+            se recoge aquí, lo primero, y el aviso de instalación lo lee de window.__installEvent (Editor.tsx) */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: 'addEventListener("beforeinstallprompt",function(e){e.preventDefault();window.__installEvent=e});',
+          }}
+        />
+      </head>
       <body className="flex min-h-full flex-col font-sans">{children}</body>
     </html>
   );
