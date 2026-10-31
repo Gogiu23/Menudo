@@ -3,8 +3,8 @@ import type { NextRequest } from "next/server";
 // Formulario «Contactar»: el correo sale del servidor con Resend (integración de Vercel, RESEND_API_KEY).
 // El destinatario solo vive aquí: nunca llega al navegador
 const TO = "dominicigiuliano@bookdeundes.com";
-// Sin dominio verificado en Resend, solo se puede enviar desde su remitente de pruebas
-const FROM = process.env.CONTACT_FROM ?? "Menudo <onboarding@resend.dev>";
+// Remitente en el dominio verificado en Resend (RESEND_EMAIL_DOMAIN, lo pone la integración)
+const FROM = `Menudo <menudo@${process.env.RESEND_EMAIL_DOMAIN}>`;
 
 // ponytail: límite por IP en memoria de la instancia (Fluid Compute la reutiliza); se reinicia con cada
 // instancia nueva. Si llega spam de verdad, pasar a Vercel Firewall (rate limiting) o a un KV
