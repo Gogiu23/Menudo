@@ -129,3 +129,10 @@ input[type="range"] {
     translate: none;
   }
 }
+
+/* Cambio de tema: sin el fundido por defecto; el estado nuevo se recorta en un círculo que crece (toggleTheme) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}

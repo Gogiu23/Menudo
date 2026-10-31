@@ -1445,11 +1445,26 @@ export default function Editor() {
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
-  const toggleTheme = () => {
-    setDark(!dark);
+  // El tema nuevo se abre en círculo desde el botón (View Transitions); sin soporte o con animaciones reducidas, cambia sin más
+  const toggleTheme = (e: React.MouseEvent<HTMLElement>) => {
+    const next = !dark;
     try {
-      localStorage.setItem(THEME_KEY, dark ? "light" : "dark");
+      localStorage.setItem(THEME_KEY, next ? "dark" : "light");
     } catch {}
+    const apply = () => {
+      flushSync(() => setDark(next));
+      document.documentElement.dataset.theme = next ? "dark" : "light"; // ya, para la captura del estado nuevo
+    };
+    if (!document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return apply();
+    const b = e.currentTarget.getBoundingClientRect();
+    const [x, y] = [b.left + b.width / 2, b.top + b.height / 2];
+    const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    document.startViewTransition(apply).ready.then(() =>
+      document.documentElement.animate(
+        { clipPath: [`circle(0 at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+        { duration: 550, easing: "cubic-bezier(0.22, 1, 0.36, 1)", pseudoElement: "::view-transition-new(root)" },
+      ),
+    );
   };
 
   // Panel lateral de escritorio: qué sección está abierta y cuándo se esconde
@@ -1685,12 +1700,12 @@ export default function Editor() {
         <header className="shrink-0 border-b border-laguna/60 bg-surface pt-[env(safe-area-inset-top)]">
           <div className="flex h-12 items-center gap-2 px-3 md:gap-3 md:px-4">
             <Brand />
-            <p className="min-w-0 flex-1 truncate text-xs text-ink/60 md:flex-none" aria-live="polite">
+            <p className="min-w-0 flex-1 truncate text-xs text-ink/60" aria-live="polite">
               {status}
             </p>
 
             {/* Pestañas de escritorio */}
-            <nav className="hidden flex-1 justify-center gap-1 md:flex" aria-label={t.sections}>
+            <nav className="hidden gap-1 border-r border-laguna/60 pr-2 md:flex md:pr-3" aria-label={t.sections}>
               {(
                 [
                   { label: t.menu, icon: ICONS.edit, target: "edit", on: tab !== "archive" },
