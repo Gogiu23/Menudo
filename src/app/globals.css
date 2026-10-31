@@ -164,18 +164,23 @@ input[type="range"] {
 }
 .dialog::backdrop {
   background: rgb(14 26 43 / 0);
+  -webkit-backdrop-filter: blur(0);
   backdrop-filter: blur(0);
   transition:
     background 250ms,
+    -webkit-backdrop-filter 250ms,
     backdrop-filter 250ms,
     overlay 250ms allow-discrete,
     display 250ms allow-discrete;
 }
+/* Lo de atrás se difumina bien (10 px) con un velo ligero, para que el desenfoque se note */
 .dialog[open]::backdrop {
-  background: rgb(14 26 43 / 0.45);
-  backdrop-filter: blur(4px);
+  background: rgb(14 26 43 / 0.25);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   @starting-style {
     background: rgb(14 26 43 / 0);
+    -webkit-backdrop-filter: blur(0);
     backdrop-filter: blur(0);
   }
 }
