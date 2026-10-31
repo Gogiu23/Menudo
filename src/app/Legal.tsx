@@ -6,7 +6,6 @@ import type { Lang } from "./i18n";
 
 // Textos legales de /privacy y /terms, en el idioma elegido en la app (menudo:lang).
 // Describen lo que hace el código: todo se guarda en el navegador; al servidor solo llegan las búsquedas de imágenes
-export const CONTACT = "mailto:dominicigiuliano@bookdeundes.com?subject=Menudo";
 const UPDATED = { it: "Ultimo aggiornamento: 1 novembre 2026", es: "Última actualización: 1 de noviembre de 2026" };
 
 type Doc = { title: string; sections: [string, string[]][] };

@@ -4,7 +4,6 @@ import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState
 import { flushSync } from "react-dom";
 import { formatPrice } from "./price";
 import { LangCtx, T, useT, type Dict, type Lang } from "./i18n";
-import { CONTACT } from "./Legal";
 
 type Item = { name: string; desc: string; price: string };
 type Section = { title: string; items: Item[] };
@@ -1135,9 +1134,90 @@ async function hashPassword(email: string, pw: string) {
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Pie del archivo (pantalla de inicio): nombre, textos legales y contacto con el desarrollador
-function SiteFooter() {
+// «Contactar»: <dialog> nativo (foco atrapado, Esc, fondo inerte) que entra y sale animado (.dialog en globals.css).
+// El correo lo envía /api/contact: el destinatario no aparece en la página
+function ContactDialog({ open, onClose, email }: { open: boolean; onClose: () => void; email: string }) {
   const t = useT();
+  const ref = useRef<HTMLDialogElement>(null);
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "error" | "limit">("idle");
+  useEffect(() => {
+    const d = ref.current!;
+    if (open && !d.open) {
+      setState("idle");
+      d.showModal();
+    } else if (!open && d.open) d.close();
+  }, [open]);
+
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setState("sending");
+    const data = Object.fromEntries(new FormData(e.currentTarget));
+    try {
+      const r = await fetch("/api/contact", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      setState(r.ok ? "sent" : r.status === 429 ? "limit" : "error");
+    } catch {
+      setState("error");
+    }
+  };
+
+  return (
+    <dialog
+      ref={ref}
+      aria-labelledby="contact-title"
+      onClose={onClose}
+      // Clic en el fondo oscuro (fuera de la tarjeta): cerrar
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      className="dialog m-auto w-[min(28rem,calc(100%-2rem))] rounded-xl bg-surface p-0 text-ink shadow-[0_24px_60px_-12px_rgb(14_26_43/0.5)] ring-1 ring-laguna/60"
+    >
+      <div className="p-6">
+        <div className="flex items-start gap-3">
+          <h2 id="contact-title" className="flex-1 text-[20px] leading-tight font-semibold">
+            {t.contactTitle}
+          </h2>
+          <button className={`${iconBtn} -mt-2 -mr-2`} aria-label={t.close} onClick={onClose}>
+            <Icon d={ICONS.close} />
+          </button>
+        </div>
+        {state === "sent" ? (
+          <div className="mt-4 space-y-5">
+            <p className="text-ink/80">{t.contactSent}</p>
+            <button className={`${primary} w-full`} onClick={onClose}>
+              {t.close}
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="mt-2 space-y-4">
+            <p className="text-sm text-ink/65">{t.contactIntro}</p>
+            <Field label={t.contactName}>
+              <input className={input} name="name" autoComplete="name" maxLength={100} />
+            </Field>
+            <Field label={t.email}>
+              <input className={input} name="email" type="email" required autoComplete="email" defaultValue={email} maxLength={200} />
+            </Field>
+            <Field label={t.contactMessage}>
+              <textarea className={`${input} min-h-32 resize-y`} name="message" required minLength={5} maxLength={5000} />
+            </Field>
+            {/* Trampa para bots: fuera de la vista y del teclado */}
+            <input name="website" tabIndex={-1} autoComplete="off" aria-hidden className="pointer-events-none absolute size-px opacity-0" />
+            {(state === "error" || state === "limit") && (
+              <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">
+                {state === "limit" ? t.contactLimit : t.contactError}
+              </p>
+            )}
+            <button className={`${primary} w-full`} disabled={state === "sending"}>
+              {state === "sending" ? t.contactSending : t.contactSend}
+            </button>
+          </form>
+        )}
+      </div>
+    </dialog>
+  );
+}
+
+// Pie del archivo (pantalla de inicio): nombre, textos legales y contacto con el desarrollador
+function SiteFooter({ email }: { email: string }) {
+  const t = useT();
+  const [contact, setContact] = useState(false);
   const link = `rounded text-ink/70 underline-offset-4 hover:text-ink hover:underline ${focus}`;
   return (
     <footer className="mx-auto mt-auto w-full max-w-5xl border-t border-laguna/60 pt-6 pb-2 text-sm">
@@ -1153,10 +1233,11 @@ function SiteFooter() {
           <a className={link} href="/terms">
             {t.terms}
           </a>
-          <a className={link} href={CONTACT}>
+          <button className={link} onClick={() => setContact(true)}>
             {t.contact}
-          </a>
+          </button>
         </nav>
+        <ContactDialog open={contact} onClose={() => setContact(false)} email={email} />
       </div>
       <p className="mt-6 text-xs text-ink/50">{t.rights(new Date().getFullYear())}</p>
     </footer>
@@ -1881,7 +1962,7 @@ export default function Editor() {
                 </ul>
               )}
             </div>
-            <SiteFooter />
+            <SiteFooter email={user} />
           </main>
         ) : (
           <div className="flex flex-1 flex-col md:min-h-0 md:flex-row">

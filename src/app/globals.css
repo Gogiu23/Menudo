@@ -136,3 +136,52 @@ input[type="range"] {
   animation: none;
   mix-blend-mode: normal;
 }
+
+/* Diálogos (Contactar): entran subiendo y creciendo un poco sobre un fondo que se oscurece y desenfoca; al cerrar,
+   lo inverso. @starting-style da el estado de partida y allow-discrete deja animar también la salida */
+.dialog {
+  opacity: 0;
+  translate: 0 16px;
+  scale: 0.97;
+  transition:
+    opacity 200ms ease-in,
+    translate 200ms ease-in,
+    scale 200ms ease-in,
+    overlay 200ms allow-discrete,
+    display 200ms allow-discrete;
+}
+.dialog[open] {
+  opacity: 1;
+  translate: 0 0;
+  scale: 1;
+  transition-duration: 320ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  @starting-style {
+    opacity: 0;
+    translate: 0 16px;
+    scale: 0.97;
+  }
+}
+.dialog::backdrop {
+  background: rgb(14 26 43 / 0);
+  backdrop-filter: blur(0);
+  transition:
+    background 250ms,
+    backdrop-filter 250ms,
+    overlay 250ms allow-discrete,
+    display 250ms allow-discrete;
+}
+.dialog[open]::backdrop {
+  background: rgb(14 26 43 / 0.45);
+  backdrop-filter: blur(4px);
+  @starting-style {
+    background: rgb(14 26 43 / 0);
+    backdrop-filter: blur(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialog,
+  .dialog::backdrop {
+    transition: none;
+  }
+}
