@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import { formatPrice } from "./price";
 import { LangCtx, T, useT, type Dict, type Lang } from "./i18n";
@@ -8,8 +8,10 @@ import { LangCtx, T, useT, type Dict, type Lang } from "./i18n";
 type Item = { name: string; desc: string; price: string };
 type Section = { title: string; items: Item[] };
 type Frame = "none" | "line" | "double";
-// Desplazamiento (mm), letra y color propios de un texto retocado en escritorio
-type Look = { dx?: number; dy?: number; font?: string; color?: string };
+// Desplazamiento (mm), letra y color propios de un texto retocado en escritorio; size: tamaño en pt de un campo
+// de texto (clave: su ruta, p. ej. "sections.0.items.1.name"), antes del «Tamaño del texto» general
+type Look = { dx?: number; dy?: number; font?: string; color?: string; size?: number; align?: Align };
+type Align = "left" | "center" | "right";
 // PNG decorativo: posición y ancho en mm sobre la hoja
 type Sticker = { src: string; x: number; y: number; w: number };
 type Menu = {
@@ -67,6 +69,22 @@ const fontVar = (f: string) => `var(--font-${f}), serif`;
 const STORAGE_KEY = "menudo:menu";
 const LANG_KEY = "menudo:lang";
 const PIN_KEY = "menudo:pinned";
+const THEME_KEY = "menudo:theme";
+
+// Escritorio (≥ 768 px): panel lateral con barra de iconos; más estrecho, secciones plegables
+const WIDE = "(min-width: 768px)";
+const isWide = () => matchMedia(WIDE).matches;
+const onWideChange = (cb: () => void) => {
+  const q = matchMedia(WIDE);
+  q.addEventListener("change", cb);
+  return () => q.removeEventListener("change", cb);
+};
+
+// Con el cursor en un campo del panel no se esconde al salir con el ratón (p. ej. se está escribiendo)
+const typingIn = (el: Element | null) => {
+  const a = document.activeElement;
+  return !!a && !!el?.contains(a) && a.matches("input,select,textarea");
+};
 
 const EMPTY: Menu = {
   name: "Il Mio Ristorante",
@@ -218,28 +236,37 @@ type Edit = {
   drop: (k: string, dx: number, dy: number) => void;
   resize: (i: number, w: number) => void;
   text: (path: (string | number)[], v: string) => void;
+  focusText: (k: string, el: HTMLElement) => void;
 };
 const EditCtx = createContext<Edit | null>(null);
+const LooksCtx = createContext<Record<string, Look>>({});
 
 // Texto de la carta que se escribe directamente en la vista previa de escritorio. No controlado mientras tiene
 // el foco (si React reescribiera el nodo, el cursor saltaría); format: cómo se ve sin foco (p. ej. el precio con €)
 function Text({ path, value, format }: { path: (string | number)[]; value: string; format?: (v: string) => string }) {
   const edit = useContext(EditCtx);
+  const k = path.join(".");
+  const size = useContext(LooksCtx)[k]?.size;
   const ref = useRef<HTMLSpanElement>(null);
   const show = format ? format(value) : value;
+  const style = size ? { fontSize: `${size}pt` } : undefined;
   useLayoutEffect(() => {
     const el = ref.current;
     if (el && document.activeElement !== el) el.textContent = show;
   });
-  if (!edit) return show;
+  if (!edit) return style ? <span style={style}>{show}</span> : show;
   return (
     <span
       ref={ref}
       data-text
+      style={style}
       contentEditable="plaintext-only"
       spellCheck={false}
       className="cursor-text outline-none select-text empty:inline-block empty:min-w-[2ch] focus:bg-laguna/25"
-      onFocus={(e) => format && (e.currentTarget.textContent = value)}
+      onFocus={(e) => {
+        if (format) e.currentTarget.textContent = value;
+        edit.focusText(k, e.currentTarget);
+      }}
       onBlur={(e) => (e.currentTarget.textContent = show)}
       onInput={(e) => edit.text(path, e.currentTarget.textContent ?? "")}
       onKeyDown={(e) => {
@@ -263,6 +290,11 @@ function caretAt(x: number, y: number) {
 }
 
 const halfMm = (v: number) => Math.round(v * 2) / 2;
+const halfPt = halfMm;
+// Tamaños de la lista, como en Word
+const PT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
+// Zoom CSS acumulado (Chrome, Firefox, Safari 18.2+); sin soporte, 1
+const cssZoom = (el: Element) => (el as Element & { currentCSSZoom?: number }).currentCSSZoom ?? 1;
 
 // px de pantalla por mm de hoja, sea cual sea el zoom de la vista previa o la escala de la copia
 function pxPerMm(el: Element) {
@@ -315,6 +347,7 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
         {
           ...style,
           translate: dx || dy ? `${dx}mm ${dy}mm` : undefined,
+          textAlign: look?.align,
           ...(look?.font && { fontFamily: fontVar(look.font), "--font-display": fontVar(look.font), "--font-sans": fontVar(look.font) }),
           ...(look?.color && { color: look.color, "--color-ink": look.color }),
         } as React.CSSProperties
@@ -361,6 +394,9 @@ function Tile({ color, k = 1, className = "", style }: { color: string; k?: numb
 const pageVars = (m: Menu) =>
   ({ "--font-display": fontVar(m.font), "--font-sans": fontVar(m.bodyFont), "--color-ink": m.ink }) as React.CSSProperties;
 
+const BAR_POS: Record<Align, string> = { left: "", center: "mx-auto", right: "ml-auto" };
+const JUSTIFY: Record<Align, string> = { left: "justify-start", center: "justify-center", right: "justify-end" };
+
 const decoColor = (m: Menu) => (isWhite(m.accent) ? "rgb(23 48 51 / 0.25)" : m.accent);
 const frameBorder = (m: Menu) => (m.frame === "double" ? `1.6mm double ${decoColor(m)}` : `0.5mm solid ${decoColor(m)}`);
 
@@ -394,6 +430,7 @@ function Masthead({ m, size, p = "" }: { m: Menu; size: "cover" | "page"; p?: st
 
 function CoverPage({ m }: { m: Menu }) {
   return (
+    <LooksCtx value={m.looks}>
     <div data-page className="relative grid h-[var(--page-h,297mm)] w-[var(--page-w,210mm)] place-items-center overflow-hidden bg-white font-sans text-ink" style={pageVars(m)}>
       {m.cover ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -408,6 +445,7 @@ function CoverPage({ m }: { m: Menu }) {
         </div>
       </div>
     </div>
+    </LooksCtx>
   );
 }
 
@@ -415,12 +453,15 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
   const t = useT();
   const contacts = (["phone", "email", "web"] as const).filter((f) => m[f]);
   const total = m.priceMode === "total";
-  const center = m.align === "center";
-  const dishCenter = m.dishAlign === "center";
   const bar = decoColor(m);
   const mv = (k: string) => ({ k, look: m.looks[k] });
   const framed = m.frame !== "none";
+  const titleAlign = (i: number): Align => m.looks[`s${i}`]?.align ?? m.align;
+  const dishAlign = (i: number): Align => m.looks[`s${i}`]?.align ?? m.dishAlign;
+  const totalAlign = m.looks.total?.align ?? "center";
+  const footerAlign = m.looks.footer?.align ?? "center";
   return (
+    <LooksCtx value={m.looks}>
     <div data-page className="relative flex h-[var(--page-h,297mm)] w-[var(--page-w,210mm)] flex-col overflow-hidden bg-white font-sans text-ink" style={pageVars(m)}>
       {m.tiles && <Tile color={m.accent} style={{ height: "10mm" }} />}
       {framed && (
@@ -455,19 +496,19 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
           {m.sections.map((s, i) => (
             // ponytail: la clave es la posición; al reordenar secciones, el retoque se queda en el hueco. Ids por sección si molesta.
             <Movable key={i} {...mv(`s${i}`)} className="break-inside-avoid">
-              <h2 className={`font-display text-[7.5mm] italic ${center ? "text-center" : ""}`}>
+              <h2 className="font-display text-[7.5mm] italic" style={{ textAlign: titleAlign(i) }}>
                 <Text path={["sections", i, "title"]} value={s.title} />
               </h2>
-              <div className={`mt-[1.5mm] mb-[5mm] h-[0.9mm] w-[14mm] rounded-full ${center ? "mx-auto" : ""}`} style={{ background: bar }} />
+              <div className={`mt-[1.5mm] mb-[5mm] h-[0.9mm] w-[14mm] rounded-full ${BAR_POS[titleAlign(i)]}`} style={{ background: bar }} />
               {s.items.map((it, j) => (
-                <div key={j} className={`mb-[3.5mm] last:mb-0 ${dishCenter ? "text-center" : ""}`} style={dishCenter ? undefined : { paddingLeft: `${m.indent}mm` }}>
-                  {/* Centrados, los puntos no se estiran: un trazo corto entre plato y precio */}
-                  <div className={`flex items-baseline gap-[2mm] text-[4.4mm] font-semibold ${dishCenter ? "flex-wrap justify-center" : ""}`}>
+                <div key={j} className="mb-[3.5mm] last:mb-0" style={dishAlign(i) === "left" ? { paddingLeft: `${m.indent}mm` } : { textAlign: dishAlign(i) }}>
+                  {/* Centrados o a la derecha, los puntos no se estiran: un trazo corto entre plato y precio */}
+                  <div className={`flex items-baseline gap-[2mm] text-[4.4mm] font-semibold ${dishAlign(i) === "left" ? "" : `flex-wrap ${JUSTIFY[dishAlign(i)]}`}`}>
                     <span>
                       <Text path={["sections", i, "items", j, "name"]} value={it.name} />
                     </span>
-                    {!(dishCenter && total) && (
-                      <span className={`translate-y-[-0.8mm] ${dishCenter ? "w-[6mm]" : "flex-1"} ${m.dots ? "border-b-[0.6mm] border-dotted border-ink/55" : ""}`} />
+                    {!(dishAlign(i) !== "left" && total) && (
+                      <span className={`translate-y-[-0.8mm] ${dishAlign(i) === "left" ? "flex-1" : "w-[6mm]"} ${m.dots ? "border-b-[0.6mm] border-dotted border-ink/55" : ""}`} />
                     )}
                     {!total && (
                       <span className="tabular-nums">
@@ -488,7 +529,7 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
 
         {total && m.totalPrice && (
           <Movable {...mv("total")} className="mb-[7mm] text-center" style={{ zoom: m.textSize }}>
-            <div className="mx-auto mb-[4mm] h-[0.9mm] w-[14mm] rounded-full" style={{ background: bar }} />
+            <div className={`mb-[4mm] h-[0.9mm] w-[14mm] rounded-full ${BAR_POS[totalAlign]}`} style={{ background: bar }} />
             {m.totalLabel && (
               <p className="font-display text-[5.5mm] italic">
                 <Text path={["totalLabel"]} value={m.totalLabel} />
@@ -513,7 +554,7 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
               </p>
             )}
             {contacts.length > 0 && (
-              <p className="flex flex-wrap justify-center gap-x-[6mm]">
+              <p className={`flex flex-wrap gap-x-[6mm] ${JUSTIFY[footerAlign]}`}>
                 {contacts.map((f) => (
                   <span key={f}>
                     <Text path={[f]} value={m[f]} />
@@ -531,6 +572,7 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
         <StickerImg key={i} s={s} i={i} />
       ))}
     </div>
+    </LooksCtx>
   );
 }
 
@@ -620,8 +662,10 @@ function Preview({ layout, scale, children }: { layout: Layout; scale: number; c
     return () => ro.disconnect();
   }, [sheetW, sheetH]);
   return (
-    // justify-center-safe: con zoom, la hoja se desplaza en vez de cortarse por la izquierda
-    <div ref={ref} className="flex w-full justify-center-safe overflow-x-auto">
+    // justify-center-safe: con zoom, la hoja se desplaza en vez de cortarse por la izquierda.
+    // shrink-0: con overflow-x-auto la caja podía encogerse dentro de la columna y hacer ella el scroll vertical,
+    // con su barra justo bajo las bolas del zoom. Así mide lo que la hoja y en vertical se desplaza el <main>
+    <div ref={ref} className="flex w-full shrink-0 justify-center-safe overflow-x-auto overflow-y-hidden">
       <div className="w-fit shadow-[0_18px_40px_-18px_rgb(23_48_51/0.45)]" style={{ zoom: fit * scale }}>
         {children}
       </div>
@@ -656,6 +700,15 @@ const ICONS = {
   share: "M12 3v12M8 7l4-4 4 4M7 11H5v10h14V11h-2",
   close: "M6 6l12 12M18 6L6 18",
   pin: "M12 17v5M9 3h6l-1 7 4 4H6l4-4-1-7z",
+  sun: "M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  moon: "M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z",
+  logout: "M9 4H5v16h4M14 8l4 4-4 4M18 12H8",
+  reset: "M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4",
+  zoomIn: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5M8 11h6M11 8v6",
+  zoomOut: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5M8 11h6",
+  alignLeft: "M4 6h16M4 10h10M4 14h16M4 18h10",
+  alignCenter: "M4 6h16M7 10h10M4 14h16M7 18h10",
+  alignRight: "M4 6h16M10 10h10M4 14h16M10 18h10",
   // Secciones del panel lateral
   venue: "M3 10l2-6h14l2 6M4 10v10h16V10M3 10h18M9 20v-6h6v6",
   cover: "M6 3h12v18H6zM9 8h6",
@@ -675,11 +728,11 @@ function Icon({ d, className = "size-5" }: { d: string; className?: string }) {
 }
 
 const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink";
-const input = `w-full rounded-lg border border-laguna bg-white px-3 py-2.5 text-base placeholder:text-ink/40 md:py-2 md:text-[15px] focus:border-mare focus:outline-2 focus:outline-offset-0 focus:outline-mare/40`;
-const primary = `inline-flex items-center justify-center gap-2 rounded-lg bg-mare px-5 py-2.5 font-semibold text-ink transition-colors hover:bg-laguna ${focus}`;
+const input = `w-full rounded-lg border border-laguna bg-surface px-3 py-2.5 text-base placeholder:text-ink/40 md:py-2 md:text-[0.95em] focus:border-mare focus:outline-2 focus:outline-offset-0 focus:outline-mare/40`;
+const primary = `inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 font-semibold text-white lift hover:brightness-110 ${focus}`;
 // relative: contiene el input sr-only (absolute) del botón de subir imagen
-const secondary = `relative inline-flex cursor-pointer items-center gap-2 rounded-lg border border-mare bg-white px-3 py-2 text-sm font-semibold transition-colors hover:bg-laguna/25 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink`;
-const iconBtn = `grid size-11 shrink-0 place-items-center rounded-lg text-ink/70 transition-colors hover:bg-laguna/30 hover:text-ink disabled:pointer-events-none disabled:opacity-25 md:size-9 ${focus}`;
+const secondary = `relative inline-flex cursor-pointer items-center gap-2 rounded-lg border border-mare bg-surface px-3 py-2 text-sm font-semibold lift hover:bg-laguna/25 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink`;
+const iconBtn = `grid size-11 shrink-0 place-items-center rounded-lg text-ink/70 lift hover:bg-laguna/30 hover:text-ink disabled:pointer-events-none disabled:opacity-25 md:size-9 ${focus}`;
 const colorSwatch =
   "size-11 cursor-pointer appearance-none rounded-full border-0 bg-transparent p-0 ring-1 ring-ink/15 ring-offset-2 [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0";
 
@@ -722,7 +775,7 @@ function Segmented<T extends string>(props: { name: string; value: T; options: [
         <label
           key={v}
           className={`relative grid cursor-pointer place-items-center rounded-md py-2 text-center text-sm transition-colors focus-within:outline-2 focus-within:outline-ink ${
-            value === v ? "bg-white font-semibold shadow-sm" : "text-ink/70"
+            value === v ? "bg-surface font-semibold shadow-sm" : "text-ink/70"
           }`}
         >
           <input type="radio" name={name} className="sr-only" checked={value === v} onChange={() => onChange(v)} />
@@ -733,15 +786,79 @@ function Segmented<T extends string>(props: { name: string; value: T; options: [
   );
 }
 
-function FontSelect({ value, onChange, className = input }: { value: string; onChange: (v: string) => void; className?: string }) {
+function FontSelect(props: { value: string; onChange: (v: string) => void; className?: string; label?: string }) {
+  const { value, onChange, className = input, label } = props;
   return (
-    <select className={className} value={value} onChange={(e) => onChange(e.target.value)}>
+    <select className={className} aria-label={label} title={label} value={value} onChange={(e) => onChange(e.target.value)}>
       {FONTS.map(([id, label]) => (
         <option key={id} value={id} style={{ fontFamily: fontVar(id) }}>
           {label}
         </option>
       ))}
     </select>
+  );
+}
+
+// Tamaño en pt como en Word: se escribe el número (se aplica con Intro o al salir) o se elige de la lista;
+// ↑/↓ pasan al tamaño siguiente de la lista
+function PtSize({ value, onChange, label }: { value: number; onChange: (pt: number) => void; label: string }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [list, setList] = useState(false);
+  const commit = () => {
+    const n = Number(draft?.replace(",", "."));
+    if (draft !== null && n >= 4 && n <= 200) onChange(Math.round(n * 2) / 2);
+    setDraft(null);
+  };
+  const step = (d: 1 | -1) => {
+    const next = d > 0 ? PT_SIZES.find((v) => v > value) : PT_SIZES.findLast((v) => v < value);
+    if (next) onChange(next);
+    setDraft(null);
+  };
+  return (
+    <div className="relative flex h-8 items-center rounded-md bg-surface" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setList(false)}>
+      <input
+        inputMode="decimal"
+        aria-label={label}
+        title={label}
+        className="h-full w-10 rounded-l-md bg-transparent pl-2 text-sm tabular-nums outline-none focus:bg-laguna/15"
+        value={draft ?? String(value).replace(".", ",")}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+            step(e.key === "ArrowUp" ? 1 : -1);
+          }
+        }}
+      />
+      <button
+        className={`grid h-full w-6 place-items-center rounded-r-md text-ink/60 hover:bg-laguna/25 hover:text-ink ${focus}`}
+        aria-label={label}
+        aria-expanded={list}
+        onClick={() => setList(!list)}
+      >
+        <Icon d={ICONS.down} className="size-3.5" />
+      </button>
+      {list && (
+        <ul role="listbox" aria-label={label} className="absolute top-9 left-0 z-20 max-h-72 w-full overflow-y-auto rounded-lg bg-surface py-1 shadow-lg ring-1 ring-laguna/60">
+          {PT_SIZES.map((v) => (
+            <li key={v} role="option" aria-selected={v === value}>
+              <button
+                className={`w-full px-3 py-1 text-left text-sm tabular-nums hover:bg-laguna/25 ${v === value ? "font-semibold text-mare" : ""} ${focus}`}
+                onClick={() => {
+                  onChange(v);
+                  setList(false);
+                }}
+              >
+                {v}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -774,27 +891,72 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-// Sección plegable del panel lateral: <details> nativo, se abre al hacer clic en el título
+// Secciones del panel lateral. Móvil: plegables una debajo de otra (<details>). Escritorio: un botón en la barra
+// de iconos y su contenido sale hacia la derecha, encima de la vista previa (Editor decide cuándo se esconde)
+const SideCtx = createContext<{ wide: boolean; open: string | null; toggle: (k: string) => void }>({ wide: false, open: null, toggle: () => {} });
+
+function RailButton({ icon, label, on, ...rest }: { icon: string; label: string; on: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      {...rest}
+      className={`group/rail flex w-full shrink-0 flex-col items-center gap-1 px-1 py-1.5 text-[10px] leading-tight font-medium transition-colors ${on ? "text-ink" : "text-ink/65 hover:text-ink"} ${focus}`}
+    >
+      <span className={`grid size-9 place-items-center rounded-lg lift-on-group ${on ? "bg-brand text-white" : "bg-laguna/25 text-mare group-hover/rail:bg-laguna/40"}`}>
+        <Icon d={icon} className="size-[18px]" />
+      </span>
+      {label}
+    </button>
+  );
+}
+
 function Group(props: { title: string; hint?: string; icon: string; children: React.ReactNode }) {
   const { title, hint, icon, children } = props;
+  const side = useContext(SideCtx);
+  const t = useT();
+  const body = (
+    <>
+      {hint && <p className="text-sm text-ink/65">{hint}</p>}
+      {children}
+    </>
+  );
+  if (!side.wide)
+    return (
+      <details className="group border-b border-laguna/50">
+        <summary className={`flex cursor-pointer list-none items-center gap-3 px-5 py-2.5 transition-colors hover:bg-laguna/15 [&::-webkit-details-marker]:hidden ${focus}`}>
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-laguna/25 text-mare transition-colors group-open:bg-brand group-open:text-white">
+            <Icon d={icon} className="size-[18px]" />
+          </span>
+          <h2 className="flex-1 font-display text-[17px] leading-tight font-semibold">{title}</h2>
+          <Icon d={ICONS.down} className="size-4 shrink-0 text-ink/50 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="space-y-4 px-5 pb-6">{body}</div>
+      </details>
+    );
+  const on = side.open === title;
   return (
-    <details className="group border-b border-laguna/50 md:group-[:not(.pinned):not(:hover):not(:has(:focus-visible))]/side:border-transparent">
-      <summary
-        title={title}
-        className={`flex cursor-pointer list-none items-center gap-3 px-5 py-3 transition-colors hover:bg-laguna/15 md:pl-3 [&::-webkit-details-marker]:hidden ${focus}`}
+    <>
+      <RailButton icon={icon} label={title} on={on} aria-expanded={on} onClick={() => side.toggle(title)} />
+      {/* absolute respecto al <aside>: se sale de la barra (que tiene su propio scroll) sin que esta lo recorte.
+          Siempre montada para animar también al cerrar: se desenrolla desde la barra (clip-path) al abrir y se
+          recoge hacia ella al cerrar, más rápido; cerrada queda invisible (ni se ve ni recibe el foco) */}
+      <section
+        aria-label={title}
+        aria-hidden={!on}
+        className={`absolute inset-y-0 left-[72px] z-30 w-[320px] overflow-y-auto border-r border-laguna/60 bg-surface shadow-[12px_0_40px_-12px_rgb(14_26_43/0.35)] transition-[opacity,translate,clip-path,visibility] motion-reduce:transition-none ${
+          on
+            ? "visible translate-x-0 opacity-100 [clip-path:inset(0_-60px_0_0)] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            : "invisible -translate-x-3 opacity-0 [clip-path:inset(0_100%_0_0)] duration-200 ease-in"
+        }`}
       >
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-laguna/25 text-mare transition-colors group-open:bg-mare group-open:text-white">
-          <Icon d={icon} className="size-5" />
-        </span>
-        <h2 className={`flex-1 font-display text-[20px] leading-tight font-semibold md:group-[:not(.pinned):not(:hover):not(:has(:focus-visible))]/side:opacity-0 md:transition-opacity md:duration-300`}>{title}</h2>
-        <Icon d={ICONS.down} className="size-4 shrink-0 text-ink/50 transition-transform group-open:rotate-180" />
-      </summary>
-      {/* Panel plegado (escritorio, sin fijar, sin ratón encima ni foco de teclado dentro): solo el icono */}
-      <div className="space-y-4 px-5 pb-6 md:group-[:not(.pinned):not(:hover):not(:has(:focus-visible))]/side:hidden">
-        {hint && <p className="text-sm text-ink/65">{hint}</p>}
-        {children}
-      </div>
-    </details>
+        <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-laguna/60 bg-surface py-1.5 pr-2 pl-5">
+          <h2 className="flex-1 font-display text-[15px] font-semibold">{title}</h2>
+          <button className={iconBtn} aria-label={t.close} onClick={() => side.toggle(title)}>
+            <Icon d={ICONS.close} />
+          </button>
+        </div>
+        <div className="space-y-4 px-5 py-4">{body}</div>
+      </section>
+    </>
   );
 }
 
@@ -803,7 +965,7 @@ function ImagePicker(props: { label: string; value: string; maxPx: number; type:
   const t = useT();
   return (
     <div className="flex items-center gap-4">
-      <div className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-dashed border-mare bg-laguna/15 text-mare">
+      <div className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed border-mare bg-laguna/15 text-mare">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         {value ? <img src={value} alt="" className="h-full w-full object-contain" /> : <Icon d={ICONS.image} className="size-7" />}
       </div>
@@ -933,15 +1095,26 @@ async function hashPassword(email: string, pw: string) {
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Marca de la app: el icono (src/app/icon.svg) y el nombre
+function Brand() {
+  return (
+    <p className="flex shrink-0 items-center gap-2 text-[17px] leading-none font-semibold tracking-tight">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/icon-192.png" alt="" className="size-7 rounded-md" />
+      Menudo
+    </p>
+  );
+}
+
 function LangToggle({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
   const t = T[lang];
   return (
-    <div role="group" aria-label={t.lang} className="flex shrink-0 gap-1 rounded-lg bg-laguna/30 p-1 text-sm">
+    <div role="group" aria-label={t.lang} className="flex shrink-0 gap-0.5 rounded-lg bg-laguna/30 p-0.5 text-xs">
       {(["it", "es"] as const).map((l) => (
         <button
           key={l}
           aria-pressed={lang === l}
-          className={`rounded-md px-2.5 py-1.5 uppercase ${focus} ${lang === l ? "bg-white font-semibold shadow-sm" : "text-ink/70"}`}
+          className={`rounded-md px-2 py-1 uppercase ${focus} ${lang === l ? "bg-surface font-semibold shadow-sm" : "text-ink/70"}`}
           onClick={() => onChange(l)}
         >
           {l}
@@ -991,16 +1164,15 @@ function Login({ onLogin, lang, onLang }: { onLogin: (email: string) => void; la
 
   return (
     <LangCtx value={lang}>
-      <div className="flex min-h-dvh flex-col bg-laguna/35">
-        <header className="bg-white pt-[env(safe-area-inset-top)]">
-          <Tile color="#68A7AD" k={0.42} style={{ height: 16 }} />
+      <div className="flex min-h-dvh flex-col canvas">
+        <header className="bg-surface pt-[env(safe-area-inset-top)]">
           <div className="flex items-center justify-between border-b border-laguna/60 px-5 py-3">
-            <p className="font-display text-[28px] leading-none font-semibold">Menudo</p>
+            <Brand />
             <LangToggle lang={lang} onChange={onLang} />
           </div>
         </header>
         <main className="grid flex-1 place-items-center px-4 py-8">
-          <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-laguna/60">
+          <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-xl bg-surface p-6 shadow-sm ring-1 ring-laguna/60">
             <h1 className="font-display text-[28px] leading-tight font-semibold">{title}</h1>
             {mode === "verify" ? (
               <>
@@ -1050,62 +1222,94 @@ function Login({ onLogin, lang, onLang }: { onLogin: (email: string) => void; la
           </form>
         </main>
       </div>
+      <InstallPrompt />
     </LangCtx>
   );
 }
 
 const ZOOMS = [1, 1.5, 2, 3, 4];
 
+// Zoom: dos bolas flotantes a la derecha de la vista previa. sticky dentro de la zona que se desplaza (y no fixed
+// respecto a la ventana): así quedan dentro de su caja y nunca encima de su barra de desplazamiento.
+// h-0 y -mb-5: no ocupan sitio ni suman el hueco entre la barra y la hoja
 function ZoomControl({ value, onChange }: { value: number; onChange: (z: number) => void }) {
   const t = useT();
   const i = ZOOMS.indexOf(value);
+  const ball = `grid size-11 place-items-center rounded-full bg-surface text-ink shadow-[0_8px_24px_-8px_rgb(14_26_43/0.45)] ring-1 ring-laguna/60 lift hover:text-mare disabled:pointer-events-none disabled:opacity-40 ${focus}`;
   return (
-    <div role="group" aria-label={t.zoom} className="flex items-center rounded-lg bg-laguna/30 p-1">
-      <button className={iconBtn} aria-label={t.zoomOut} disabled={i === 0} onClick={() => onChange(ZOOMS[i - 1])}>
-        <Icon d={ICONS.minus} />
-      </button>
-      <button className={`min-w-14 rounded-md px-1 py-1.5 text-sm font-semibold tabular-nums hover:bg-laguna/30 ${focus}`} title={t.zoomFit} onClick={() => onChange(1)}>
-        {value * 100}%
-      </button>
-      <button className={iconBtn} aria-label={t.zoomIn} disabled={i === ZOOMS.length - 1} onClick={() => onChange(ZOOMS[i + 1])}>
-        <Icon d={ICONS.plus} />
-      </button>
+    <div className="pointer-events-none sticky top-1/2 z-20 -mb-5 h-0">
+      <div data-toolbar role="group" aria-label={`${t.zoom} ${value * 100}%`} className="pointer-events-auto absolute right-0 flex -translate-y-1/2 flex-col gap-2">
+        <button className={ball} aria-label={`${t.zoomIn} (${value * 100}%)`} title={`${t.zoomIn} · ${value * 100}%`} disabled={i === ZOOMS.length - 1} onClick={() => onChange(ZOOMS[i + 1])}>
+          <Icon d={ICONS.zoomIn} />
+        </button>
+        <button className={ball} aria-label={`${t.zoomOut} (${value * 100}%)`} title={`${t.zoomOut} · ${value * 100}%`} disabled={i === 0} onClick={() => onChange(ZOOMS[i - 1])}>
+          <Icon d={ICONS.zoomOut} />
+        </button>
+      </div>
     </div>
   );
 }
 
-// Selector de formato compacto: dibujo de la hoja + nombre corto; el nombre completo en title/aria
+// Dibujo de la hoja con sus copias, para el selector de formato
+function SheetIcon({ l, on }: { l: Layout; on: boolean }) {
+  const s = SHEETS[l];
+  return (
+    <span
+      aria-hidden
+      className="grid shrink-0 gap-px rounded-[2px] border border-ink/50 bg-surface p-px"
+      style={{ width: s.w / 14, height: s.h / 14, gridTemplateColumns: `repeat(${s.cols}, 1fr)` }}
+    >
+      {Array.from({ length: s.n }, (_, i) => (
+        <span key={i} className={`rounded-[1px] ${on ? "bg-mare" : "bg-laguna/70"}`} />
+      ))}
+    </span>
+  );
+}
+
+// Selector de formato desplegable: botón con el dibujo y el nombre corto; la lista, con el nombre completo.
+// Se cierra al elegir, al hacer clic fuera (el foco sale) o con Esc
 function LayoutPicker({ value, onChange }: { value: Layout; onChange: (l: Layout) => void }) {
   const t = useT();
+  const [list, setList] = useState(false);
   return (
-    <fieldset className="flex gap-1 rounded-lg bg-laguna/30 p-1">
-      <legend className="sr-only">{t.formatLegend}</legend>
-      {(Object.keys(SHEETS) as Layout[]).map((l) => {
-        const s = SHEETS[l];
-        const on = value === l;
-        return (
-          <label
-            key={l}
-            title={t.layouts[l]}
-            className={`relative flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-sm transition-colors focus-within:outline-2 focus-within:outline-ink ${
-              on ? "bg-white font-semibold shadow-sm" : "text-ink/70 hover:bg-white/60"
-            }`}
-          >
-            <input type="radio" name="layout" className="sr-only" checked={on} onChange={() => onChange(l)} aria-label={t.layouts[l]} />
-            <span
-              aria-hidden
-              className="grid gap-px rounded-[2px] border border-ink/50 bg-white p-px"
-              style={{ width: s.w / 14, height: s.h / 14, gridTemplateColumns: `repeat(${s.cols}, 1fr)` }}
-            >
-              {Array.from({ length: s.n }, (_, i) => (
-                <span key={i} className={`rounded-[1px] ${on ? "bg-mare" : "bg-laguna/70"}`} />
-              ))}
-            </span>
-            <span aria-hidden className="whitespace-nowrap">{s.tag}</span>
-          </label>
-        );
-      })}
-    </fieldset>
+    <div
+      className="relative"
+      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setList(false)}
+      onKeyDown={(e) => e.key === "Escape" && setList(false)}
+    >
+      <button
+        className={`flex h-9 items-center gap-2 rounded-lg bg-laguna/30 pr-2 pl-2.5 text-sm font-semibold lift hover:bg-laguna/45 ${focus}`}
+        aria-haspopup="listbox"
+        aria-expanded={list}
+        aria-label={`${t.formatLegend}: ${t.layouts[value]}`}
+        title={t.layouts[value]}
+        onClick={() => setList(!list)}
+      >
+        <SheetIcon l={value} on />
+        <span className="whitespace-nowrap">{SHEETS[value].tag}</span>
+        <Icon d={ICONS.down} className={`size-3.5 text-ink/60 transition-transform ${list ? "rotate-180" : ""}`} />
+      </button>
+      {list && (
+        <ul role="listbox" aria-label={t.formatLegend} className="absolute top-11 left-0 z-30 w-64 rounded-lg bg-surface py-1 shadow-lg ring-1 ring-laguna/60">
+          {(Object.keys(SHEETS) as Layout[]).map((l) => (
+            <li key={l} role="option" aria-selected={l === value}>
+              <button
+                className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-laguna/25 ${l === value ? "font-semibold text-mare" : ""} ${focus}`}
+                onClick={() => {
+                  onChange(l);
+                  setList(false);
+                }}
+              >
+                <span className="grid w-6 place-items-center">
+                  <SheetIcon l={l} on={l === value} />
+                </span>
+                {t.layouts[l]}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -1113,6 +1317,25 @@ function LayoutPicker({ value, onChange }: { value: Layout; onChange: (l: Layout
 
 type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 const INSTALL_KEY = "menudo:install-dismissed";
+
+// PWA: el service worker se registra en cuanto carga la app, y beforeinstallprompt (llega una sola vez y pronto,
+// a menudo con la pantalla de acceso aún delante) se guarda aquí para que el aviso lo encuentre cuando se monte
+let installEvent: InstallEvent | null = null;
+const installSubs = new Set<() => void>();
+const setInstallEvent = (e: InstallEvent | null) => {
+  installEvent = e;
+  installSubs.forEach((f) => f());
+};
+navigator.serviceWorker?.register("/sw.js").catch(() => {});
+addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault(); // sustituimos el aviso del navegador por el nuestro
+  setInstallEvent(e as InstallEvent);
+});
+addEventListener("appinstalled", () => setInstallEvent(null));
+const onInstallEvent = (f: () => void) => {
+  installSubs.add(f);
+  return () => installSubs.delete(f);
+};
 
 function isDismissed() {
   try {
@@ -1125,33 +1348,19 @@ function isDismissed() {
 // Android/Chrome/Edge: botón que abre el instalador. iPhone: Safari no tiene API de instalación, así que explicamos los pasos.
 function InstallPrompt() {
   const t = useT();
-  const [event, setEvent] = useState<InstallEvent | null>(null);
+  const event = useSyncExternalStore(onInstallEvent, () => installEvent);
+  const [hidden, setHidden] = useState(isDismissed);
   const [iosHelp, setIosHelp] = useState(() => {
     const standalone = matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone;
     const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     return ios && !standalone && !isDismissed();
   });
 
-  useEffect(() => {
-    navigator.serviceWorker?.register("/sw.js").catch(() => {});
-    const onPrompt = (e: Event) => {
-      e.preventDefault(); // sustituimos el aviso del navegador por el nuestro
-      if (!isDismissed()) setEvent(e as InstallEvent);
-    };
-    const onInstalled = () => setEvent(null);
-    addEventListener("beforeinstallprompt", onPrompt);
-    addEventListener("appinstalled", onInstalled);
-    return () => {
-      removeEventListener("beforeinstallprompt", onPrompt);
-      removeEventListener("appinstalled", onInstalled);
-    };
-  }, []);
-
   const dismiss = () => {
     try {
       localStorage.setItem(INSTALL_KEY, "1");
     } catch {}
-    setEvent(null);
+    setHidden(true);
     setIosHelp(false);
   };
 
@@ -1159,17 +1368,17 @@ function InstallPrompt() {
     if (!event) return;
     await event.prompt();
     await event.userChoice;
-    setEvent(null);
+    setInstallEvent(null); // prompt() solo vale una vez
   };
 
-  if (!event && !iosHelp) return null;
+  if ((!event || hidden) && !iosHelp) return null;
   return (
     <aside
       aria-label={t.install}
-      className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 flex items-start gap-3 rounded-2xl bg-white p-4 shadow-[0_18px_40px_-12px_rgb(23_48_51/0.45)] ring-1 ring-laguna md:inset-x-auto md:right-6 md:bottom-6 md:w-96 print:hidden"
+      className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 flex items-start gap-3 rounded-xl bg-surface p-4 shadow-[0_18px_40px_-12px_rgb(14_26_43/0.45)] ring-1 ring-laguna md:inset-x-auto md:right-6 md:bottom-6 md:w-96 print:hidden"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/icon-192.png" alt="" className="size-12 shrink-0 rounded-xl" />
+      <img src="/icon-192.png" alt="" className="size-12 shrink-0 rounded-lg" />
       <div className="min-w-0 flex-1">
         <p className="font-semibold">{t.install}</p>
         {event ? (
@@ -1209,6 +1418,7 @@ export default function Editor() {
   // Arrastrar textos e imágenes solo con ratón y pantalla ancha
   const [desktop] = useState(() => matchMedia("(min-width: 768px) and (pointer: fine)").matches);
   const [sel, setSel] = useState<string | null>(null);
+  const [txt, setTxt] = useState<{ k: string; ratio: number; pt: number } | null>(null);
   const [user, setUser] = useState(loadSession);
   const [zoom, setZoom] = useState(1);
   const [pinned, setPinned] = useState(() => {
@@ -1218,6 +1428,41 @@ export default function Editor() {
       return false;
     }
   });
+  const [dark, setDark] = useState(() => {
+    try {
+      return localStorage.getItem(THEME_KEY) === "dark";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  }, [dark]);
+  const toggleTheme = () => {
+    setDark(!dark);
+    try {
+      localStorage.setItem(THEME_KEY, dark ? "light" : "dark");
+    } catch {}
+  };
+
+  // Panel lateral de escritorio: qué sección está abierta y cuándo se esconde
+  const wide = useSyncExternalStore(onWideChange, isWide);
+  const [open, setOpen] = useState<string | null>(null);
+  const side = { wide, open, toggle: (k: string) => setOpen(open === k ? null : k) };
+  const sideRef = useRef<HTMLElement>(null);
+  const hideTimer = useRef<number>(undefined);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => !pinned && !sideRef.current?.contains(e.target as Node) && setOpen(null);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
+    addEventListener("pointerdown", onDown);
+    addEventListener("keydown", onKey);
+    return () => {
+      removeEventListener("pointerdown", onDown);
+      removeEventListener("keydown", onKey);
+    };
+  }, [open, pinned]);
+
   const togglePinned = () => {
     setPinned(!pinned);
     try {
@@ -1310,7 +1555,10 @@ export default function Editor() {
   const edit: Edit | null = desktop
     ? {
         sel,
-        pick: setSel,
+        pick: (k) => {
+          setSel(k);
+          setTxt(null);
+        },
         drop: (k, dx, dy) => (k.startsWith("img") ? setSticker(Number(k.slice(3)), { x: dx, y: dy }) : setLook(k, { dx, dy })),
         resize: (i, w) => setSticker(i, { w }),
         // path: ["name"] o ["sections", i, "items", j, "price"]; solo se copian las secciones, no las imágenes
@@ -1320,6 +1568,11 @@ export default function Editor() {
           for (const p of path.slice(0, -1)) o = o[p] as typeof o;
           o[path[path.length - 1]] = v;
           update(next);
+        },
+        // ratio: zoom de «Tamaño del texto» / «Tamaño del nombre» sobre el campo (el zoom de la vista previa se descuenta)
+        focusText: (k, el) => {
+          const ratio = cssZoom(el) / cssZoom(el.closest("[data-page]")!);
+          setTxt({ k, ratio, pt: halfPt(parseFloat(getComputedStyle(el).fontSize) * ratio * 0.75) });
         },
       }
     : null;
@@ -1346,6 +1599,17 @@ export default function Editor() {
     return () => removeEventListener("keydown", onKey);
   });
   const selLook = (sel && m.looks[sel]) || {};
+  // Alineación que se ve ahora: la propia o la de Estilo (secciones) o centrado (el resto)
+  const selAlign: Align = selLook.align ?? (sel && /^s\d+$/.test(sel) ? m.align : "center");
+  const txtSize = txt && (m.looks[txt.k]?.size ? halfPt(m.looks[txt.k].size! * txt.ratio) : txt.pt);
+  const setTxtSize = (pt: number) => txt && pt >= 4 && pt <= 200 && setLook(txt.k, { size: pt / txt.ratio });
+  // Restablecer: letra, color y posición del bloque y tamaño del campo que se escribía
+  const resetLook = (k: string) => {
+    const looks = { ...m.looks };
+    delete looks[k];
+    if (txt) delete looks[txt.k];
+    set("looks", looks);
+  };
 
   // Abre una carta del archivo sin cambiar su fecha (solo se actualiza al editarla)
   const openSaved = (a: Saved, thenPrint = false) => {
@@ -1411,49 +1675,54 @@ export default function Editor() {
       <style>{`@page { size: A4 ${SHEETS[layout].orient}; margin: 0; }`}</style>
 
       <div className="flex min-h-dvh flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:h-dvh md:pb-0 print:hidden">
-        <header className="shrink-0 bg-white pt-[env(safe-area-inset-top)]">
-          <Tile color="#68A7AD" k={0.42} style={{ height: 16 }} />
-          <div className="flex items-center gap-4 border-b border-laguna/60 px-5 py-3 md:gap-6">
-            <div className="min-w-0 flex-1 md:flex-none">
-              <p className="font-display text-[28px] leading-none font-semibold">Menudo</p>
-              <p className="mt-1 truncate text-sm text-ink/65" aria-live="polite">
-                {status}
-              </p>
-            </div>
+        <header className="shrink-0 border-b border-laguna/60 bg-surface pt-[env(safe-area-inset-top)]">
+          <div className="flex h-12 items-center gap-2 px-3 md:gap-3 md:px-4">
+            <Brand />
+            <p className="min-w-0 flex-1 truncate text-xs text-ink/60 md:flex-none" aria-live="polite">
+              {status}
+            </p>
 
             {/* Pestañas de escritorio */}
-            <nav className="hidden flex-1 gap-1 md:flex" aria-label={t.sections}>
+            <nav className="hidden flex-1 justify-center gap-1 md:flex" aria-label={t.sections}>
               {(
                 [
-                  { label: t.menu, target: "edit", on: tab !== "archive" },
-                  { label: t.archive, target: "archive", on: tab === "archive" },
+                  { label: t.menu, icon: ICONS.edit, target: "edit", on: tab !== "archive" },
+                  { label: t.archive, icon: ICONS.archive, target: "archive", on: tab === "archive" },
                 ] as const
               ).map((x) => (
                 <button
                   key={x.target}
                   aria-current={x.on ? "page" : undefined}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${focus} ${x.on ? "bg-laguna/40 font-semibold" : "text-ink/70 hover:bg-laguna/20"}`}
+                  aria-label={x.label}
+                  title={x.label}
+                  className={`relative grid size-9 place-items-center rounded-lg lift ${focus} ${x.on ? "bg-laguna/40 text-ink" : "text-ink/60 hover:bg-laguna/20 hover:text-ink"}`}
                   onClick={() => go(x.target)}
                 >
-                  {x.label}
+                  <Icon d={x.icon} className="size-[18px]" />
                   {x.target === "archive" && saved.length > 0 && (
-                    <span className="rounded-full bg-white px-2 text-xs font-semibold ring-1 ring-laguna">{saved.length}</span>
+                    <span className="absolute -top-1 -right-1 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
+                      {saved.length}
+                    </span>
                   )}
                 </button>
               ))}
             </nav>
 
-            <LangToggle lang={lang} onChange={changeLang} />
-            <button className={`shrink-0 rounded px-1 py-2 text-sm text-ink/70 underline underline-offset-2 hover:text-ink ${focus}`} title={user} onClick={logout}>
-              {t.logout}
+            <button className={iconBtn} aria-label={dark ? t.lightTheme : t.darkTheme} title={dark ? t.lightTheme : t.darkTheme} onClick={toggleTheme}>
+              <Icon d={dark ? ICONS.sun : ICONS.moon} className="size-[18px]" />
             </button>
-
-            <div className="hidden md:block">
-              <button className={primary} onClick={() => window.print()}>
-                <Icon d={ICONS.print} />
-                {t.print}
-              </button>
-            </div>
+            <LangToggle lang={lang} onChange={changeLang} />
+            <button className={iconBtn} aria-label={t.logout} title={`${t.logout} (${user})`} onClick={logout}>
+              <Icon d={ICONS.logout} className="size-[18px]" />
+            </button>
+            <button
+              className={`hidden size-9 shrink-0 place-items-center rounded-lg bg-brand text-white lift hover:brightness-110 md:grid ${focus}`}
+              aria-label={t.print}
+              title={t.print}
+              onClick={() => window.print()}
+            >
+              <Icon d={ICONS.print} className="size-[18px]" />
+            </button>
           </div>
           {(saveError || archiveError) && (
             <p role="alert" className="bg-sabbia px-5 py-2 text-sm font-semibold">
@@ -1463,7 +1732,7 @@ export default function Editor() {
         </header>
 
         {tab === "archive" ? (
-          <main data-scroll="archive" className="flex-1 bg-laguna/35 px-4 py-6 md:overflow-auto md:px-8">
+          <main data-scroll="archive" className="flex-1 canvas px-4 py-6 md:overflow-auto md:px-8">
             <div className="mx-auto max-w-5xl space-y-5">
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
@@ -1483,16 +1752,16 @@ export default function Editor() {
               </label>
 
               {saved.length === 0 ? (
-                <p className="rounded-xl bg-white p-6 text-ink/70">{t.emptyArchive}</p>
+                <p className="rounded-lg bg-surface p-6 text-ink/70">{t.emptyArchive}</p>
               ) : found.length === 0 ? (
-                <p className="rounded-xl bg-white p-6 text-ink/70">{t.notFound(query)}</p>
+                <p className="rounded-lg bg-surface p-6 text-ink/70">{t.notFound(query)}</p>
               ) : (
                 <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {found.map((a) => {
                     const inUse = a.id === currentId;
                     const am = { ...EMPTY, ...a.menu };
                     return (
-                      <li key={a.id} className={`flex gap-4 rounded-xl bg-white p-3 shadow-sm ${inUse ? "ring-2 ring-mare" : "ring-1 ring-laguna/60"}`}>
+                      <li key={a.id} className={`flex gap-4 rounded-lg bg-surface p-3 shadow-sm ${inUse ? "ring-2 ring-mare" : "ring-1 ring-laguna/60"}`}>
                         <button className={`rounded-sm ${focus}`} aria-label={t.openA(am.name)} onClick={() => openSaved(a)}>
                           <Thumbnail m={am} />
                         </button>
@@ -1525,29 +1794,23 @@ export default function Editor() {
           </main>
         ) : (
           <div className="flex flex-1 flex-col md:min-h-0 md:flex-row">
-            {/* Escritorio: barra de iconos de 64 px que se despliega encima de la vista previa al pasar el ratón
-                (o al llegar con el teclado); así la hoja no cambia de tamaño. Fijada, ocupa su sitio y no se pliega */}
-            <aside className={`${tab === "edit" ? "block" : "hidden"} bg-white md:relative md:block md:shrink-0 ${pinned ? "md:w-[360px]" : "md:w-16"}`}>
-            <div
-              data-scroll="edit"
-              className={`group/side md:absolute md:inset-y-0 md:left-0 md:z-30 md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-laguna/60 md:bg-white ${
-                pinned
-                  ? "pinned md:w-[360px]"
-                  : "md:w-16 md:transition-[width,box-shadow] md:duration-300 md:ease-out md:hover:w-[360px] md:hover:shadow-[12px_0_40px_-12px_rgb(23_48_51/0.35)] md:has-[:focus-visible]:w-[360px]"
-              }`}
+            {/* Escritorio: barra de iconos de 72 px con su nombre debajo; la sección elegida sale hacia la derecha
+                encima de la vista previa y se esconde sola al salir con el ratón o al hacer clic fuera.
+                Fijada, no se esconde y ocupa su sitio (la hoja se hace más pequeña) */}
+            <aside
+              ref={sideRef}
+              className={`${tab === "edit" ? "block" : "hidden"} bg-surface md:relative md:block md:shrink-0 md:border-r md:border-laguna/60 md:text-[13.5px] md:transition-[width] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:[--text-lg:15px] md:[--text-sm:12.5px] ${pinned && open ? "md:w-[392px]" : "md:w-[72px]"}`}
+              onPointerEnter={() => clearTimeout(hideTimer.current)}
+              onPointerLeave={() => {
+                if (pinned) return;
+                hideTimer.current = window.setTimeout(() => !typingIn(sideRef.current) && setOpen(null), 400);
+              }}
             >
-            <div className="md:flex md:min-h-full md:w-[360px] md:flex-col md:justify-center-safe">
-            <button
-              className={`hidden items-center gap-3 px-5 py-3 text-ink/70 transition-colors hover:bg-laguna/15 hover:text-ink md:flex md:pl-3 ${focus}`}
-              aria-pressed={pinned}
-              title={pinned ? t.unpinPanel : t.pinPanel}
-              onClick={togglePinned}
-            >
-              <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${pinned ? "bg-mare text-white" : ""}`}>
-                <Icon d={ICONS.pin} className="size-5" />
-              </span>
-              <span className="text-sm font-semibold group-[:not(.pinned):not(:hover):not(:has(:focus-visible))]/side:opacity-0">{pinned ? t.unpinPanel : t.pinPanel}</span>
-            </button>
+            <SideCtx value={side}>
+            <div className="md:flex md:h-full md:w-[72px] md:flex-col md:justify-center-safe md:gap-1 md:overflow-y-auto md:py-2">
+            {wide && (
+              <RailButton icon={ICONS.pin} label={t.pin} on={pinned} aria-pressed={pinned} title={pinned ? t.unpinPanel : t.pinPanel} onClick={togglePinned} />
+            )}
             <Group title={t.venue} hint={t.venueHint} icon={ICONS.venue}>
               <Field label={t.name}>
                 <input className={input} value={m.name} onChange={(e) => set("name", e.target.value)} />
@@ -1575,7 +1838,7 @@ export default function Editor() {
 
             <Group title={t.dishes} hint={t.dishesHint} icon={ICONS.dishes}>
               {m.sections.map((s, i) => (
-                <div key={i} className="space-y-3 rounded-xl border border-sabbia bg-sabbia/15 p-3">
+                <div key={i} className="space-y-3 rounded-lg border border-laguna/70 bg-laguna/10 p-3">
                   <div className="flex items-center gap-1">
                     <input
                       className={`${input} font-display text-lg font-semibold md:text-lg`}
@@ -1597,7 +1860,7 @@ export default function Editor() {
                   {s.items.length === 0 && <p className="px-1 text-sm text-ink/65">{t.noDishes}</p>}
 
                   {s.items.map((it, j) => (
-                    <div key={j} className="space-y-2 rounded-lg bg-white p-2 ring-1 ring-laguna/60">
+                    <div key={j} className="space-y-2 rounded-lg bg-surface p-2 ring-1 ring-laguna/60">
                       <div className="flex gap-2">
                         <input
                           className={`${input} min-w-0 flex-1 font-semibold`}
@@ -1648,7 +1911,7 @@ export default function Editor() {
                 {t.addSection}
               </button>
 
-              <fieldset className="space-y-3 rounded-xl border border-laguna p-3">
+              <fieldset className="space-y-3 rounded-lg border border-laguna p-3">
                 <legend className="px-1 font-semibold">{t.price}</legend>
                 <Segmented
                   name="priceMode"
@@ -1833,7 +2096,7 @@ export default function Editor() {
 
             <Group title={t.images} hint={t.imagesHint} icon={ICONS.image}>
               {m.stickers.map((s, i) => (
-                <div key={i} className="flex gap-3 rounded-xl border border-laguna p-3">
+                <div key={i} className="flex gap-3 rounded-lg border border-laguna p-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={s.src} alt="" className="size-16 shrink-0 rounded-lg bg-laguna/15 object-contain" />
                   <div className="min-w-0 flex-1 space-y-1">
@@ -1877,56 +2140,74 @@ export default function Editor() {
               <ImageSearch onPick={(img) => readImage(img, 800, "image/png", addSticker)} />
             </Group>
             </div>
-            </div>
+            </SideCtx>
             </aside>
 
             <main
               data-scroll="preview"
-              className={`${tab === "preview" ? "flex" : "hidden"} flex-1 flex-col gap-5 bg-laguna/35 px-4 pb-6 md:flex md:overflow-auto md:px-6`}
+              className={`${tab === "preview" ? "flex" : "hidden"} flex-1 flex-col gap-5 canvas px-4 pb-6 md:flex md:overflow-auto md:px-6`}
               onPointerDown={(e) => desktop && !(e.target as Element).closest("[data-k],[data-toolbar]") && setSel(null)}
             >
               {/* Una sola barra fija: formato, zoom y retoque del elemento seleccionado; el resto es hoja */}
-              <div data-toolbar className="sticky top-0 z-10 -mx-4 flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b border-laguna/60 bg-white px-4 py-2 md:-mx-6 md:px-6">
+              <div data-toolbar className="sticky top-0 z-10 -mx-4 flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b border-laguna/60 bg-surface px-4 py-2 md:-mx-6 md:px-6">
                 <LayoutPicker value={layout} onChange={setLayout} />
-                <ZoomControl value={zoom} onChange={setZoom} />
                 {desktop && (
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 border-l border-laguna/60 pl-3">
                   {!sel || (sel.startsWith("img") && !m.stickers[selSticker]) ? (
                     <p className="truncate text-sm text-ink/60">{t.dragHint}</p>
                   ) : (
                     <>
-                      <span className="font-semibold">{elName(sel)}</span>
+                      <span className="text-xs text-ink/60">{elName(sel)}</span>
                       {selSticker >= 0 ? (
                         <>
-                          <p className="text-sm text-ink/60">{t.imageHint}</p>
-                          <button className={secondary} onClick={() => removeSticker(selSticker)}>
+                          <p className="truncate text-xs text-ink/50">{t.imageHint}</p>
+                          <button className={iconBtn} aria-label={t.remove} title={t.remove} onClick={() => removeSticker(selSticker)}>
                             <Icon d={ICONS.trash} className="size-4" />
-                            {t.remove}
                           </button>
                         </>
                       ) : (
-                        <>
-                          <label className="flex items-center gap-2 text-sm">
-                            {t.font}
-                            <FontSelect
-                              className="rounded-lg border border-laguna bg-white px-2 py-1.5"
-                              value={selLook.font ?? (/(^|-)(name|subtitle|s\d+)$/.test(sel) ? m.font : m.bodyFont)}
-                              onChange={(v) => setLook(sel, { font: v })}
-                            />
-                          </label>
-                          <label className="flex items-center gap-2 text-sm">
-                            {t.color}
-                            <input
-                              type="color"
-                              className="size-8 cursor-pointer rounded border border-laguna bg-white p-0.5"
-                              value={selLook.color ?? m.ink}
-                              onChange={(e) => setLook(sel, { color: e.target.value })}
-                            />
-                          </label>
-                          <button className={secondary} onClick={() => setLook(sel, null)}>
-                            {t.reset}
+                        <div className="flex items-center gap-1 rounded-lg bg-laguna/20 p-0.5">
+                          <FontSelect
+                            label={t.font}
+                            className={`h-8 w-36 rounded-md bg-surface px-2 text-sm ${focus}`}
+                            value={selLook.font ?? (/(^|-)(name|subtitle|s\d+)$/.test(sel) ? m.font : m.bodyFont)}
+                            onChange={(v) => setLook(sel, { font: v })}
+                          />
+                          {txtSize && <PtSize key={txt.k} value={txtSize} onChange={setTxtSize} label={t.fontSize} />}
+                          {!/(^|-)(logo|table)$/.test(sel) && (
+                            <div role="group" aria-label={t.textAlign} className="flex">
+                              {(
+                                [
+                                  ["left", t.left, ICONS.alignLeft],
+                                  ["center", t.center, ICONS.alignCenter],
+                                  ["right", t.right, ICONS.alignRight],
+                                ] as const
+                              ).map(([a, label, icon]) => (
+                                <button
+                                  key={a}
+                                  className={`grid size-8 place-items-center rounded-md transition-colors ${focus} ${selAlign === a ? "bg-surface text-ink shadow-sm" : "text-ink/60 hover:text-ink"}`}
+                                  aria-label={label}
+                                  title={label}
+                                  aria-pressed={selAlign === a}
+                                  onClick={() => setLook(sel, { align: a })}
+                                >
+                                  <Icon d={icon} className="size-4" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <input
+                            type="color"
+                            aria-label={t.color}
+                            title={t.color}
+                            className="mx-1 size-6 cursor-pointer appearance-none rounded-full border-0 bg-transparent p-0 ring-1 ring-ink/20 [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
+                            value={selLook.color ?? m.ink}
+                            onChange={(e) => setLook(sel, { color: e.target.value })}
+                          />
+                          <button className={`${iconBtn} md:size-8`} aria-label={t.reset} title={t.reset} onClick={() => resetLook(sel)}>
+                            <Icon d={ICONS.reset} className="size-4" />
                           </button>
-                        </>
+                        </div>
                       )}
                       <button className={`${iconBtn} ml-auto`} aria-label={t.close} onClick={() => setSel(null)}>
                         <Icon d={ICONS.close} />
@@ -1938,6 +2219,7 @@ export default function Editor() {
               </div>
               {overflow && <OverflowWarning />}
 
+              <ZoomControl value={zoom} onChange={setZoom} />
               <EditCtx value={edit}>
                 {pages.map((p, i) => (
                   <Preview key={i} layout={layout} scale={zoom}>
@@ -1952,7 +2234,7 @@ export default function Editor() {
         {/* Barra de pestañas en móvil, como en iOS: zona del pulgar y safe area del iPhone */}
         <nav
           aria-label={t.sections}
-          className="fixed inset-x-0 bottom-0 grid grid-cols-4 border-t border-laguna/60 bg-white/95 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden"
+          className="fixed inset-x-0 bottom-0 grid grid-cols-4 border-t border-laguna/60 bg-surface/95 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden"
         >
           {tabs.map((x) => (
             <button
@@ -1968,7 +2250,7 @@ export default function Editor() {
             </button>
           ))}
           <button className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs font-semibold ${focus}`} onClick={() => window.print()}>
-            <span className="grid h-7 w-12 place-items-center rounded-full bg-mare">
+            <span className="grid h-7 w-12 place-items-center rounded-full bg-brand text-white">
               <Icon d={ICONS.print} />
             </span>
             {t.print}

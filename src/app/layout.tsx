@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Bodoni_Moda, Dancing_Script, Great_Vibes, Lora, Montserrat, Playfair_Display, Titillium_Web } from "next/font/google";
+import { Bodoni_Moda, Dancing_Script, Great_Vibes, IBM_Plex_Sans, Lora, Montserrat, Playfair_Display, Titillium_Web } from "next/font/google";
 import "./globals.css";
 
+// Letra de la interfaz del editor
+const plex = IBM_Plex_Sans({ variable: "--font-plex", subsets: ["latin"], weight: ["400", "500", "600"] });
 const bodoni = Bodoni_Moda({ variable: "--font-bodoni", subsets: ["latin"], style: ["normal", "italic"] });
 const titillium = Titillium_Web({
   variable: "--font-titillium",
@@ -15,7 +17,7 @@ const lora = Lora({ variable: "--font-lora", subsets: ["latin"], style: ["normal
 const montserrat = Montserrat({ variable: "--font-montserrat", subsets: ["latin"], style: ["normal", "italic"] });
 const greatVibes = Great_Vibes({ variable: "--font-greatvibes", subsets: ["latin"], weight: "400" });
 const dancing = Dancing_Script({ variable: "--font-dancing", subsets: ["latin"] });
-const fonts = [bodoni, titillium, playfair, lora, montserrat, greatVibes, dancing].map((f) => f.variable).join(" ");
+const fonts = [plex, bodoni, titillium, playfair, lora, montserrat, greatVibes, dancing].map((f) => f.variable).join(" ");
 
 export const metadata: Metadata = {
   title: "Menudo",
@@ -28,7 +30,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#68A7AD",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

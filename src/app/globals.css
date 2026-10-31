@@ -1,17 +1,131 @@
 @import "tailwindcss";
 
-/* Paleta del cliente + tinta para texto (ningún color de la paleta tiene contraste suficiente sobre blanco) */
+/* Interfaz del editor (la carta impresa redefine tinta y letras en pageVars, Editor.tsx).
+   Los nombres vienen de la paleta amalfitana; los valores ahora son los de la app:
+   mare = acento azul, laguna = gris azulado de bordes y fondos, sabbia = ámbar de los avisos,
+   surface = fondo de paneles y barras (bg-white queda para el papel de la carta, que es blanco en los dos temas) */
 @theme {
-  --color-ink: #173033;
-  --color-mare: #68a7ad;
-  --color-laguna: #99c4c8;
-  --color-sabbia: #e5cb9f;
+  --color-ink: #0e1a2b;
+  --color-mare: #2f6bff;
+  --color-laguna: #b9c8dd;
+  --color-sabbia: #ffe2a0;
   --color-limone: #eee4ab;
-  --font-sans: var(--font-titillium), system-ui, sans-serif;
-  --font-display: var(--font-bodoni), Georgia, serif;
+  --color-surface: #ffffff;
+  --font-sans: var(--font-plex), system-ui, sans-serif;
+  --font-display: var(--font-plex), system-ui, sans-serif;
+}
+
+:root {
+  --canvas: #eef2f7;
+  --canvas-dot: #c3cedd;
+}
+
+/* Tema oscuro de la interfaz (botón de la barra de arriba) */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-ink: #e3eaf5;
+  --color-surface: #111a2b;
+  --color-laguna: #3a4c68;
+  --color-sabbia: #6b5217;
+  --color-mare: #5b8cff;
+  --canvas: #0a111e;
+  --canvas-dot: #24324c;
 }
 
 body {
-  background: #fff;
+  background: var(--color-surface);
   color: var(--color-ink);
+}
+
+/* Mesa de trabajo: cuadrícula de puntos bajo la hoja, como en un programa de maquetación */
+@utility canvas {
+  background-color: var(--canvas);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+/* Azul de la marca: de oscuro a claro (botones, sección abierta, icono de la app) */
+@utility bg-brand {
+  background-image: linear-gradient(135deg, #0b2a6f, #2f6bff 55%, #56c2ff);
+}
+
+
+/* Barras de desplazamiento: una pastilla fina flotando sobre un carril invisible, en el azul de la interfaz;
+   al pasar el ratón se ensancha y toma el gradiente de la marca */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 4px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--color-mare) 40%, transparent) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  border-width: 3px;
+  background: linear-gradient(180deg, #0b2a6f, #2f6bff 55%, #56c2ff) padding-box;
+}
+/* Firefox no tiene ::-webkit-scrollbar: fina y del mismo azul */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--color-mare) 55%, transparent) transparent;
+  }
+}
+
+/* Todo lo que se pulsa lleva la mano (Tailwind 4 deja los botones con la flecha) */
+button:not(:disabled),
+[role="button"],
+summary,
+select,
+input[type="color"],
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] {
+  cursor: pointer;
+}
+
+/* Relieve al pasar el ratón: el botón sube un píxel y proyecta sombra; al pulsarlo, se hunde */
+@utility lift {
+  transition:
+    translate 150ms ease-out,
+    box-shadow 150ms ease-out,
+    background-color 150ms,
+    color 150ms,
+    filter 150ms;
+  &:hover:not(:disabled) {
+    translate: 0 -1px;
+    box-shadow: 0 6px 14px -6px rgb(14 26 43 / 0.4);
+  }
+  &:active:not(:disabled) {
+    translate: 0 0;
+    box-shadow: 0 2px 4px -2px rgb(14 26 43 / 0.4);
+  }
+}
+/* Igual, pero se activa al pasar por el botón entero (pastilla del icono en la barra lateral) */
+@utility lift-on-group {
+  transition:
+    translate 150ms ease-out,
+    box-shadow 150ms ease-out,
+    background-color 150ms,
+    color 150ms;
+  :where(.group\/rail):hover & {
+    translate: 0 -1px;
+    box-shadow: 0 6px 14px -6px rgb(14 26 43 / 0.4);
+  }
+  :where(.group\/rail):active & {
+    translate: 0 0;
+    box-shadow: 0 2px 4px -2px rgb(14 26 43 / 0.4);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lift:hover,
+  .lift:active,
+  .group\/rail:hover .lift-on-group {
+    translate: none;
+  }
 }

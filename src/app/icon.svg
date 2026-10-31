@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Menudo: minuta con marcas de corte de imprenta y el cursor de escribir encima -->
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B2A6F"/>
+      <stop offset=".55" stop-color="#2F6BFF"/>
+      <stop offset="1" stop-color="#56C2FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#brand)"/>
+  <g stroke="#fff" stroke-opacity=".6" stroke-width="10" stroke-linecap="round">
+    <path d="M88 108h40M152 44v40M424 108h-40M360 44v40M88 404h40M152 468v-40M424 404h-40M360 468v-40"/>
+  </g>
+  <rect x="152" y="108" width="208" height="296" rx="14" fill="#fff"/>
+  <rect x="196" y="146" width="120" height="20" rx="10" fill="#2F6BFF"/>
+  <g fill="#0E1A2B">
+    <rect x="184" y="212" width="70" height="16" rx="8"/>
+    <rect x="184" y="264" width="56" height="16" rx="8"/>
+    <rect x="184" y="316" width="76" height="16" rx="8"/>
+    <rect x="308" y="212" width="24" height="16" rx="8"/>
+    <rect x="308" y="264" width="24" height="16" rx="8"/>
+    <rect x="308" y="316" width="24" height="16" rx="8"/>
+  </g>
+  <g fill="#0E1A2B" fill-opacity=".35">
+    <circle cx="268" cy="223" r="3.5"/><circle cx="282" cy="223" r="3.5"/><circle cx="296" cy="223" r="3.5"/>
+    <circle cx="258" cy="275" r="3.5"/><circle cx="272" cy="275" r="3.5"/><circle cx="286" cy="275" r="3.5"/>
+    <circle cx="274" cy="327" r="3.5"/><circle cx="288" cy="327" r="3.5"/>
+  </g>
+  <rect x="244" y="254" width="7" height="36" rx="3.5" fill="#2F6BFF"/>
+</svg>
