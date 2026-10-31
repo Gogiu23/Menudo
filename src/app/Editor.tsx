@@ -1932,8 +1932,13 @@ export default function Editor() {
                     const inUse = a.id === currentId;
                     const am = { ...EMPTY, ...a.menu };
                     return (
-                      <li key={a.id} className={`flex gap-4 rounded-lg bg-surface p-3 shadow-sm ${inUse ? "ring-2 ring-mare" : "ring-1 ring-laguna/60"}`}>
-                        <button className={`rounded-sm ${focus}`} aria-label={t.openA(am.name)} onClick={() => openSaved(a)}>
+                      // Toda la tarjeta abre la carta: el botón de la miniatura se estira por encima (before:inset-0) e
+                      // imprimir y borrar quedan sobre él (relative z-10); el foco de teclado se ve en la tarjeta entera
+                      <li
+                        key={a.id}
+                        className={`lift relative flex gap-4 rounded-lg bg-surface p-3 shadow-sm has-[[data-open]:focus-visible]:outline-2 has-[[data-open]:focus-visible]:outline-offset-2 has-[[data-open]:focus-visible]:outline-ink ${inUse ? "ring-2 ring-mare" : "ring-1 ring-laguna/60 hover:ring-mare/60"}`}
+                      >
+                        <button data-open className="rounded-sm outline-none before:absolute before:inset-0 before:rounded-lg" aria-label={t.openA(am.name)} onClick={() => openSaved(a)}>
                           <Thumbnail m={am} />
                         </button>
                         <div className="flex min-w-0 flex-1 flex-col">
@@ -1942,10 +1947,7 @@ export default function Editor() {
                           {am.subtitle && <p className="truncate text-sm text-ink/70">{am.subtitle}</p>}
                           <p className="mt-2 text-sm text-ink/70">{t.modified(fmtDate(a.savedAt, t.locale), fmtTime(a.savedAt, t.locale))}</p>
                           <p className="text-sm text-ink/70">{t.deletesOn(fmtDate(a.savedAt + TTL, t.locale))}</p>
-                          <div className="mt-auto flex items-center gap-1 pt-3">
-                            <button className={`${secondary} py-1.5`} onClick={() => openSaved(a)}>
-                              {t.open}
-                            </button>
+                          <div className="relative z-10 mt-auto flex items-center gap-1 self-start pt-3">
                             <button className={iconBtn} aria-label={t.printA(am.name)} onClick={() => openSaved(a, true)}>
                               <Icon d={ICONS.print} />
                             </button>
