@@ -25,6 +25,8 @@ type Menu = {
   indent: number;
   priceMode: "dish" | "total";
   align: "center" | "left";
+  dishAlign: "center" | "left";
+  dots: boolean;
   textSize: number;
   titleSize: number;
   noteSize: number;
@@ -43,7 +45,7 @@ type Menu = {
   email: string;
   web: string;
 };
-type Layout = "1" | "2" | "4" | "6";
+type Layout = "1" | "2" | "4" | "6" | "m27" | "m19";
 
 const INK = "#173033";
 const PALETTE = ["#68A7AD", "#99C4C8", "#E5CB9F", "#EEE4AB", "#FFFFFF"];
@@ -64,6 +66,7 @@ const fontVar = (f: string) => `var(--font-${f}), serif`;
 
 const STORAGE_KEY = "menudo:menu";
 const LANG_KEY = "menudo:lang";
+const PIN_KEY = "menudo:pinned";
 
 const EMPTY: Menu = {
   name: "Il Mio Ristorante",
@@ -78,6 +81,8 @@ const EMPTY: Menu = {
   indent: 0,
   priceMode: "dish",
   align: "center",
+  dishAlign: "left",
+  dots: true,
   textSize: 1,
   titleSize: 1,
   noteSize: 1,
@@ -110,15 +115,18 @@ const DESIGNS: Record<keyof Dict["designs"], Partial<Menu>> = {
   trattoria: { tiles: false, frame: "line", font: "greatvibes", bodyFont: "lora", accent: "#8C2F2F", ink: "#5A1E1E", align: "center" },
 };
 
-// Hoja A4 en mm y tamaño de cada hueco según cuántas copias caben
+// Hoja A4 en mm, cuántas copias caben (n) y el nombre corto del selector
 // pw/ph: tamaño en mm con el que se maqueta cada copia antes de escalarla (por defecto A4)
-const SHEETS: Record<Layout, { w: number; h: number; cols: number; scale: number; orient: string; pw?: number; ph?: number }> = {
-  "1": { w: 210, h: 297, cols: 1, scale: 1, orient: "portrait" },
-  "2": { w: 297, h: 210, cols: 2, scale: 148.5 / 210, orient: "landscape" },
-  "4": { w: 210, h: 297, cols: 2, scale: 0.5, orient: "portrait" },
+const SHEETS: Record<Layout, { w: number; h: number; n: number; cols: number; scale: number; orient: string; tag: string; pw?: number; ph?: number }> = {
+  "1": { w: 210, h: 297, n: 1, cols: 1, scale: 1, orient: "portrait", tag: "A4" },
+  "2": { w: 297, h: 210, n: 2, cols: 2, scale: 148.5 / 210, orient: "landscape", tag: "×2" },
+  "4": { w: 210, h: 297, n: 4, cols: 2, scale: 0.5, orient: "portrait", tag: "×4" },
   // Tarjetas de plato: 3×2 en vertical, 70×148,5 mm cada una (estrechas). Maquetadas a 100 mm de ancho
   // para escalarlas al 70 % y no al 33 %: el texto sigue siendo legible
-  "6": { w: 210, h: 297, cols: 3, scale: 0.7, orient: "portrait", pw: 100, ph: 148.5 / 0.7 },
+  "6": { w: 210, h: 297, n: 6, cols: 3, scale: 0.7, orient: "portrait", tag: "×6", pw: 100, ph: 148.5 / 0.7 },
+  // Minutas: dos por A4, a su medida exacta (95×270 y 100×195 mm), maquetadas al 70 % como las tarjetas
+  m27: { w: 210, h: 297, n: 2, cols: 2, scale: 0.7, orient: "portrait", tag: "27×9,5", pw: 95 / 0.7, ph: 270 / 0.7 },
+  m19: { w: 210, h: 297, n: 2, cols: 2, scale: 0.7, orient: "portrait", tag: "19,5×10", pw: 100 / 0.7, ph: 195 / 0.7 },
 };
 
 function load(): Menu {
@@ -209,8 +217,50 @@ type Edit = {
   pick: (k: string | null) => void;
   drop: (k: string, dx: number, dy: number) => void;
   resize: (i: number, w: number) => void;
+  text: (path: (string | number)[], v: string) => void;
 };
 const EditCtx = createContext<Edit | null>(null);
+
+// Texto de la carta que se escribe directamente en la vista previa de escritorio. No controlado mientras tiene
+// el foco (si React reescribiera el nodo, el cursor saltaría); format: cómo se ve sin foco (p. ej. el precio con €)
+function Text({ path, value, format }: { path: (string | number)[]; value: string; format?: (v: string) => string }) {
+  const edit = useContext(EditCtx);
+  const ref = useRef<HTMLSpanElement>(null);
+  const show = format ? format(value) : value;
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && document.activeElement !== el) el.textContent = show;
+  });
+  if (!edit) return show;
+  return (
+    <span
+      ref={ref}
+      data-text
+      contentEditable="plaintext-only"
+      spellCheck={false}
+      className="cursor-text outline-none select-text empty:inline-block empty:min-w-[2ch] focus:bg-laguna/25"
+      onFocus={(e) => format && (e.currentTarget.textContent = value)}
+      onBlur={(e) => (e.currentTarget.textContent = show)}
+      onInput={(e) => edit.text(path, e.currentTarget.textContent ?? "")}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === "Escape") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
+// Cursor en el punto del clic (caretPositionFromPoint: Chrome/Firefox; caretRangeFromPoint: Safari)
+function caretAt(x: number, y: number) {
+  const p = document.caretPositionFromPoint?.(x, y);
+  const r = p ? document.createRange() : document.caretRangeFromPoint?.(x, y);
+  if (!r) return;
+  if (p) r.setStart(p.offsetNode, p.offset);
+  getSelection()?.removeAllRanges();
+  getSelection()?.addRange(r);
+}
 
 const halfMm = (v: number) => Math.round(v * 2) / 2;
 
@@ -229,6 +279,9 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!edit || e.button !== 0) return;
+    // Escribiendo en ese texto: el ratón mueve el cursor o selecciona letras, no arrastra
+    const text = (e.target as Element).closest<HTMLElement>("[data-text]");
+    if (text && text === document.activeElement) return;
     e.preventDefault();
     e.stopPropagation();
     // preventDefault no quita el foco del último campo: sin esto, Supr se quedaría en ese campo
@@ -240,10 +293,15 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
     let pos: [number, number] = [dx, dy];
     el.setPointerCapture(e.pointerId);
     el.onpointermove = (ev) => setLive((pos = [halfMm(dx + (ev.clientX - x0) / k1), halfMm(dy + (ev.clientY - y0) / k1)]));
-    el.onpointerup = el.onpointercancel = () => {
+    el.onpointerup = el.onpointercancel = (ev) => {
       el.onpointermove = el.onpointerup = el.onpointercancel = null;
       setLive(null);
       if (pos[0] !== dx || pos[1] !== dy) edit.drop(k, ...pos);
+      // Clic sin arrastrar sobre un texto: a escribir ahí mismo
+      else if (text && ev.type === "pointerup") {
+        text.focus();
+        caretAt(ev.clientX, ev.clientY);
+      }
     };
   };
 
@@ -320,12 +378,14 @@ function Masthead({ m, size, p = "" }: { m: Menu; size: "cover" | "page"; p?: st
       )}
       <Movable {...mv("name")}>
         <h1 className={`font-display leading-[1.05] font-semibold text-balance ${cover ? "text-[15mm]" : "text-[11mm]"}`} style={{ zoom: m.titleSize }}>
-          {m.name}
+          <Text path={["name"]} value={m.name} />
         </h1>
       </Movable>
       {m.subtitle && (
         <Movable {...mv("subtitle")}>
-          <p className={`mt-[2mm] font-display italic ${cover ? "text-[7mm]" : "text-[5.5mm]"}`}>{m.subtitle}</p>
+          <p className={`mt-[2mm] font-display italic ${cover ? "text-[7mm]" : "text-[5.5mm]"}`}>
+            <Text path={["subtitle"]} value={m.subtitle} />
+          </p>
         </Movable>
       )}
     </div>
@@ -341,7 +401,7 @@ function CoverPage({ m }: { m: Menu }) {
       ) : (
         m.tiles && <Tile color={m.accent} k={1.6} className="absolute inset-0 h-full" />
       )}
-      <div className="relative w-[150mm] bg-white">
+      <div className="relative w-[min(150mm,calc(100%-16mm))] bg-white">
         {m.tiles && <Tile color={m.accent} style={{ height: "8mm" }} k={0.8} />}
         <div className="px-[14mm] py-[14mm]" style={m.frame === "none" || m.tiles ? undefined : { border: frameBorder(m) }}>
           <Masthead m={m} size="cover" p="cover-" />
@@ -353,9 +413,10 @@ function CoverPage({ m }: { m: Menu }) {
 
 function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
   const t = useT();
-  const contacts = [m.phone, m.email, m.web].filter(Boolean);
+  const contacts = (["phone", "email", "web"] as const).filter((f) => m[f]);
   const total = m.priceMode === "total";
   const center = m.align === "center";
+  const dishCenter = m.dishAlign === "center";
   const bar = decoColor(m);
   const mv = (k: string) => ({ k, look: m.looks[k] });
   const framed = m.frame !== "none";
@@ -394,16 +455,31 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
           {m.sections.map((s, i) => (
             // ponytail: la clave es la posición; al reordenar secciones, el retoque se queda en el hueco. Ids por sección si molesta.
             <Movable key={i} {...mv(`s${i}`)} className="break-inside-avoid">
-              <h2 className={`font-display text-[7.5mm] italic ${center ? "text-center" : ""}`}>{s.title}</h2>
+              <h2 className={`font-display text-[7.5mm] italic ${center ? "text-center" : ""}`}>
+                <Text path={["sections", i, "title"]} value={s.title} />
+              </h2>
               <div className={`mt-[1.5mm] mb-[5mm] h-[0.9mm] w-[14mm] rounded-full ${center ? "mx-auto" : ""}`} style={{ background: bar }} />
               {s.items.map((it, j) => (
-                <div key={j} className="mb-[3.5mm] last:mb-0" style={{ paddingLeft: `${m.indent}mm` }}>
-                  <div className="flex items-baseline gap-[2mm] text-[4.4mm] font-semibold">
-                    <span>{it.name}</span>
-                    <span className="flex-1 translate-y-[-0.8mm] border-b-[0.6mm] border-dotted border-ink/55" />
-                    {!total && <span className="tabular-nums">{formatPrice(it.price)}</span>}
+                <div key={j} className={`mb-[3.5mm] last:mb-0 ${dishCenter ? "text-center" : ""}`} style={dishCenter ? undefined : { paddingLeft: `${m.indent}mm` }}>
+                  {/* Centrados, los puntos no se estiran: un trazo corto entre plato y precio */}
+                  <div className={`flex items-baseline gap-[2mm] text-[4.4mm] font-semibold ${dishCenter ? "flex-wrap justify-center" : ""}`}>
+                    <span>
+                      <Text path={["sections", i, "items", j, "name"]} value={it.name} />
+                    </span>
+                    {!(dishCenter && total) && (
+                      <span className={`translate-y-[-0.8mm] ${dishCenter ? "w-[6mm]" : "flex-1"} ${m.dots ? "border-b-[0.6mm] border-dotted border-ink/55" : ""}`} />
+                    )}
+                    {!total && (
+                      <span className="tabular-nums">
+                        <Text path={["sections", i, "items", j, "price"]} value={it.price} format={formatPrice} />
+                      </span>
+                    )}
                   </div>
-                  {it.desc && <p className="mt-[0.5mm] text-[3.7mm] font-light italic text-ink/75">{it.desc}</p>}
+                  {it.desc && (
+                    <p className="mt-[0.5mm] text-[3.7mm] font-light italic text-ink/75">
+                      <Text path={["sections", i, "items", j, "desc"]} value={it.desc} />
+                    </p>
+                  )}
                 </div>
               ))}
             </Movable>
@@ -413,11 +489,17 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
         {total && m.totalPrice && (
           <Movable {...mv("total")} className="mb-[7mm] text-center" style={{ zoom: m.textSize }}>
             <div className="mx-auto mb-[4mm] h-[0.9mm] w-[14mm] rounded-full" style={{ background: bar }} />
-            {m.totalLabel && <p className="font-display text-[5.5mm] italic">{m.totalLabel}</p>}
-            <p className="font-display text-[11mm] leading-tight font-semibold tabular-nums">{formatPrice(m.totalPrice)}</p>
+            {m.totalLabel && (
+              <p className="font-display text-[5.5mm] italic">
+                <Text path={["totalLabel"]} value={m.totalLabel} />
+              </p>
+            )}
+            <p className="font-display text-[11mm] leading-tight font-semibold tabular-nums">
+              <Text path={["totalPrice"]} value={m.totalPrice} format={formatPrice} />
+            </p>
             {m.totalNote && (
               <p className="mt-[0.5mm] text-[3.7mm] text-black italic" style={{ zoom: m.noteSize }}>
-                {m.totalNote}
+                <Text path={["totalNote"]} value={m.totalNote} />
               </p>
             )}
           </Movable>
@@ -425,11 +507,17 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
 
         <Movable {...mv("footer")} className="text-center text-[3.7mm] leading-relaxed">
           <footer>
-            {m.address && <p className="font-semibold">{m.address}</p>}
+            {m.address && (
+              <p className="font-semibold">
+                <Text path={["address"]} value={m.address} />
+              </p>
+            )}
             {contacts.length > 0 && (
               <p className="flex flex-wrap justify-center gap-x-[6mm]">
-                {contacts.map((c) => (
-                  <span key={c}>{c}</span>
+                {contacts.map((f) => (
+                  <span key={f}>
+                    <Text path={[f]} value={m[f]} />
+                  </span>
                 ))}
               </p>
             )}
@@ -490,16 +578,18 @@ const pageSize = (layout: Layout) => {
   return { "--page-w": `${s.pw ?? 210}mm`, "--page-h": `${s.ph ?? 297}mm` } as React.CSSProperties;
 };
 
+// Cada hueco mide exactamente lo que la copia: la línea discontinua es la de corte
 function Sheet({ layout, page }: { layout: Layout; page: (copy: number) => React.ReactNode }) {
   const s = SHEETS[layout];
+  const [cw, ch] = [(s.pw ?? 210) * s.scale, (s.ph ?? 297) * s.scale];
   return (
     <div
-      className="grid overflow-hidden bg-white"
-      style={{ width: `${s.w}mm`, height: `${s.h}mm`, gridTemplateColumns: `repeat(${s.cols}, 1fr)` }}
+      className="grid place-content-center overflow-hidden bg-white"
+      style={{ width: `${s.w}mm`, height: `${s.h}mm`, gridTemplateColumns: `repeat(${s.cols}, ${cw}mm)`, gridAutoRows: `${ch}mm` }}
     >
-      {Array.from({ length: Number(layout) }, (_, i) => (
-        <div key={i} className="flex items-center justify-center overflow-hidden outline-1 outline-laguna outline-dashed print:outline-none">
-          <div style={{ width: `${(s.pw ?? 210) * s.scale}mm`, height: `${(s.ph ?? 297) * s.scale}mm` }}>
+      {Array.from({ length: s.n }, (_, i) => (
+        <div key={i} className="overflow-hidden outline-1 outline-laguna outline-dashed print:outline-none">
+          <div style={{ width: `${cw}mm`, height: `${ch}mm` }}>
             <div style={{ ...pageSize(layout), transform: `scale(${s.scale})`, transformOrigin: "top left" }}>{page(i)}</div>
           </div>
         </div>
@@ -565,6 +655,7 @@ const ICONS = {
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5",
   share: "M12 3v12M8 7l4-4 4 4M7 11H5v10h14V11h-2",
   close: "M6 6l12 12M18 6L6 18",
+  pin: "M12 17v5M9 3h6l-1 7 4 4H6l4-4-1-7z",
   // Secciones del panel lateral
   venue: "M3 10l2-6h14l2 6M4 10v10h16V10M3 10h18M9 20v-6h6v6",
   cover: "M6 3h12v18H6zM9 8h6",
@@ -687,7 +778,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Group(props: { title: string; hint?: string; icon: string; children: React.ReactNode }) {
   const { title, hint, icon, children } = props;
   return (
-    <details className="group border-b border-laguna/50 md:group-[:not(:hover):not(:has(:focus-visible))]/side:border-transparent">
+    <details className="group border-b border-laguna/50 md:group-[:not(.pinned):not(:hover):not(:has(:focus-visible))]/side:border-transparent">
       <summary
         title={title}
         className={`flex cursor-pointer list-none items-center gap-3 px-5 py-3 transition-colors hover:bg-laguna/15 md:pl-3 [&::-webkit-details-marker]:hidden ${focus}`}
@@ -695,11 +786,11 @@ function Group(props: { title: string; hint?: string; icon: string; children: Re
         <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-laguna/25 text-mare transition-colors group-open:bg-mare group-open:text-white">
           <Icon d={icon} className="size-5" />
         </span>
-        <h2 className={`flex-1 font-display text-[20px] leading-tight font-semibold md:group-[:not(:hover):not(:has(:focus-visible))]/side:opacity-0 md:transition-opacity md:duration-300`}>{title}</h2>
+        <h2 className={`flex-1 font-display text-[20px] leading-tight font-semibold md:group-[:not(.pinned):not(:hover):not(:has(:focus-visible))]/side:opacity-0 md:transition-opacity md:duration-300`}>{title}</h2>
         <Icon d={ICONS.down} className="size-4 shrink-0 text-ink/50 transition-transform group-open:rotate-180" />
       </summary>
-      {/* Panel plegado (escritorio, sin ratón encima ni foco de teclado dentro): solo el icono */}
-      <div className="space-y-4 px-5 pb-6 md:group-[:not(:hover):not(:has(:focus-visible))]/side:hidden">
+      {/* Panel plegado (escritorio, sin fijar, sin ratón encima ni foco de teclado dentro): solo el icono */}
+      <div className="space-y-4 px-5 pb-6 md:group-[:not(.pinned):not(:hover):not(:has(:focus-visible))]/side:hidden">
         {hint && <p className="text-sm text-ink/65">{hint}</p>}
         {children}
       </div>
@@ -1006,11 +1097,11 @@ function LayoutPicker({ value, onChange }: { value: Layout; onChange: (l: Layout
               className="grid gap-px rounded-[2px] border border-ink/50 bg-white p-px"
               style={{ width: s.w / 14, height: s.h / 14, gridTemplateColumns: `repeat(${s.cols}, 1fr)` }}
             >
-              {Array.from({ length: Number(l) }, (_, i) => (
+              {Array.from({ length: s.n }, (_, i) => (
                 <span key={i} className={`rounded-[1px] ${on ? "bg-mare" : "bg-laguna/70"}`} />
               ))}
             </span>
-            <span aria-hidden>{l === "1" ? "A4" : `×${l}`}</span>
+            <span aria-hidden className="whitespace-nowrap">{s.tag}</span>
           </label>
         );
       })}
@@ -1120,6 +1211,19 @@ export default function Editor() {
   const [sel, setSel] = useState<string | null>(null);
   const [user, setUser] = useState(loadSession);
   const [zoom, setZoom] = useState(1);
+  const [pinned, setPinned] = useState(() => {
+    try {
+      return localStorage.getItem(PIN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const togglePinned = () => {
+    setPinned(!pinned);
+    try {
+      localStorage.setItem(PIN_KEY, pinned ? "0" : "1");
+    } catch {}
+  };
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -1209,6 +1313,14 @@ export default function Editor() {
         pick: setSel,
         drop: (k, dx, dy) => (k.startsWith("img") ? setSticker(Number(k.slice(3)), { x: dx, y: dy }) : setLook(k, { dx, dy })),
         resize: (i, w) => setSticker(i, { w }),
+        // path: ["name"] o ["sections", i, "items", j, "price"]; solo se copian las secciones, no las imágenes
+        text: (path, v) => {
+          const next = { ...m, sections: structuredClone(m.sections) };
+          let o = next as unknown as Record<string | number, unknown>;
+          for (const p of path.slice(0, -1)) o = o[p] as typeof o;
+          o[path[path.length - 1]] = v;
+          update(next);
+        },
       }
     : null;
 
@@ -1414,13 +1526,28 @@ export default function Editor() {
         ) : (
           <div className="flex flex-1 flex-col md:min-h-0 md:flex-row">
             {/* Escritorio: barra de iconos de 64 px que se despliega encima de la vista previa al pasar el ratón
-                (o al llegar con el teclado); así la hoja no cambia de tamaño */}
-            <aside className={`${tab === "edit" ? "block" : "hidden"} bg-white md:relative md:block md:w-16 md:shrink-0`}>
+                (o al llegar con el teclado); así la hoja no cambia de tamaño. Fijada, ocupa su sitio y no se pliega */}
+            <aside className={`${tab === "edit" ? "block" : "hidden"} bg-white md:relative md:block md:shrink-0 ${pinned ? "md:w-[360px]" : "md:w-16"}`}>
             <div
               data-scroll="edit"
-              className="group/side md:absolute md:inset-y-0 md:left-0 md:z-30 md:w-16 md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-laguna/60 md:bg-white md:transition-[width,box-shadow] md:duration-300 md:ease-out md:hover:w-[360px] md:hover:shadow-[12px_0_40px_-12px_rgb(23_48_51/0.35)] md:has-[:focus-visible]:w-[360px]"
+              className={`group/side md:absolute md:inset-y-0 md:left-0 md:z-30 md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-laguna/60 md:bg-white ${
+                pinned
+                  ? "pinned md:w-[360px]"
+                  : "md:w-16 md:transition-[width,box-shadow] md:duration-300 md:ease-out md:hover:w-[360px] md:hover:shadow-[12px_0_40px_-12px_rgb(23_48_51/0.35)] md:has-[:focus-visible]:w-[360px]"
+              }`}
             >
             <div className="md:flex md:min-h-full md:w-[360px] md:flex-col md:justify-center-safe">
+            <button
+              className={`hidden items-center gap-3 px-5 py-3 text-ink/70 transition-colors hover:bg-laguna/15 hover:text-ink md:flex md:pl-3 ${focus}`}
+              aria-pressed={pinned}
+              title={pinned ? t.unpinPanel : t.pinPanel}
+              onClick={togglePinned}
+            >
+              <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${pinned ? "bg-mare text-white" : ""}`}>
+                <Icon d={ICONS.pin} className="size-5" />
+              </span>
+              <span className="text-sm font-semibold group-[:not(.pinned):not(:hover):not(:has(:focus-visible))]/side:opacity-0">{pinned ? t.unpinPanel : t.pinPanel}</span>
+            </button>
             <Group title={t.venue} hint={t.venueHint} icon={ICONS.venue}>
               <Field label={t.name}>
                 <input className={input} value={m.name} onChange={(e) => set("name", e.target.value)} />
@@ -1634,6 +1761,22 @@ export default function Editor() {
                   onChange={(v) => set("align", v)}
                 />
               </fieldset>
+              <fieldset className="space-y-2">
+                <legend className="mb-1 text-sm font-semibold">{t.dishAlign}</legend>
+                <Segmented
+                  name="dishAlign"
+                  value={m.dishAlign}
+                  options={[
+                    ["left", t.left],
+                    ["center", t.center],
+                  ]}
+                  onChange={(v) => set("dishAlign", v)}
+                />
+              </fieldset>
+              <label className="flex cursor-pointer items-center gap-3">
+                <input type="checkbox" className="size-5 accent-mare" checked={m.dots} onChange={(e) => set("dots", e.target.checked)} />
+                <span className="font-semibold">{t.dots}</span>
+              </label>
               <Field label={`${t.indent}: ${m.indent} mm`}>
                 <input type="range" className="w-full accent-mare" min={0} max={30} value={m.indent} onChange={(e) => set("indent", Number(e.target.value))} />
               </Field>
