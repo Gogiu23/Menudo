@@ -17,6 +17,7 @@ type Menu = {
   textSize: number;
   titleSize: number;
   noteSize: number;
+  dishSize: number;
   tableBox: boolean;
   tableNumbers: string[];
   totalLabel: string;
@@ -56,6 +57,7 @@ const EMPTY: Menu = {
   textSize: 1,
   titleSize: 1,
   noteSize: 1,
+  dishSize: 1,
   tableBox: true,
   tableNumbers: [],
   totalLabel: "Prezzo a persona",
@@ -258,7 +260,7 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
               <h2 className={`font-display text-[7.5mm] italic ${center ? "text-center" : ""}`}>{s.title}</h2>
               <div className={`mt-[1.5mm] mb-[5mm] h-[0.9mm] w-[14mm] rounded-full ${center ? "mx-auto" : ""}`} style={{ background: bar }} />
               {s.items.map((it, j) => (
-                <div key={j} className="mb-[3.5mm] last:mb-0">
+                <div key={j} className="mb-[3.5mm] last:mb-0" style={{ zoom: m.dishSize }}>
                   <div className="flex items-baseline gap-[2mm] text-[4.4mm] font-semibold">
                     <span>{it.name}</span>
                     <span className="flex-1 translate-y-[-0.8mm] border-b-[0.6mm] border-dotted border-ink/55" />
@@ -1063,6 +1065,11 @@ export default function Editor() {
                 <SizePicker name="textSize" value={m.textSize} onChange={(v) => set("textSize", v)} />
                 <p className="text-sm text-ink/65">Vale per sezioni, piatti e prezzo. {sizeName(m.textSize)}.</p>
                 {overflow && <OverflowWarning />}
+              </fieldset>
+              <fieldset className="space-y-2">
+                <legend className="mb-1 text-sm font-semibold">Dimensione dei piatti</legend>
+                <SizePicker name="dishSize" value={m.dishSize} onChange={(v) => set("dishSize", v)} />
+                <p className="text-sm text-ink/65">Si somma al testo generale. {sizeName(m.dishSize)}.</p>
               </fieldset>
               <label className="flex cursor-pointer items-center gap-3">
                 <input type="checkbox" className="size-5 accent-mare" checked={m.tiles} onChange={(e) => set("tiles", e.target.checked)} />
