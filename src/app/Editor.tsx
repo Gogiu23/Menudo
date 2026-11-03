@@ -25,6 +25,8 @@ type Menu = {
   bodyFont: string;
   ink: string;
   indent: number;
+  frameX: number;
+  frameY: number;
   priceMode: "dish" | "total";
   align: "center" | "left";
   dishAlign: "center" | "left";
@@ -97,6 +99,8 @@ const EMPTY: Menu = {
   bodyFont: "titillium",
   ink: INK,
   indent: 0,
+  frameX: 7,
+  frameY: 0,
   priceMode: "dish",
   align: "center",
   dishAlign: "left",
@@ -234,7 +238,7 @@ type Edit = {
   sel: string | null;
   pick: (k: string | null) => void;
   drop: (k: string, dx: number, dy: number) => void;
-  resize: (i: number, w: number) => void;
+  resize: (i: number, patch: Pick<Sticker, "x" | "y" | "w">) => void;
   text: (path: (string | number)[], v: string) => void;
   focusText: (k: string, el: HTMLElement) => void;
 };
@@ -533,17 +537,22 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
       {framed && (
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-[7mm]"
-          style={{ top: m.tiles ? "13mm" : "7mm", bottom: m.tiles ? "9mm" : "7mm", border: frameBorder(m) }}
+          className="pointer-events-none absolute"
+          style={{ left: `${m.frameX}mm`, right: `${m.frameX}mm`, top: `${(m.tiles ? 13 : 7) + m.frameY}mm`, bottom: `${(m.tiles ? 9 : 7) + m.frameY}mm`, border: frameBorder(m) }}
         />
       )}
       {/* Con marco, la mesa y el contenido se apartan para no pisar la línea */}
-      <div className={`relative flex flex-1 flex-col overflow-hidden px-[20mm] pb-[8mm] ${m.tableBox ? (framed ? "pt-[26mm]" : "pt-[18mm]") : framed ? "pt-[15mm]" : "pt-[11mm]"}`}>
+      <div
+        className={`relative flex flex-1 flex-col overflow-hidden px-[20mm] pb-[8mm] ${m.tableBox ? (framed ? "pt-[26mm]" : "pt-[18mm]") : framed ? "pt-[15mm]" : "pt-[11mm]"}`}
+        // Con marco, el contenido sigue su tamaño: los márgenes de siempre (marco a 7 mm de los lados y 0 de ajuste vertical) más lo que se desplace
+        style={framed ? { paddingInline: `${13 + m.frameX}mm`, paddingTop: `${(m.tableBox ? 26 : 15) + m.frameY}mm`, paddingBottom: `${8 + m.frameY}mm` } : undefined}
+      >
         {/* Recuadro vacío para escribir a boli el número de mesa (hasta 4 cifras) */}
         {m.tableBox && (
           <Movable
             {...mv("table")}
-            className={`absolute flex items-center gap-[2mm] text-[4.6mm] font-semibold ${framed ? "top-[10mm] right-[13mm]" : "top-[2mm] right-[10mm]"}`}
+            className={`absolute flex items-center gap-[2mm] text-[4.6mm] font-semibold ${framed ? "" : "top-[2mm] right-[10mm]"}`}
+            style={framed ? { top: `${10 + m.frameY}mm`, right: `${6 + m.frameX}mm` } : undefined}
           >
             <span className="mr-[1mm]">{t.tableLabel}</span>
             <span className="grid h-[13mm] w-[32mm] place-items-center rounded-[1mm] border-[0.5mm] border-ink font-display text-[8mm] leading-none">
@@ -646,36 +655,48 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
 function StickerImg({ s, i }: { s: Sticker; i: number }) {
   const edit = useContext(EditCtx);
   const k = `img${i}`;
-  const [live, setLive] = useState<number | null>(null);
+  const [live, setLive] = useState<Pick<Sticker, "x" | "y" | "w"> | null>(null);
+  const { x, y, w } = live ?? s;
 
-  const onResize = (e: React.PointerEvent<HTMLSpanElement>) => {
+  // Cuatro tiradores, uno por esquina: la esquina contraria queda fija y la imagen conserva su proporción
+  const onResize = (left: boolean, top: boolean) => (e: React.PointerEvent<HTMLSpanElement>) => {
     if (!edit || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation(); // no mover la imagen
     const el = e.currentTarget;
-    const k1 = pxPerMm(el) * pageK(el.closest<HTMLElement>("[data-page]")!, "--kx");
+    const page = el.closest<HTMLElement>("[data-page]")!;
+    const [kx, ky] = [pageK(page, "--kx"), pageK(page, "--ky")];
+    const k1 = pxPerMm(el) * kx;
+    const box = el.parentElement!;
+    const aspect = box.offsetHeight / box.offsetWidth;
     const x0 = e.clientX;
-    let w = s.w;
+    let next = { x: s.x, y: s.y, w: s.w };
     el.setPointerCapture(e.pointerId);
-    el.onpointermove = (ev) => setLive((w = Math.min(200, Math.max(5, Math.round(s.w + (ev.clientX - x0) / k1)))));
+    el.onpointermove = (ev) => {
+      const nw = Math.min(200, Math.max(5, Math.round(s.w + ((left ? -1 : 1) * (ev.clientX - x0)) / k1)));
+      const dw = nw - s.w;
+      setLive((next = { w: nw, x: left ? s.x - dw : s.x, y: top ? s.y - (dw * aspect * kx) / ky : s.y }));
+    };
     el.onpointerup = el.onpointercancel = () => {
       el.onpointermove = el.onpointerup = el.onpointercancel = null;
       setLive(null);
-      if (w !== s.w) edit.resize(i, w);
+      if (next.w !== s.w) edit.resize(i, next);
     };
   };
 
   return (
-    <Movable k={k} look={{ dx: s.x, dy: s.y }} className="absolute top-0 left-0 z-10" style={{ width: `calc(${live ?? s.w}mm * var(--kx, 1))` }}>
+    <Movable k={k} look={{ dx: x, dy: y }} className="absolute top-0 left-0 z-10" style={{ width: `calc(${w}mm * var(--kx, 1))` }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={s.src} alt="" draggable={false} className="block w-full" />
-      {edit?.sel === k && (
-        <span
-          data-resize
-          onPointerDown={onResize}
-          className="absolute -right-[2mm] -bottom-[2mm] size-[4mm] cursor-nwse-resize touch-none rounded-[1mm] border-[0.6mm] border-mare bg-white"
-        />
-      )}
+      {edit?.sel === k &&
+        ([[true, true], [false, true], [true, false], [false, false]] as const).map(([left, top]) => (
+          <span
+            key={`${left}${top}`}
+            data-resize
+            onPointerDown={onResize(left, top)}
+            className={`absolute size-[4mm] touch-none rounded-[1mm] border-[0.6mm] border-mare bg-white ${left ? "-left-[2mm]" : "-right-[2mm]"} ${top ? "-top-[2mm]" : "-bottom-[2mm]"} ${left === top ? "cursor-nwse-resize" : "cursor-nesw-resize"}`}
+          />
+        ))}
     </Movable>
   );
 }
@@ -1761,7 +1782,7 @@ export default function Editor() {
           setTxt(null);
         },
         drop: (k, dx, dy) => (k.startsWith("img") ? setSticker(Number(k.slice(3)), { x: dx, y: dy }) : setLook(k, { dx, dy })),
-        resize: (i, w) => setSticker(i, { w }),
+        resize: setSticker,
         // path: ["name"] o ["sections", i, "items", j, "price"]; solo se copian las secciones, no las imágenes
         text: (path, v) => {
           const next = { ...m, sections: structuredClone(m.sections) };
@@ -2273,6 +2294,16 @@ export default function Editor() {
                   options={(["none", "line", "double"] as const).map((f) => [f, t.frames[f]])}
                   onChange={(v) => set("frame", v)}
                 />
+                {m.frame !== "none" && (
+                  <>
+                    <Field label={`${t.frameX}: ${m.frameX} mm`}>
+                      <input type="range" className="w-full accent-mare" min={3} max={18} value={m.frameX} onChange={(e) => set("frameX", Number(e.target.value))} />
+                    </Field>
+                    <Field label={`${t.frameY}: ${m.frameY} mm`}>
+                      <input type="range" className="w-full accent-mare" min={-4} max={30} value={m.frameY} onChange={(e) => set("frameY", Number(e.target.value))} />
+                    </Field>
+                  </>
+                )}
               </fieldset>
               <label className="flex cursor-pointer items-center gap-3">
                 <input type="checkbox" className="size-5 accent-mare" checked={m.tiles} onChange={(e) => set("tiles", e.target.checked)} />
