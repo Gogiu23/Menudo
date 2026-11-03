@@ -302,18 +302,42 @@ function pxPerMm(el: Element) {
   return page.getBoundingClientRect().width / (parseFloat(getComputedStyle(page).getPropertyValue("--page-w")) || 210);
 }
 
-// Guía de centrado sobre la hoja mientras se arrastra (x: línea vertical en el centro; y: horizontal).
-// DOM directo, como el resto del arrastre: solo existe mientras se arrastra y nace oculta
+// Factor de la hoja actual respecto al A4 (variables --kx / --ky de pageSize)
+const pageK = (page: HTMLElement, v: string) => parseFloat(getComputedStyle(page).getPropertyValue(v)) || 1;
+
+// Guía de centrado sobre la hoja mientras se arrastra (x: línea vertical en el centro; y: horizontal), con la
+// distancia en mm entre el bloque y cada lado. DOM directo, como el resto del arrastre: solo existe mientras se
+// arrastra y nace oculta
 const SNAP = 2;
-function guideLine(page: HTMLElement, axis: "x" | "y") {
-  const g = document.createElement("div");
-  g.className =
+const TAG = "pointer-events-none absolute z-50 -translate-x-1/2 -translate-y-1/2 rounded bg-mare px-[1.2mm] py-[0.4mm] text-[3mm] leading-none font-semibold whitespace-nowrap text-white tabular-nums print:hidden";
+function guide(page: HTMLElement, axis: "x" | "y") {
+  const mk = (cls: string) => {
+    const d = document.createElement("div");
+    d.className = cls;
+    d.hidden = true;
+    page.append(d);
+    return d;
+  };
+  const line = mk(
     axis === "x"
       ? "pointer-events-none absolute inset-y-0 left-1/2 z-50 w-0 border-l border-mare print:hidden"
-      : "pointer-events-none absolute inset-x-0 top-1/2 z-50 h-0 border-t border-mare print:hidden";
-  g.hidden = true;
-  page.append(g);
-  return g;
+      : "pointer-events-none absolute inset-x-0 top-1/2 z-50 h-0 border-t border-mare print:hidden",
+  );
+  const tags = [mk(TAG), mk(TAG)];
+  return {
+    // gap: mm entre el bloque y cada lado; at: centro del bloque en el otro eje; size: largo de la hoja en este eje (mm)
+    show(on: boolean, gap = 0, at = 0, size = 0) {
+      line.hidden = !on;
+      tags.forEach((t, i) => {
+        t.hidden = !on || gap < 6;
+        const along = i ? size - gap / 2 : gap / 2;
+        t.style.left = `${axis === "x" ? along : at}mm`;
+        t.style.top = `${axis === "x" ? at : along}mm`;
+        t.textContent = `${gap.toFixed(1).replace(".", ",")} mm`;
+      });
+    },
+    remove: () => [line, ...tags].forEach((e) => e.remove()),
+  };
 }
 
 // Texto o imagen que se coloca con un desplazamiento en mm. Con EditCtx (vista previa de escritorio) además se arrastra y se selecciona.
@@ -339,27 +363,30 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
     // Dentro de «Tamaño del texto» (zoom) el desplazamiento en mm también se amplía: se descuenta para que el
     // bloque vaya a la par del ratón
     const z = cssZoom(el) / cssZoom(page);
+    // mm de hoja por unidad guardada (--kx, --ky: ver pageSize); las posiciones se guardan relativas al A4
+    const [kx, ky] = [pageK(page, "--kx"), pageK(page, "--ky")];
     const [x0, y0] = [e.clientX, e.clientY];
     // Centro del bloque sin desplazar y centro de la hoja, en mm de hoja
     const p = page.getBoundingClientRect();
     const r = el.getBoundingClientRect();
-    const cx = (r.left + r.width / 2 - p.left) / k1 - dx * z;
-    const cy = (r.top + r.height / 2 - p.top) / k1 - dy * z;
+    const cx = (r.left + r.width / 2 - p.left) / k1 - dx * z * kx;
+    const cy = (r.top + r.height / 2 - p.top) / k1 - dy * z * ky;
     const [mx, my] = [p.width / k1 / 2, p.height / k1 / 2];
-    const gx = guideLine(page, "x");
-    const gy = guideLine(page, "y");
+    const [bw, bh] = [r.width / k1, r.height / k1];
+    const gx = guide(page, "x");
+    const gy = guide(page, "y");
     let pos: [number, number] = [dx, dy];
     el.setPointerCapture(e.pointerId);
     el.onpointermove = (ev) => {
-      let nx = halfMm(dx + (ev.clientX - x0) / k1 / z);
-      let ny = halfMm(dy + (ev.clientY - y0) / k1 / z);
+      let nx = halfMm(dx + (ev.clientX - x0) / k1 / z / kx);
+      let ny = halfMm(dy + (ev.clientY - y0) / k1 / z / ky);
       // Guías: a menos de SNAP mm del centro de la hoja, el bloque se pega al centro y se ve la línea
-      const snapX = Math.abs(cx + nx * z - mx) < SNAP;
-      const snapY = Math.abs(cy + ny * z - my) < SNAP;
-      if (snapX) nx = (mx - cx) / z;
-      if (snapY) ny = (my - cy) / z;
-      gx.hidden = !snapX;
-      gy.hidden = !snapY;
+      const snapX = Math.abs(cx + nx * z * kx - mx) < SNAP;
+      const snapY = Math.abs(cy + ny * z * ky - my) < SNAP;
+      if (snapX) nx = (mx - cx) / z / kx;
+      if (snapY) ny = (my - cy) / z / ky;
+      gx.show(snapX, mx - bw / 2, cy + ny * z * ky, mx * 2);
+      gy.show(snapY, my - bh / 2, cx + nx * z * kx, my * 2);
       setLive((pos = [nx, ny]));
     };
     el.onpointerup = el.onpointercancel = (ev) => {
@@ -385,7 +412,7 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
       style={
         {
           ...style,
-          translate: dx || dy ? `${dx}mm ${dy}mm` : undefined,
+          translate: dx || dy ? `calc(${dx}mm * var(--kx, 1)) calc(${dy}mm * var(--ky, 1))` : undefined,
           textAlign: look?.align,
           ...(look?.font && { fontFamily: fontVar(look.font), "--font-display": fontVar(look.font), "--font-sans": fontVar(look.font) }),
           ...(look?.color && { color: look.color, "--color-ink": look.color }),
@@ -626,7 +653,7 @@ function StickerImg({ s, i }: { s: Sticker; i: number }) {
     e.preventDefault();
     e.stopPropagation(); // no mover la imagen
     const el = e.currentTarget;
-    const k1 = pxPerMm(el);
+    const k1 = pxPerMm(el) * pageK(el.closest<HTMLElement>("[data-page]")!, "--kx");
     const x0 = e.clientX;
     let w = s.w;
     el.setPointerCapture(e.pointerId);
@@ -639,7 +666,7 @@ function StickerImg({ s, i }: { s: Sticker; i: number }) {
   };
 
   return (
-    <Movable k={k} look={{ dx: s.x, dy: s.y }} className="absolute top-0 left-0 z-10" style={{ width: `${live ?? s.w}mm` }}>
+    <Movable k={k} look={{ dx: s.x, dy: s.y }} className="absolute top-0 left-0 z-10" style={{ width: `calc(${live ?? s.w}mm * var(--kx, 1))` }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={s.src} alt="" draggable={false} className="block w-full" />
       {edit?.sel === k && (
@@ -656,7 +683,10 @@ function StickerImg({ s, i }: { s: Sticker; i: number }) {
 // Variables CSS que fijan el tamaño de la página (ContentPage y CoverPage las leen)
 const pageSize = (layout: Layout) => {
   const s = SHEETS[layout];
-  return { "--page-w": `${s.pw ?? 210}mm`, "--page-h": `${s.ph ?? 297}mm` } as React.CSSProperties;
+  // --kx, --ky: cuánto mide esta hoja respecto al A4; imágenes y textos movidos se guardan en mm de A4 y se
+  // escalan con ellos, así conservan su sitio relativo al cambiar de formato
+  const [pw, ph] = [s.pw ?? 210, s.ph ?? 297];
+  return { "--page-w": `${pw}mm`, "--page-h": `${ph}mm`, "--kx": pw / 210, "--ky": ph / 297 } as React.CSSProperties;
 };
 
 // Cada hueco mide exactamente lo que la copia: la línea discontinua es la de corte
