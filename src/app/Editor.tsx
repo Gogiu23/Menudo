@@ -233,6 +233,18 @@ function move<T>(arr: T[], i: number, d: number) {
   return arr;
 }
 
+// Quita los retoques (posición, zoom, tamaño) de la sección i y baja un puesto los de las siguientes: la sección
+// que se borra no deja rastro y las demás conservan el suyo. Claves: «s2» y «sections.2.items.0.name»
+function dropSectionLooks(looks: Record<string, Look>, i: number) {
+  const out: Record<string, Look> = {};
+  for (const [k, v] of Object.entries(looks)) {
+    const [, pre, n, rest] = k.match(/^(s|sections\.)(\d+)(.*)$/) ?? [];
+    if (pre === undefined) out[k] = v;
+    else if (Number(n) !== i) out[`${pre}${Number(n) > i ? Number(n) - 1 : n}${rest}`] = v;
+  }
+  return out;
+}
+
 /* ---------- Edición directa sobre la vista previa (solo escritorio) ---------- */
 
 type Edit = {
@@ -367,13 +379,14 @@ function clipBox(el: Element): Box {
   return box;
 }
 
-// Cuánto (px) puede moverse el bloque r en cada eje sin dejar a la vista menos de vx × vy; si no cabe, se centra
+// Cuánto (px) puede moverse el bloque r en cada eje sin dejar a la vista menos de vx × vy. Siempre incluye 0:
+// un bloque que ya está fuera (p. ej. una sección que desborda) no salta, solo no puede alejarse más
 function room(r: DOMRect, box: Box, vx: number, vy: number) {
   const [wx, wy] = [Math.min(vx, r.width), Math.min(vy, r.height)];
   return [
     [box.left + wx - r.right, box.right - wx - r.left],
     [box.top + wy - r.bottom, box.bottom - wy - r.top],
-  ].map(([lo, hi]) => (lo > hi ? [(lo + hi) / 2, (lo + hi) / 2] : [lo, hi]));
+  ].map(([a, b]) => [Math.min(a, b, 0), Math.max(a, b, 0)]);
 }
 
 // px de pantalla por unidad guardada (dx, dy), con el zoom propio del bloque descontado: ver Movable
@@ -398,13 +411,18 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
     return room(r, clipBox(el), min, min);
   };
 
-  // Un bloque que quedó fuera (guardado antes de este límite, o tras cambiar de formato) vuelve a la vista
+  // Un bloque que quedó casi fuera de la hoja (guardado antes de este límite) vuelve a la vista. Solo mira la hoja:
+  // el desborde de las secciones no es culpa del usuario y no se toca
   useEffect(() => {
     const el = ref.current;
     if (!edit || live || !el || !(img || dx || dy || scale !== 1)) return;
     const r = el.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    const [sx, sy] = visible(el, r).map((rg) => clamp(0, rg));
+    const page = el.closest("[data-page]")!.getBoundingClientRect();
+    const min = 10 * pxPerMm(el);
+    // Desplazamiento mínimo (px) que deja 10 mm del bloque dentro de la hoja; 0 si ya se ve
+    const back = (lo: number, hi: number, a: number, b: number) => (b < lo + min ? lo + min - b : a > hi - min ? hi - min - a : 0);
+    const [sx, sy] = [back(page.left, page.right, r.left, r.right), back(page.top, page.bottom, r.top, r.bottom)];
     const [ux, uy] = units(el);
     if (Math.abs(sx) > 2 || Math.abs(sy) > 2) edit.drop(k, round2(dx + sx / ux), round2(dy + sy / uy));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1904,6 +1922,32 @@ export default function Editor() {
     set("stickers", m.stickers.filter((_, j) => j !== i));
   };
 
+  const removeSection = (i: number) => {
+    setSel(null);
+    update({ ...m, sections: m.sections.filter((_, j) => j !== i), looks: dropSectionLooks(m.looks, i) });
+  };
+  // Borra lo seleccionado en la hoja y lo vacía en el panel de al lado; sin retoques, para que al volver nazca de cero
+  const removeEl = (k: string) => {
+    const b = k.replace(/^cover-/, "");
+    if (b.startsWith("img")) return removeSticker(Number(b.slice(3)));
+    if (/^s\d+$/.test(b)) return removeSection(Number(b.slice(1)));
+    const cleared: Partial<Menu> = {
+      name: { name: "" },
+      subtitle: { subtitle: "" },
+      logo: { logo: "" },
+      table: { tableBox: false },
+      total: { totalLabel: "", totalPrice: "", totalNote: "" },
+      footer: { address: "", phone: "", email: "", web: "" },
+    }[b as "name"];
+    if (!cleared) return;
+    const looks = { ...m.looks };
+    delete looks[b];
+    delete looks[`cover-${b}`];
+    setSel(null);
+    setTxt(null);
+    update({ ...m, ...cleared, looks });
+  };
+
   const edit: Edit | null = desktop
     ? {
         sel,
@@ -1944,13 +1988,13 @@ export default function Editor() {
   };
   const selSticker = sel?.startsWith("img") ? Number(sel.slice(3)) : -1;
 
-  // Supr / tecla de borrar del Mac: elimina la imagen seleccionada (salvo mientras se escribe en un campo)
+  // Supr / tecla de borrar del Mac: elimina lo seleccionado en la hoja (salvo mientras se escribe en un campo)
   useEffect(() => {
-    if (selSticker < 0) return;
+    if (!sel) return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.key === "Delete" || e.key === "Backspace") && !(e.target as Element).closest("input,textarea,select,[contenteditable]")) {
         e.preventDefault();
-        removeSticker(selSticker);
+        removeEl(sel);
       }
     };
     addEventListener("keydown", onKey);
@@ -2242,7 +2286,7 @@ export default function Editor() {
                     <button className={iconBtn} aria-label={t.moveDown} disabled={i === m.sections.length - 1} onClick={() => setSections((ss) => move(ss, i, 1))}>
                       <Icon d={ICONS.down} />
                     </button>
-                    <button className={iconBtn} aria-label={t.deleteSection(s.title)} onClick={() => setSections((ss) => ss.filter((_, k) => k !== i))}>
+                    <button className={iconBtn} aria-label={t.deleteSection(s.title)} onClick={() => removeSection(i)}>
                       <Icon d={ICONS.trash} />
                     </button>
                   </div>
@@ -2606,6 +2650,9 @@ export default function Editor() {
                           />
                           <button className={`${iconBtn} md:size-8`} aria-label={t.reset} title={t.reset} onClick={() => resetLook(sel)}>
                             <Icon d={ICONS.reset} className="size-4" />
+                          </button>
+                          <button className={`${iconBtn} md:size-8`} aria-label={t.remove} title={t.remove} onClick={() => removeEl(sel)}>
+                            <Icon d={ICONS.trash} className="size-4" />
                           </button>
                         </div>
                       )}
