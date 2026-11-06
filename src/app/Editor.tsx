@@ -9,11 +9,12 @@ type Item = { name: string; desc: string; price: string };
 type Section = { title: string; items: Item[] };
 type Frame = "none" | "line" | "double";
 // Desplazamiento (mm), letra y color propios de un texto retocado en escritorio; size: tamaño en pt de un campo
-// de texto (clave: su ruta, p. ej. "sections.0.items.1.name"), antes del «Tamaño del texto» general
-type Look = { dx?: number; dy?: number; font?: string; color?: string; size?: number; align?: Align };
+// de texto (clave: su ruta, p. ej. "sections.0.items.1.name"), antes del «Tamaño del texto» general;
+// scale: zoom del bloque entero (1 = normal), se cambia con los tiradores
+type Look = { dx?: number; dy?: number; font?: string; color?: string; size?: number; align?: Align; scale?: number };
 type Align = "left" | "center" | "right";
-// PNG decorativo: posición y ancho en mm sobre la hoja
-type Sticker = { src: string; x: number; y: number; w: number };
+// PNG decorativo: posición y ancho en mm sobre la hoja; back: detrás del texto (por defecto, delante)
+type Sticker = { src: string; x: number; y: number; w: number; back?: boolean };
 type Menu = {
   name: string;
   subtitle: string;
@@ -239,6 +240,8 @@ type Edit = {
   pick: (k: string | null) => void;
   drop: (k: string, dx: number, dy: number) => void;
   resize: (i: number, patch: Pick<Sticker, "x" | "y" | "w">) => void;
+  look: (k: string, patch: Look) => void;
+  menu: (k: string, x: number, y: number) => void;
   text: (path: (string | number)[], v: string) => void;
   focusText: (k: string, el: HTMLElement) => void;
 };
@@ -344,12 +347,97 @@ function guide(page: HTMLElement, axis: "x" | "y") {
   };
 }
 
+type Box = { left: number; top: number; right: number; bottom: number };
+const clamp = (v: number, [lo, hi]: number[]) => Math.min(hi, Math.max(lo, v));
+const round2 = (v: number) => Math.round(v * 100) / 100;
+
+// Zona donde el bloque se ve: la hoja recortada por los contenedores con overflow oculto que lo rodean
+function clipBox(el: Element): Box {
+  const page = el.closest<HTMLElement>("[data-page]")!;
+  const b = page.getBoundingClientRect();
+  const box = { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
+  for (let p = el.parentElement; p && p !== page; p = p.parentElement) {
+    if (getComputedStyle(p).overflowX === "visible") continue;
+    const c = p.getBoundingClientRect();
+    box.left = Math.max(box.left, c.left);
+    box.top = Math.max(box.top, c.top);
+    box.right = Math.min(box.right, c.right);
+    box.bottom = Math.min(box.bottom, c.bottom);
+  }
+  return box;
+}
+
+// Cuánto (px) puede moverse el bloque r en cada eje sin dejar a la vista menos de vx × vy; si no cabe, se centra
+function room(r: DOMRect, box: Box, vx: number, vy: number) {
+  const [wx, wy] = [Math.min(vx, r.width), Math.min(vy, r.height)];
+  return [
+    [box.left + wx - r.right, box.right - wx - r.left],
+    [box.top + wy - r.bottom, box.bottom - wy - r.top],
+  ].map(([lo, hi]) => (lo > hi ? [(lo + hi) / 2, (lo + hi) / 2] : [lo, hi]));
+}
+
+// px de pantalla por unidad guardada (dx, dy), con el zoom propio del bloque descontado: ver Movable
+function units(el: Element) {
+  const page = el.closest<HTMLElement>("[data-page]")!;
+  const [kx, ky] = [pageK(page, "--kx"), pageK(page, "--ky")];
+  const k1 = pxPerMm(el) * (cssZoom(el) / cssZoom(page));
+  return [k1 * kx, k1 * ky];
+}
+
 // Texto o imagen que se coloca con un desplazamiento en mm. Con EditCtx (vista previa de escritorio) además se arrastra y se selecciona.
+// Nunca sale de la zona visible: el texto entero dentro de la hoja; la imagen, con 10 mm a la vista como mínimo
 function Movable(props: { k: string; look?: Look; className?: string; style?: React.CSSProperties; children: React.ReactNode }) {
   const { k, look, className = "", style, children } = props;
   const edit = useContext(EditCtx);
-  const [live, setLive] = useState<[number, number] | null>(null);
-  const [dx, dy] = live ?? [look?.dx ?? 0, look?.dy ?? 0];
+  const ref = useRef<HTMLDivElement>(null);
+  const [live, setLive] = useState<[number, number, number] | null>(null);
+  const [dx, dy, scale] = live ?? [look?.dx ?? 0, look?.dy ?? 0, look?.scale ?? 1];
+  const img = k.startsWith("img");
+  const visible = (el: Element, r: DOMRect) => {
+    const min = img ? 10 * pxPerMm(el) : Infinity;
+    return room(r, clipBox(el), min, min);
+  };
+
+  // Un bloque que quedó fuera (guardado antes de este límite, o tras cambiar de formato) vuelve a la vista
+  useEffect(() => {
+    const el = ref.current;
+    if (!edit || live || !el || !(img || dx || dy || scale !== 1)) return;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const [sx, sy] = visible(el, r).map((rg) => clamp(0, rg));
+    const [ux, uy] = units(el);
+    if (Math.abs(sx) > 2 || Math.abs(sy) > 2) edit.drop(k, round2(dx + sx / ux), round2(dy + sy / uy));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edit !== null, dx, dy, scale, live]);
+
+  // Cuatro tiradores, uno por esquina, como en las imágenes: la esquina contraria queda fija
+  const onScale = (left: boolean, top: boolean) => (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (!edit || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation(); // no mover el bloque
+    const handle = e.currentTarget;
+    const el = handle.parentElement!;
+    const [ux, uy] = units(el);
+    const r = el.getBoundingClientRect();
+    const box = clipBox(el);
+    const [cx, cy] = [r.left + r.width / 2, r.top + r.height / 2];
+    const d0 = Math.hypot(e.clientX - cx, e.clientY - cy) || 1;
+    const [hw, hh] = [r.width / scale / 2, r.height / scale / 2]; // medio bloque a escala 1, en px
+    // Crece desde la esquina fija hacia el tirador: hasta el borde de la zona visible
+    const max = scale * Math.min(((left ? r.right - box.left : box.right - r.left) / r.width) || 1, ((top ? r.bottom - box.top : box.bottom - r.top) / r.height) || 1);
+    let next: [number, number, number] = [dx, dy, scale];
+    handle.setPointerCapture(e.pointerId);
+    handle.onpointermove = (ev) => {
+      const s = round2(clamp((scale * Math.hypot(ev.clientX - cx, ev.clientY - cy)) / d0, [0.3, Math.max(0.3, max)]));
+      const d = scale - s;
+      setLive((next = [round2(dx + (d * (left ? hw : -hw)) / ux), round2(dy + (d * (top ? hh : -hh)) / uy), s]));
+    };
+    handle.onpointerup = handle.onpointercancel = () => {
+      handle.onpointermove = handle.onpointerup = handle.onpointercancel = null;
+      setLive(null);
+      if (next[2] !== scale) edit.look(k, { dx: next[0], dy: next[1], scale: next[2] });
+    };
+  };
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!edit || e.button !== 0) return;
@@ -377,13 +465,14 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
     const cy = (r.top + r.height / 2 - p.top) / k1 - dy * z * ky;
     const [mx, my] = [p.width / k1 / 2, p.height / k1 / 2];
     const [bw, bh] = [r.width / k1, r.height / k1];
+    const [rx, ry] = visible(el, r);
     const gx = guide(page, "x");
     const gy = guide(page, "y");
-    let pos: [number, number] = [dx, dy];
+    let pos: [number, number, number] = [dx, dy, scale];
     el.setPointerCapture(e.pointerId);
     el.onpointermove = (ev) => {
-      let nx = halfMm(dx + (ev.clientX - x0) / k1 / z / kx);
-      let ny = halfMm(dy + (ev.clientY - y0) / k1 / z / ky);
+      let nx = halfMm(dx + clamp(ev.clientX - x0, rx) / k1 / z / kx);
+      let ny = halfMm(dy + clamp(ev.clientY - y0, ry) / k1 / z / ky);
       // Guías: a menos de SNAP mm del centro de la hoja, el bloque se pega al centro y se ve la línea
       const snapX = Math.abs(cx + nx * z * kx - mx) < SNAP;
       const snapY = Math.abs(cy + ny * z * ky - my) < SNAP;
@@ -391,14 +480,14 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
       if (snapY) ny = (my - cy) / z / ky;
       gx.show(snapX, mx - bw / 2, cy + ny * z * ky, mx * 2);
       gy.show(snapY, my - bh / 2, cx + nx * z * kx, my * 2);
-      setLive((pos = [nx, ny]));
+      setLive((pos = [nx, ny, scale]));
     };
     el.onpointerup = el.onpointercancel = (ev) => {
       el.onpointermove = el.onpointerup = el.onpointercancel = null;
       gx.remove();
       gy.remove();
       setLive(null);
-      if (pos[0] !== dx || pos[1] !== dy) edit.drop(k, ...pos);
+      if (pos[0] !== dx || pos[1] !== dy) edit.drop(k, pos[0], pos[1]);
       // Clic sin arrastrar sobre un texto: a escribir ahí mismo
       else if (text && ev.type === "pointerup") {
         text.focus();
@@ -407,16 +496,20 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
     };
   };
 
-  const ring = !edit ? "" : edit.sel === k ? "outline-2 outline-dashed outline-mare" : "hover:outline-1 hover:outline-dashed hover:outline-mare/70";
+  const selected = edit?.sel === k;
+  const ring = !edit ? "" : selected ? "outline-2 outline-dashed outline-mare" : "hover:outline-1 hover:outline-dashed hover:outline-mare/70";
   return (
     <div
+      ref={ref}
       data-k={k}
       onPointerDown={onPointerDown}
-      className={`${className} ${edit ? "cursor-move touch-none select-none" : ""} ${ring}`}
+      onContextMenu={edit && img ? (e) => (e.preventDefault(), edit.menu(k, e.clientX, e.clientY)) : undefined}
+      className={`${className} ${edit ? "pointer-events-auto cursor-move touch-none select-none" : ""} ${selected && !/\babsolute\b/.test(className) ? "relative" : ""} ${ring}`}
       style={
         {
           ...style,
           translate: dx || dy ? `calc(${dx}mm * var(--kx, 1)) calc(${dy}mm * var(--ky, 1))` : undefined,
+          scale: scale !== 1 ? String(scale) : undefined,
           textAlign: look?.align,
           ...(look?.font && { fontFamily: fontVar(look.font), "--font-display": fontVar(look.font), "--font-sans": fontVar(look.font) }),
           ...(look?.color && { color: look.color, "--color-ink": look.color }),
@@ -424,6 +517,18 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
       }
     >
       {children}
+      {selected &&
+        !img &&
+        ([[true, true], [false, true], [true, false], [false, false]] as const).map(([left, top]) => (
+          <span
+            key={`${left}${top}`}
+            data-resize
+            onPointerDown={onScale(left, top)}
+            // dentro de la esquina (el contenedor recorta lo que asoma) y sin crecer con el bloque
+            style={{ scale: String(1 / scale), transformOrigin: `${left ? "left" : "right"} ${top ? "top" : "bottom"}` } as React.CSSProperties}
+            className={`absolute z-10 size-[4mm] touch-none rounded-[1mm] border-[0.6mm] border-mare bg-white ${left ? "left-0" : "right-0"} ${top ? "top-0" : "bottom-0"} ${left === top ? "cursor-nwse-resize" : "cursor-nesw-resize"}`}
+          />
+        ))}
     </div>
   );
 }
@@ -521,6 +626,8 @@ function CoverPage({ m }: { m: Menu }) {
 
 function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
   const t = useT();
+  // Con imágenes detrás del texto, el contenido deja pasar el ratón para poder cogerlas (cada bloque lo recupera)
+  const behind = !!useContext(EditCtx) && m.stickers.some((s) => s.back);
   const contacts = (["phone", "email", "web"] as const).filter((f) => m[f]);
   const total = m.priceMode === "total";
   const bar = decoColor(m);
@@ -532,7 +639,7 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
   const footerAlign = m.looks.footer?.align ?? "center";
   return (
     <LooksCtx value={m.looks}>
-    <div data-page className="relative flex h-[var(--page-h,297mm)] w-[var(--page-w,210mm)] flex-col overflow-hidden bg-white font-sans text-ink" style={pageVars(m)}>
+    <div data-page className="relative isolate flex h-[var(--page-h,297mm)] w-[var(--page-w,210mm)] flex-col overflow-hidden bg-white font-sans text-ink" style={pageVars(m)}>
       {m.tiles && <Tile color={m.accent} style={{ height: "10mm" }} />}
       {framed && (
         <div
@@ -543,9 +650,14 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
       )}
       {/* Con marco, la mesa y el contenido se apartan para no pisar la línea */}
       <div
-        className={`relative flex flex-1 flex-col overflow-hidden px-[20mm] pb-[8mm] ${m.tableBox ? (framed ? "pt-[26mm]" : "pt-[18mm]") : framed ? "pt-[15mm]" : "pt-[11mm]"}`}
+        className={`relative flex flex-1 flex-col overflow-hidden px-[20mm] pb-[8mm] ${behind ? "pointer-events-none" : ""} ${m.tableBox ? (framed ? "pt-[26mm]" : "pt-[18mm]") : framed ? "pt-[15mm]" : "pt-[11mm]"}`}
         // Con marco, el contenido sigue su tamaño: los márgenes de siempre (marco a 7 mm de los lados y 0 de ajuste vertical) más lo que se desplace
-        style={framed ? { paddingInline: `${13 + m.frameX}mm`, paddingTop: `${(m.tableBox ? 26 : 15) + m.frameY}mm`, paddingBottom: `${8 + m.frameY}mm` } : undefined}
+        style={
+          {
+            "--px": framed ? `${13 + m.frameX}mm` : "20mm",
+            ...(framed && { paddingInline: `${13 + m.frameX}mm`, paddingTop: `${(m.tableBox ? 26 : 15) + m.frameY}mm`, paddingBottom: `${8 + m.frameY}mm` }),
+          } as React.CSSProperties
+        }
       >
         {/* Recuadro vacío para escribir a boli el número de mesa (hasta 4 cifras) */}
         {m.tableBox && (
@@ -565,7 +677,8 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
         {/* justify-evenly: las secciones se reparten solas por todo el alto disponible */}
         <div
           data-sections
-          className="mt-[9mm] flex flex-1 flex-col justify-evenly gap-[6mm] overflow-hidden"
+          // -mx/px: el recorte llega a los bordes de la hoja y el texto conserva su ancho; así un bloque puede crecer hasta el borde
+          className="-mx-[var(--px)] mt-[9mm] flex flex-1 flex-col justify-evenly gap-[6mm] overflow-hidden px-[var(--px)]"
           style={{ zoom: m.textSize }}
         >
           {m.sections.map((s, i) => (
@@ -642,7 +755,7 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
       </div>
       {m.tiles && <Tile color={m.accent} style={{ height: "6mm" }} k={0.6} />}
 
-      {/* PNG decorativos, encima de todo */}
+      {/* PNG decorativos, delante del texto o (s.back) detrás */}
       {m.stickers.map((s, i) => (
         <StickerImg key={i} s={s} i={i} />
       ))}
@@ -685,7 +798,7 @@ function StickerImg({ s, i }: { s: Sticker; i: number }) {
   };
 
   return (
-    <Movable k={k} look={{ dx: x, dy: y }} className="absolute top-0 left-0 z-10" style={{ width: `calc(${w}mm * var(--kx, 1))` }}>
+    <Movable k={k} look={{ dx: x, dy: y }} className={`absolute top-0 left-0 ${s.back ? "-z-10" : "z-10"}`} style={{ width: `calc(${w}mm * var(--kx, 1))` }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={s.src} alt="" draggable={false} className="block w-full" />
       {edit?.sel === k &&
@@ -1626,6 +1739,23 @@ export default function Editor() {
   const [desktop] = useState(() => matchMedia("(min-width: 768px) and (pointer: fine)").matches);
   const [sel, setSel] = useState<string | null>(null);
   const [txt, setTxt] = useState<{ k: string; ratio: number; pt: number } | null>(null);
+  // Menú del botón derecho sobre una imagen: delante o detrás del texto
+  const [ctx, setCtx] = useState<{ k: string; x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!ctx) return;
+    const close = () => setCtx(null);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    addEventListener("pointerdown", close);
+    addEventListener("keydown", onKey);
+    addEventListener("resize", close);
+    addEventListener("scroll", close, true);
+    return () => {
+      removeEventListener("pointerdown", close);
+      removeEventListener("keydown", onKey);
+      removeEventListener("resize", close);
+      removeEventListener("scroll", close, true);
+    };
+  }, [ctx]);
   const [user, setUser] = useState(loadSession);
   const [zoom, setZoom] = useState(1);
   const [pinned, setPinned] = useState(() => {
@@ -1783,6 +1913,12 @@ export default function Editor() {
         },
         drop: (k, dx, dy) => (k.startsWith("img") ? setSticker(Number(k.slice(3)), { x: dx, y: dy }) : setLook(k, { dx, dy })),
         resize: setSticker,
+        look: setLook,
+        menu: (k, x, y) => {
+          setSel(k);
+          setTxt(null);
+          setCtx({ k, x, y });
+        },
         // path: ["name"] o ["sections", i, "items", j, "price"]; solo se copian las secciones, no las imágenes
         text: (path, v) => {
           const next = { ...m, sections: structuredClone(m.sections) };
@@ -1895,6 +2031,35 @@ export default function Editor() {
   return (
     <LangCtx value={lang}>
       <style>{`@page { size: A4 ${SHEETS[layout].orient}; margin: 0; }`}</style>
+
+      {ctx && m.stickers[Number(ctx.k.slice(3))] && (
+        <div
+          role="menu"
+          className="fixed z-[60] w-48 rounded-lg border border-laguna bg-surface p-1 text-sm shadow-lg print:hidden"
+          style={{ left: Math.max(4, Math.min(ctx.x, innerWidth - 196)), top: Math.max(4, Math.min(ctx.y, innerHeight - 84)) }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {([[false, t.inFront], [true, t.behind]] as const).map(([back, label]) => {
+            const on = !!m.stickers[Number(ctx.k.slice(3))].back === back;
+            return (
+              <button
+                key={label}
+                role="menuitemradio"
+                aria-checked={on}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-laguna/25 ${focus}`}
+                onClick={() => {
+                  setSticker(Number(ctx.k.slice(3)), { back });
+                  setCtx(null);
+                }}
+              >
+                <span className="w-4 text-mare">{on ? "✓" : ""}</span>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="flex min-h-dvh flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:h-dvh md:pb-0 print:hidden">
         <header className="shrink-0 border-b border-laguna/60 bg-surface pt-[env(safe-area-inset-top)]">
