@@ -11,7 +11,7 @@ type Frame = "none" | "line" | "double";
 // Desplazamiento (mm), letra y color propios de un texto retocado en escritorio; size: tamaño en pt de un campo
 // de texto (clave: su ruta, p. ej. "sections.0.items.1.name"), antes del «Tamaño del texto» general;
 // scale: zoom del bloque entero (1 = normal), se cambia con los tiradores
-type Look = { dx?: number; dy?: number; font?: string; color?: string; size?: number; align?: Align; scale?: number };
+type Look = { dx?: number; dy?: number; font?: string; color?: string; size?: number; align?: Align; scale?: number; bold?: boolean; italic?: boolean; underline?: boolean };
 type Align = "left" | "center" | "right";
 // PNG decorativo: posición y ancho en mm sobre la hoja; back: detrás del texto (por defecto, delante)
 type Sticker = { src: string; x: number; y: number; w: number; back?: boolean };
@@ -44,6 +44,8 @@ type Menu = {
   accent: string;
   sections: Section[];
   stickers: Sticker[];
+  // Cajas de texto libres, junto a las secciones; su sitio, letra y zoom están en looks["t0"], looks["t1"]…
+  texts: { text: string; w?: number }[];
   looks: Record<string, Look>;
   address: string;
   phone: string;
@@ -123,6 +125,7 @@ const EMPTY: Menu = {
     },
   ],
   stickers: [],
+  texts: [],
   looks: {},
   address: "Via Roma 1, Milano",
   phone: "+39 02 0000 0000",
@@ -233,17 +236,20 @@ function move<T>(arr: T[], i: number, d: number) {
   return arr;
 }
 
-// Quita los retoques (posición, zoom, tamaño) de la sección i y baja un puesto los de las siguientes: la sección
-// que se borra no deja rastro y las demás conservan el suyo. Claves: «s2» y «sections.2.items.0.name»
-function dropSectionLooks(looks: Record<string, Look>, i: number) {
+// Quita los retoques (posición, zoom, tamaño) del elemento i de una lista (secciones o cajas de texto) y baja un
+// puesto los de los siguientes: lo que se borra no deja rastro y los demás conservan el suyo.
+// Claves: «s2» y «sections.2.items.0.name»; «t2» y «texts.2.text»
+function dropIndexedLooks(looks: Record<string, Look>, pre: RegExp, i: number) {
   const out: Record<string, Look> = {};
   for (const [k, v] of Object.entries(looks)) {
-    const [, pre, n, rest] = k.match(/^(s|sections\.)(\d+)(.*)$/) ?? [];
-    if (pre === undefined) out[k] = v;
-    else if (Number(n) !== i) out[`${pre}${Number(n) > i ? Number(n) - 1 : n}${rest}`] = v;
+    const [, head, n, rest] = k.match(pre) ?? [];
+    if (head === undefined) out[k] = v;
+    else if (Number(n) !== i) out[`${head}${Number(n) > i ? Number(n) - 1 : n}${rest}`] = v;
   }
   return out;
 }
+const SECTION_KEYS = /^(s|sections\.)(\d+)(.*)$/;
+const TEXT_KEYS = /^(t|texts\.)(\d+)(.*)$/;
 
 /* ---------- Edición directa sobre la vista previa (solo escritorio) ---------- */
 
@@ -345,8 +351,9 @@ function guide(page: HTMLElement, axis: "x" | "y") {
   const tags = [mk(TAG), mk(TAG)];
   return {
     // gap: mm entre el bloque y cada lado; at: centro del bloque en el otro eje; size: largo de la hoja en este eje (mm)
-    show(on: boolean, gap = 0, at = 0, size = 0) {
+    show(on: boolean, gap = 0, at = 0, size = 0, lineAt?: number) {
       line.hidden = !on;
+      line.style.top = lineAt === undefined ? "" : `${lineAt}mm`;
       tags.forEach((t, i) => {
         t.hidden = !on || gap < 6;
         const along = i ? size - gap / 2 : gap / 2;
@@ -411,22 +418,25 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
     return room(r, clipBox(el), min, min);
   };
 
-  // Un bloque que quedó casi fuera de la hoja (guardado antes de este límite) vuelve a la vista. Solo mira la hoja:
-  // el desborde de las secciones no es culpa del usuario y no se toca
+  // El desplazamiento se guarda respecto al sitio que el bloque ocupa en el flujo, y ese sitio cambia al añadir o
+  // quitar secciones: un bloque movido puede quedar fuera de lo visible (recortado por su contenedor o la hoja).
+  // Tras cada pintado se le devuelve a la zona visible, entero (las imágenes, con 10 mm); si no cabe, se deja
   useEffect(() => {
     const el = ref.current;
     if (!edit || live || !el || !(img || dx || dy || scale !== 1)) return;
     const r = el.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    const page = el.closest("[data-page]")!.getBoundingClientRect();
-    const min = 10 * pxPerMm(el);
-    // Desplazamiento mínimo (px) que deja 10 mm del bloque dentro de la hoja; 0 si ya se ve
-    const back = (lo: number, hi: number, a: number, b: number) => (b < lo + min ? lo + min - b : a > hi - min ? hi - min - a : 0);
-    const [sx, sy] = [back(page.left, page.right, r.left, r.right), back(page.top, page.bottom, r.top, r.bottom)];
+    const box = clipBox(el);
+    const min = img ? 10 * pxPerMm(el) : Infinity;
+    const back = (lo: number, hi: number, a: number, b: number) => {
+      const w = Math.min(min, b - a);
+      const [l, h] = [lo + w - b, hi - w - a];
+      return l > h ? 0 : clamp(0, [l, h]);
+    };
+    const [sx, sy] = [back(box.left, box.right, r.left, r.right), back(box.top, box.bottom, r.top, r.bottom)];
     const [ux, uy] = units(el);
     if (Math.abs(sx) > 2 || Math.abs(sy) > 2) edit.drop(k, round2(dx + sx / ux), round2(dy + sy / uy));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [edit !== null, dx, dy, scale, live]);
+  });
 
   // Cuatro tiradores, uno por esquina, como en las imágenes: la esquina contraria queda fija
   const onScale = (left: boolean, top: boolean) => (e: React.PointerEvent<HTMLSpanElement>) => {
@@ -434,7 +444,7 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
     e.preventDefault();
     e.stopPropagation(); // no mover el bloque
     const handle = e.currentTarget;
-    const el = handle.parentElement!;
+    const el = handle.closest<HTMLElement>("[data-k]")!;
     const [ux, uy] = units(el);
     const r = el.getBoundingClientRect();
     const box = clipBox(el);
@@ -486,6 +496,13 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
     const [rx, ry] = visible(el, r);
     const gx = guide(page, "x");
     const gy = guide(page, "y");
+    // Línea común con otros bloques: centros verticales (mm de hoja) de los demás, para alinear los que van en la misma línea
+    const rows = [...page.querySelectorAll<HTMLElement>("[data-k]")]
+      .filter((o) => !o.contains(el) && !el.contains(o))
+      .map((o) => o.getBoundingClientRect())
+      .filter((b) => b.width && b.height)
+      .map((b) => (b.top + b.height / 2 - p.top) / k1);
+    const gr = guide(page, "y");
     let pos: [number, number, number] = [dx, dy, scale];
     el.setPointerCapture(e.pointerId);
     el.onpointermove = (ev) => {
@@ -498,12 +515,16 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
       if (snapY) ny = (my - cy) / z / ky;
       gx.show(snapX, mx - bw / 2, cy + ny * z * ky, mx * 2);
       gy.show(snapY, my - bh / 2, cx + nx * z * kx, my * 2);
+      const row = snapY ? undefined : rows.find((c) => Math.abs(cy + ny * z * ky - c) < SNAP);
+      if (row !== undefined) ny = (row - cy) / z / ky;
+      gr.show(row !== undefined, 0, 0, 0, row);
       setLive((pos = [nx, ny, scale]));
     };
     el.onpointerup = el.onpointercancel = (ev) => {
       el.onpointermove = el.onpointerup = el.onpointercancel = null;
       gx.remove();
       gy.remove();
+      gr.remove();
       setLive(null);
       if (pos[0] !== dx || pos[1] !== dy) edit.drop(k, pos[0], pos[1]);
       // Clic sin arrastrar sobre un texto: a escribir ahí mismo
@@ -515,7 +536,7 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
   };
 
   const selected = edit?.sel === k;
-  const ring = !edit ? "" : selected ? "outline-2 outline-dashed outline-mare" : "hover:outline-1 hover:outline-dashed hover:outline-mare/70";
+  const ring = !edit ? "" : selected ? (img ? "outline-2 outline-dashed outline-mare" : "") : "hover:outline-1 hover:outline-dashed hover:outline-mare/70";
   return (
     <div
       ref={ref}
@@ -529,24 +550,33 @@ function Movable(props: { k: string; look?: Look; className?: string; style?: Re
           translate: dx || dy ? `calc(${dx}mm * var(--kx, 1)) calc(${dy}mm * var(--ky, 1))` : undefined,
           scale: scale !== 1 ? String(scale) : undefined,
           textAlign: look?.align,
+          ...(look?.bold && { fontWeight: 700 }),
+          ...(look?.italic && { fontStyle: "italic" }),
+          ...(look?.underline && { textDecoration: "underline" }),
           ...(look?.font && { fontFamily: fontVar(look.font), "--font-display": fontVar(look.font), "--font-sans": fontVar(look.font) }),
           ...(look?.color && { color: look.color, "--color-ink": look.color }),
         } as React.CSSProperties
       }
     >
       {children}
-      {selected &&
-        !img &&
-        ([[true, true], [false, true], [true, false], [false, false]] as const).map(([left, top]) => (
-          <span
-            key={`${left}${top}`}
-            data-resize
-            onPointerDown={onScale(left, top)}
-            // dentro de la esquina (el contenedor recorta lo que asoma) y sin crecer con el bloque
-            style={{ scale: String(1 / scale), transformOrigin: `${left ? "left" : "right"} ${top ? "top" : "bottom"}` } as React.CSSProperties}
-            className={`absolute z-10 size-[4mm] touch-none rounded-[1mm] border-[0.6mm] border-mare bg-white ${left ? "left-0" : "right-0"} ${top ? "top-0" : "bottom-0"} ${left === top ? "cursor-nwse-resize" : "cursor-nesw-resize"}`}
-          />
-        ))}
+      {/* Marco punteado y tiradores: no crecen con la escala del bloque (tamaño propio, mitad del cual cancela el scale)
+          y dejan siempre 1,5 mm de vía respecto al bloque; los tiradores van sobre el punteado, en las esquinas */}
+      {selected && !img && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 left-1/2 border-2 border-dashed border-mare"
+          style={{ width: `calc(${scale * 100}% + 3mm)`, height: `calc(${scale * 100}% + 3mm)`, translate: "-50% -50%", scale: String(1 / scale) }}
+        >
+          {([[true, true], [false, true], [true, false], [false, false]] as const).map(([left, top]) => (
+            <span
+              key={`${left}${top}`}
+              data-resize
+              onPointerDown={onScale(left, top)}
+              className={`pointer-events-auto absolute size-[3.5mm] touch-none rounded-[0.8mm] border-[0.6mm] border-mare bg-white ${left ? "-left-[2.3mm]" : "-right-[2.3mm]"} ${top ? "-top-[2.3mm]" : "-bottom-[2.3mm]"} ${left === top ? "cursor-nwse-resize" : "cursor-nesw-resize"}`}
+            />
+          ))}
+        </span>
+      )}
     </div>
   );
 }
@@ -777,6 +807,13 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
       {m.stickers.map((s, i) => (
         <StickerImg key={i} s={s} i={i} />
       ))}
+
+      {/* Cajas de texto libres: absolutas en la hoja; su sitio es el desplazamiento de looks["t<i>"] */}
+      {m.texts.map((tx, i) => (
+        <Movable key={i} k={`t${i}`} look={m.looks[`t${i}`]} style={tx.w ? { maxWidth: `${tx.w}mm` } : undefined} className="absolute top-0 left-0 z-10 w-max max-w-[170mm] text-[4.4mm] whitespace-pre-wrap">
+          <Text path={["texts", i, "text"]} value={tx.text} />
+        </Movable>
+      ))}
     </div>
     </LooksCtx>
   );
@@ -909,6 +946,7 @@ function Thumbnail({ m, k = 0.12 }: { m: Menu; k?: number }) {
 const ICONS = {
   up: "M6 15l6-6 6 6",
   down: "M6 9l6 6 6-6",
+  text: "M5 7V4h14v3M12 4v16M9 20h6",
   trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
   plus: "M12 5v14M5 12h14",
   minus: "M5 12h14",
@@ -1742,6 +1780,9 @@ function InstallPrompt() {
 
 export default function Editor() {
   const [m, setM] = useState<Menu>(load);
+  // Último menú, también dentro del mismo pintado: varios bloques pueden corregirse a la vez sin pisarse
+  const mRef = useRef(m);
+  mRef.current = m;
   const [lang, setLang] = useState<Lang>(loadLang);
   const t = T[lang];
   const [currentId, setCurrentId] = useState(loadCurrentId);
@@ -1757,6 +1798,15 @@ export default function Editor() {
   const [desktop] = useState(() => matchMedia("(min-width: 768px) and (pointer: fine)").matches);
   const [sel, setSel] = useState<string | null>(null);
   const [txt, setTxt] = useState<{ k: string; ratio: number; pt: number } | null>(null);
+  // Herramienta «texto»: el siguiente clic sobre la hoja deja una caja de texto
+  const [placing, setPlacing] = useState(false);
+  const [rub, setRub] = useState<number[] | null>(null); // recuadro que se arrastra para dibujar la caja
+  useEffect(() => {
+    if (!placing) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setPlacing(false);
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, [placing]);
   // Menú del botón derecho sobre una imagen: delante o detrás del texto
   const [ctx, setCtx] = useState<{ k: string; x: number; y: number } | null>(null);
   useEffect(() => {
@@ -1885,6 +1935,7 @@ export default function Editor() {
 
   // Borrador al instante en localStorage; en el archivo, 800 ms después del último cambio
   const update = (next: Menu, id = currentId) => {
+    mRef.current = next;
     setM(next);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -1907,30 +1958,55 @@ export default function Editor() {
     }, 800);
   };
 
-  const set = <K extends keyof Menu>(k: K, v: Menu[K]) => update({ ...m, [k]: v });
+  const set = <K extends keyof Menu>(k: K, v: Menu[K]) => update({ ...mRef.current, [k]: v });
   const setSections = (fn: (s: Section[]) => Section[]) => update({ ...m, sections: fn(structuredClone(m.sections)) });
   const setLook = (k: string, patch: Look | null) => {
-    const looks = { ...m.looks };
+    const looks = { ...mRef.current.looks };
     if (patch) looks[k] = { ...looks[k], ...patch };
     else delete looks[k];
     set("looks", looks);
   };
-  const setSticker = (i: number, patch: Partial<Sticker>) => set("stickers", m.stickers.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  const setSticker = (i: number, patch: Partial<Sticker>) => set("stickers", mRef.current.stickers.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   const addSticker = (src: string) => set("stickers", [...m.stickers, { src, x: 80, y: 120, w: 50 }]);
   const removeSticker = (i: number) => {
     setSel(null);
     set("stickers", m.stickers.filter((_, j) => j !== i));
   };
 
+  // Caja de texto entre dos puntos (clic suelto: ancho automático); su sitio va en mm de A4, como el resto de desplazamientos
+  const addText = (page: HTMLElement, [x0, y0, x1, y1]: number[]) => {
+    const p = page.getBoundingClientRect();
+    const k1 = pxPerMm(page);
+    const i = m.texts.length;
+    const at = { dx: round2((Math.min(x0, x1) - p.left) / k1 / pageK(page, "--kx")), dy: round2((Math.min(y0, y1) - p.top) / k1 / pageK(page, "--ky")) };
+    const w = Math.abs(x1 - x0) > 8 ? round2(Math.abs(x1 - x0) / k1) : undefined;
+    update({ ...m, texts: [...m.texts, { text: t.newText, ...(w && { w }) }], looks: { ...m.looks, [`t${i}`]: at } });
+    setSel(`t${i}`);
+    setPlacing(false);
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const el = page.querySelector<HTMLElement>(`[data-k="t${i}"] [data-text]`);
+        if (!el) return;
+        el.focus();
+        getSelection()?.selectAllChildren(el);
+      }),
+    );
+  };
   const removeSection = (i: number) => {
     setSel(null);
-    update({ ...m, sections: m.sections.filter((_, j) => j !== i), looks: dropSectionLooks(m.looks, i) });
+    update({ ...m, sections: m.sections.filter((_, j) => j !== i), looks: dropIndexedLooks(m.looks, SECTION_KEYS, i) });
   };
   // Borra lo seleccionado en la hoja y lo vacía en el panel de al lado; sin retoques, para que al volver nazca de cero
   const removeEl = (k: string) => {
     const b = k.replace(/^cover-/, "");
     if (b.startsWith("img")) return removeSticker(Number(b.slice(3)));
     if (/^s\d+$/.test(b)) return removeSection(Number(b.slice(1)));
+    if (/^t\d+$/.test(b)) {
+      const i = Number(b.slice(1));
+      setSel(null);
+      setTxt(null);
+      return update({ ...m, texts: m.texts.filter((_, j) => j !== i), looks: dropIndexedLooks(m.looks, TEXT_KEYS, i) });
+    }
     const cleared: Partial<Menu> = {
       name: { name: "" },
       subtitle: { subtitle: "" },
@@ -1965,7 +2041,7 @@ export default function Editor() {
         },
         // path: ["name"] o ["sections", i, "items", j, "price"]; solo se copian las secciones, no las imágenes
         text: (path, v) => {
-          const next = { ...m, sections: structuredClone(m.sections) };
+          const next = { ...m, sections: structuredClone(m.sections), texts: structuredClone(m.texts) };
           let o = next as unknown as Record<string | number, unknown>;
           for (const p of path.slice(0, -1)) o = o[p] as typeof o;
           o[path[path.length - 1]] = v;
@@ -1984,6 +2060,7 @@ export default function Editor() {
     const b = k.replace(/^cover-/, "");
     if (b.startsWith("img")) return t.imageN(Number(b.slice(3)) + 1);
     if (/^s\d+$/.test(b)) return t.el.section(Number(b.slice(1)) + 1);
+    if (/^t\d+$/.test(b)) return t.textBox;
     return String(t.el[b as Exclude<keyof Dict["el"], "section">] ?? b);
   };
   const selSticker = sel?.startsWith("img") ? Number(sel.slice(3)) : -1;
@@ -2589,12 +2666,46 @@ export default function Editor() {
 
             <main
               data-scroll="preview"
-              className={`${tab === "preview" ? "flex" : "hidden"} flex-1 flex-col gap-5 canvas px-4 pb-6 md:flex md:overflow-auto md:px-6`}
-              onPointerDown={(e) => desktop && !(e.target as Element).closest("[data-k],[data-toolbar]") && setSel(null)}
+              className={`${tab === "preview" ? "flex" : "hidden"} flex-1 flex-col gap-5 canvas px-4 pb-6 md:flex md:overflow-auto md:px-6 ${placing ? "cursor-crosshair" : ""}`}
+              onPointerDown={(e) => {
+                if (!desktop) return;
+                const el = e.target as Element;
+                const page = placing ? el.closest<HTMLElement>("[data-page]") : null;
+                if (page && !el.closest("[data-toolbar]")) {
+                  e.preventDefault();
+                  const [x0, y0] = [e.clientX, e.clientY];
+                  const move = (ev: PointerEvent) => setRub([x0, y0, ev.clientX, ev.clientY]);
+                  const up = (ev: PointerEvent) => {
+                    removeEventListener("pointermove", move);
+                    removeEventListener("pointerup", up);
+                    setRub(null);
+                    addText(page, [x0, y0, ev.clientX, ev.clientY]);
+                  };
+                  addEventListener("pointermove", move);
+                  addEventListener("pointerup", up);
+                } else if (!el.closest("[data-k],[data-toolbar]")) setSel(null);
+              }}
             >
+              {rub && (
+                <div
+                  className="pointer-events-none fixed z-50 border border-dashed border-mare bg-mare/10"
+                  style={{ left: Math.min(rub[0], rub[2]), top: Math.min(rub[1], rub[3]), width: Math.abs(rub[2] - rub[0]), height: Math.abs(rub[3] - rub[1]) }}
+                />
+              )}
               {/* Una sola barra fija: formato, zoom y retoque del elemento seleccionado; el resto es hoja */}
               <div data-toolbar className="sticky top-0 z-10 -mx-4 flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b border-laguna/60 bg-surface px-4 py-2 md:-mx-6 md:px-6">
                 <LayoutPicker value={layout} onChange={setLayout} />
+                {desktop && (
+                  <button
+                    className={`${iconBtn} md:size-9 ${placing ? "bg-mare text-white hover:bg-mare" : ""}`}
+                    aria-label={t.textTool}
+                    title={t.textTool}
+                    aria-pressed={placing}
+                    onClick={() => setPlacing(!placing)}
+                  >
+                    <Icon d={ICONS.text} />
+                  </button>
+                )}
                 {desktop && (
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 border-l border-laguna/60 pl-3">
                   {!sel || (sel.startsWith("img") && !m.stickers[selSticker]) ? (
@@ -2640,6 +2751,26 @@ export default function Editor() {
                               ))}
                             </div>
                           )}
+                          <div role="group" aria-label={t.textStyle} className="flex">
+                            {(
+                              [
+                                ["bold", t.bold, "B", "font-bold"],
+                                ["italic", t.italic, "I", "italic"],
+                                ["underline", t.underline, "U", "underline"],
+                              ] as const
+                            ).map(([f, label, ch, cls]) => (
+                              <button
+                                key={f}
+                                className={`grid size-8 place-items-center rounded-md text-sm transition-colors ${cls} ${focus} ${selLook[f] ? "bg-surface text-ink shadow-sm" : "text-ink/60 hover:text-ink"}`}
+                                aria-label={label}
+                                title={label}
+                                aria-pressed={!!selLook[f]}
+                                onClick={() => setLook(sel, { [f]: !selLook[f] })}
+                              >
+                                {ch}
+                              </button>
+                            ))}
+                          </div>
                           <input
                             type="color"
                             aria-label={t.color}
