@@ -94,10 +94,11 @@ export function fillGrad(fill: string, g: Grad | undefined, w: number, h: number
   const { start, end } = gradPoints(w, h, g.angle);
   return { fillLinearGradientStartPoint: start, fillLinearGradientEndPoint: end, fillLinearGradientColorStops: [0, fill, 1, g.to] };
 }
-export function strokeGrad(stroke: string, g: Grad | undefined, w: number, h: number) {
+// oy: la línea se dibuja centrada en y=0, así que la caja del degradado empieza en -grosor/2
+export function strokeGrad(stroke: string, g: Grad | undefined, w: number, h: number, oy = 0) {
   if (!g) return { stroke };
   const { start, end } = gradPoints(w, h, g.angle);
-  return { strokeLinearGradientStartPoint: start, strokeLinearGradientEndPoint: end, strokeLinearGradientColorStops: [0, stroke, 1, g.to] };
+  return { strokeLinearGradientStartPoint: { x: start.x, y: start.y + oy }, strokeLinearGradientEndPoint: { x: end.x, y: end.y + oy }, strokeLinearGradientColorStops: [0, stroke, 1, g.to] };
 }
 
 export const uid = () => Math.random().toString(36).slice(2, 9);

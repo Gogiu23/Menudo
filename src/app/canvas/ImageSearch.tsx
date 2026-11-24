@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Tr } from "./i18n";
 import { focus, input, primary } from "./ui";
 
@@ -11,6 +11,7 @@ const MSG = {
   searching: "Cerco…",
   noResults: "Nessun risultato. Prova con un'altra parola.",
   searchError: "Ricerca non riuscita. Riprova tra poco.",
+  addError: "Non sono riuscito ad aggiungere l'immagine.",
   nokey: "La ricerca di immagini non è attiva: manca la chiave PIXABAY_KEY nel server.",
 };
 
@@ -20,17 +21,20 @@ export function ImageSearch({ onPick, tr, lang }: { onPick: (f: File) => void; t
   const [status, setStatus] = useState<keyof typeof MSG | "">("");
   const [adding, setAdding] = useState<number | null>(null);
 
+  const last = useRef(0); // número de la última búsqueda: una respuesta atrasada no pisa a la nueva
   const search = async () => {
-    if (!q.trim()) return;
+    if (!q.trim() || status === "searching") return;
+    const n = ++last.current;
     setStatus("searching");
     try {
       const r = await fetch(`/api/images?lang=${lang}&q=${encodeURIComponent(q)}`);
       const data = await r.json();
+      if (n !== last.current) return;
       if (!r.ok) return setStatus(data.error === "nokey" ? "nokey" : "searchError");
       setHits(data);
       setStatus(data.length ? "" : "noResults");
     } catch {
-      setStatus("searchError");
+      if (n === last.current) setStatus("searchError");
     }
   };
 
@@ -42,7 +46,7 @@ export function ImageSearch({ onPick, tr, lang }: { onPick: (f: File) => void; t
       const blob = await r.blob();
       onPick(new File([blob], "immagine", { type: blob.type }));
     } catch {
-      setStatus("searchError");
+      setStatus("addError");
     }
     setAdding(null);
   };

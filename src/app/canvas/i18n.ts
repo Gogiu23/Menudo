@@ -109,7 +109,7 @@ const ES: Record<string, string> = {
   "Calice": "Copa",
   "Posate": "Cubiertos",
   "Forchetta e coltello": "Tenedor y cuchillo",
-  "Foglia": "Hoja",
+  "Foglia": "Hoja (planta)",
   "Piatti vegetariani": "Platos vegetarianos",
   "Piccante": "Picante",
   "Fiamma": "Llama",
@@ -142,7 +142,7 @@ const ES: Record<string, string> = {
   "Copie per foglio": "Copias por hoja",
   "Numeri di tavolo": "Números de mesa",
   "a penna": "a mano",
-  "Lascia vuoto per scriverlo a penna. In pantalla il numero è solo un segnaposto.": "Déjalo vacío para escribirlo a mano. En pantalla el número es solo un marcador.",
+  "Lascia vuoto per scriverlo a penna. Sullo schermo il numero è solo un segnaposto.": "Déjalo vacío para escribirlo a mano. En pantalla el número es solo un marcador.",
   "Livelli": "Capas",
   "Ordine, visibilità e blocco degli elementi": "Orden, visibilidad y bloqueo de los elementos",
   "gruppo": "grupo",
@@ -216,6 +216,7 @@ const ES: Record<string, string> = {
   "Colore iniziale": "Color inicial",
   "Angolo": "Ángulo",
   "Tipo di colore": "Tipo de color",
+  "Non sono riuscito ad aggiungere l'immagine.": "No he podido añadir la imagen.",
 };
 
 export type Tr = (s: string, ctx?: string) => string;

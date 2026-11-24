@@ -40,6 +40,7 @@ function ImageNode({ el, ...rest }: { el: Extract<El, { type: "image" }> } & Kon
 // Forma vectorial: se dibuja con Path2D escalado a width/height, así el transformador la redimensiona como a cualquier otro elemento
 function ShapeNode({ el, ...rest }: { el: Extract<El, { type: "shape" }> } & Konva.NodeConfig) {
   const d = SHAPES[el.kind];
+  if (!d) return null;
   return (
     <KShape
       {...rest}
@@ -105,6 +106,13 @@ const okGrad = (v: unknown): Grad | undefined => {
   const g = v as { to?: unknown; angle?: unknown } | null | undefined;
   return g && typeof g.to === "string" && /^#[0-9a-f]{6}$/i.test(g.to) && typeof g.angle === "number" ? { to: g.to, angle: ((g.angle % 360) + 360) % 360 } : undefined;
 };
+// Lo guardado puede venir de otra versión o estar estropeado: se descartan las formas desconocidas y se limpian los degradados
+const cleanPages = (pages: El[][]): El[][] =>
+  pages.map((p) =>
+    p
+      .filter((e) => e && typeof e === "object" && (e.type !== "shape" || e.kind in SHAPES))
+      .map((e) => (e.grad ? { ...e, grad: okGrad(e.grad) } : e)),
+  );
 const okBg = (v: unknown) => (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v : "#ffffff");
 const MAX_HISTORY = 100;
 const THEME_KEY = "menudo:theme"; // el mismo que el editor principal
@@ -119,8 +127,8 @@ function load(): { paper: Paper; copies: Copies; pages: El[][]; tables: string[]
     const bgGrad = okGrad(raw?.bgGrad);
     const tables: string[] = Array.isArray(raw?.tables) ? raw.tables.map((x: unknown) => (x == null ? "" : String(x))) : [];
     if (raw && raw.paper in PAPERS) {
-      if (Array.isArray(raw.pages) && raw.pages.length && raw.pages.every(Array.isArray)) return { paper: raw.paper, copies, pages: raw.pages, tables, bg, bgGrad };
-      if (Array.isArray(raw.els)) return { paper: raw.paper, copies, pages: [raw.els], tables, bg, bgGrad }; // formato de las fases 3-10: una sola página
+      if (Array.isArray(raw.pages) && raw.pages.length && raw.pages.every(Array.isArray)) return { paper: raw.paper, copies, pages: cleanPages(raw.pages), tables, bg, bgGrad };
+      if (Array.isArray(raw.els)) return { paper: raw.paper, copies, pages: cleanPages([raw.els]), tables, bg, bgGrad }; // formato de las fases 3-10: una sola página
     }
   } catch {}
   return { paper: "A4", copies: 1, pages: [starter()], tables: [], bg: "#ffffff" };
@@ -401,7 +409,7 @@ export default function CanvasEditor() {
     const cx = m.left + m.width / 2;
     const cy = m.top + m.height / 2;
     anchor.current = { cx, cy, ux: (cx - r.left) / zoom, uy: (cy - r.top) / zoom };
-    setMul((v) => Math.min(maxMul, Math.max(0.5, v * f)));
+    setMul((v) => Math.min(maxMul, Math.max(0.5, Math.min(v, maxMul) * f)));
   };
 
   // El transformador sigue a los elementos seleccionados (los bloqueados quedan fuera)
@@ -697,7 +705,7 @@ export default function CanvasEditor() {
     setTables(d.doc.tables ?? []);
     setBg(okBg(d.doc.bg));
     setBgGrad(okGrad(d.doc.bgGrad));
-    setPages(() => d.doc.pages);
+    setPages(() => cleanPages(d.doc.pages));
     goPage(0);
     setArchiveMsg(lang === "es" ? `Abierto «${d.name}».` : `Aperto «${d.name}».`);
   };
@@ -1070,7 +1078,7 @@ export default function CanvasEditor() {
                   />
                 </label>
               ))}
-              <p className="text-sm text-ink/65">{tr("Lascia vuoto per scriverlo a penna. In pantalla il numero è solo un segnaposto.")}</p>
+              <p className="text-sm text-ink/65">{tr("Lascia vuoto per scriverlo a penna. Sullo schermo il numero è solo un segnaposto.")}</p>
             </fieldset>
           )}
       </>
@@ -1105,7 +1113,7 @@ export default function CanvasEditor() {
             <button className={secondary} disabled={busy} onClick={exportPdf}><Icon d={ICONS.download} className="size-4" />PDF</button>
             <button className={secondary} disabled={busy} onClick={exportPng}><Icon d={ICONS.download} className="size-4" />PNG</button>
             <button className={secondary} disabled={busy} onClick={print}><Icon d={ICONS.print} className="size-4" />{tr("Stampa")}</button>
-            <button className={secondary} onClick={() => { if (confirm(tr("Cancellare tutto e ricominciare?"))) { setPages(() => [starter()]); goPage(0); } }}><Icon d={ICONS.reset} className="size-4" />{tr("Nuovo")}</button>
+            <button className={secondary} onClick={() => { if (confirm(tr("Cancellare tutto e ricominciare?"))) { setPages(() => [starter()]); setBg("#ffffff"); setBgGrad(undefined); goPage(0); } }}><Icon d={ICONS.reset} className="size-4" />{tr("Nuovo")}</button>
           </div>
           {exportError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">{exportError}</p>}
           {saveError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">{tr("Non c'è spazio per salvare: ci sono troppe immagini. Il lavoro non verrà ripristinato se ricarichi.")}</p>}
@@ -1168,7 +1176,7 @@ export default function CanvasEditor() {
           </Tip>
           <div role="group" aria-label={tr("Lingua")} className="flex shrink-0 rounded-lg bg-laguna/25 p-0.5">
             {(["it", "es"] as const).map((l) => (
-              <button key={l} aria-pressed={lang === l} title={l === "it" ? "Italiano" : "Español"} onClick={() => changeLang(l)}
+              <button key={l} lang={l} aria-label={l === "it" ? "Italiano" : "Español"} aria-pressed={lang === l} title={l === "it" ? "Italiano" : "Español"} onClick={() => changeLang(l)}
                 className={`h-10 min-w-9 rounded-md px-2 text-xs font-semibold md:h-8 ${focus} ${lang === l ? "bg-surface shadow-sm" : "text-ink/70 hover:text-ink"}`}>
                 {l.toUpperCase()}
               </button>
@@ -1312,7 +1320,7 @@ export default function CanvasEditor() {
                 if (el.type === "rect") return <Rect key={el.id} {...props} {...fillGrad(el.fill, el.grad, el.width, el.height)} cornerRadius={el.radius} stroke={el.stroke} strokeWidth={el.strokeW} />;
                 if (el.type === "tiles") return <TilesNode key={el.id} el={el} {...props} />;
                 if (el.type === "line")
-                  return <Line key={el.id} {...props} points={[0, 0, el.width, 0]} {...strokeGrad(el.fill, el.grad, el.width, el.thickness)} strokeWidth={el.thickness} lineCap="round" dash={el.dash ? [0.01, el.thickness * 2] : undefined} hitStrokeWidth={4} />;
+                  return <Line key={el.id} {...props} points={[0, 0, el.width, 0]} {...strokeGrad(el.fill, el.grad, el.width, el.thickness, -el.thickness / 2)} strokeWidth={el.thickness} lineCap="round" dash={el.dash ? [0.01, el.thickness * 2] : undefined} hitStrokeWidth={4} />;
                 if (el.type === "shape") return <ShapeNode key={el.id} el={el} {...props} />;
                 return <ImageNode key={el.id} el={el} {...props} />;
               })}
