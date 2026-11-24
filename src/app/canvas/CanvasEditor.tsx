@@ -5,6 +5,7 @@ import { Image as KImage, Layer, Rect, Stage, Text, Transformer } from "react-ko
 import type Konva from "konva";
 
 /* Fase 1: lienzo con papel A2–A5, elementos básicos y transformador.
+   Fase 2: panel de propiedades completo y panel de capas (orden, ocultar, bloquear, duplicar).
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
 type Paper = "A2" | "A3" | "A4" | "A5";
@@ -15,13 +16,27 @@ const PAPERS: Record<Paper, { w: number; h: number }> = {
   A5: { w: 148, h: 210 },
 };
 
-type Base = { id: string; x: number; y: number; width: number; height: number; rotation: number };
+type Base = { id: string; x: number; y: number; width: number; height: number; rotation: number; opacity: number; visible: boolean; locked: boolean };
 type El =
-  | (Base & { type: "text"; text: string; fontSize: number; fill: string })
-  | (Base & { type: "rect"; fill: string })
+  | (Base & { type: "text"; text: string; fontSize: number; fill: string; fontFamily: string; bold: boolean; italic: boolean; align: "left" | "center" | "right" })
+  | (Base & { type: "rect"; fill: string; radius: number })
   | (Base & { type: "image"; src: string });
 
 const uid = () => Math.random().toString(36).slice(2, 9);
+
+const FONTS = [
+  { label: "Sans", value: "system-ui, sans-serif" },
+  { label: "Serif", value: "Georgia, 'Times New Roman', serif" },
+  { label: "Mono", value: "ui-monospace, Menlo, monospace" },
+  { label: "Corsivo", value: "'Brush Script MT', cursive" },
+];
+
+const common = { rotation: 0, opacity: 1, visible: true, locked: false };
+const newText = (o: Partial<Extract<El, { type: "text" }>> = {}): El => ({
+  id: uid(), type: "text", x: 20, y: 40, width: 100, height: 10, ...common,
+  text: "Testo", fontSize: 8, fill: "#173033", fontFamily: FONTS[0].value, bold: false, italic: false, align: "left", ...o,
+});
+const label = (e: El) => (e.type === "text" ? e.text.split("\n")[0].slice(0, 24) || "Testo" : e.type === "rect" ? "Rettangolo" : "Immagine");
 
 function useImage(src: string) {
   const [img, setImg] = useState<HTMLImageElement>();
@@ -38,13 +53,20 @@ function ImageNode({ el, ...rest }: { el: Extract<El, { type: "image" }> } & Kon
   return <KImage image={img} {...rest} />;
 }
 
+function Num({ label, value, min, onChange }: { label: string; value: number; min?: number; onChange: (v: number) => void }) {
+  return (
+    <label className="flex items-center justify-between gap-2">
+      {label}
+      <input type="number" step="any" min={min} className="w-20 rounded-lg border border-black/15 p-1" value={Math.round(value * 10) / 10} onChange={(e) => onChange(Math.max(min ?? -Infinity, Number(e.target.value) || 0))} />
+    </label>
+  );
+}
+
 const btn = "rounded-lg border border-black/15 bg-white px-3 py-1.5 text-sm hover:bg-black/5 disabled:opacity-40";
 
 export default function CanvasEditor() {
   const [paper, setPaper] = useState<Paper>("A4");
-  const [els, setEls] = useState<El[]>([
-    { id: uid(), type: "text", x: 20, y: 20, width: 170, height: 20, rotation: 0, text: "Menù", fontSize: 14, fill: "#173033" },
-  ]);
+  const [els, setEls] = useState<El[]>(() => [newText({ y: 20, width: 170, height: 20, text: "Menù", fontSize: 14, bold: true })]);
   const [sel, setSel] = useState<string | null>(null);
   const [zoom, setZoom] = useState(2); // px por mm
   const wrap = useRef<HTMLDivElement>(null);
@@ -62,7 +84,8 @@ export default function CanvasEditor() {
 
   // El transformador sigue al elemento seleccionado
   useEffect(() => {
-    const node = sel ? layerRef.current?.findOne("#" + sel) : undefined;
+    const locked = els.find((x) => x.id === sel)?.locked;
+    const node = sel && !locked ? layerRef.current?.findOne("#" + sel) : undefined;
     trRef.current?.nodes(node ? [node] : []);
     trRef.current?.getLayer()?.batchDraw();
   }, [sel, els]);
@@ -71,9 +94,16 @@ export default function CanvasEditor() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (sel && (e.key === "Delete" || e.key === "Backspace") && !/INPUT|TEXTAREA/.test(t.tagName)) {
+      if (!sel || /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
         setEls((a) => a.filter((x) => x.id !== sel));
         setSel(null);
+      }
+      const step = e.shiftKey ? 5 : 1;
+      const d: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+      if (d[e.key]) {
+        e.preventDefault();
+        setEls((a) => a.map((x) => (x.id === sel && !x.locked ? { ...x, x: x.x + d[e.key][0], y: x.y + d[e.key][1] } : x)));
       }
     };
     window.addEventListener("keydown", onKey);
@@ -87,6 +117,17 @@ export default function CanvasEditor() {
   };
   const cur = els.find((x) => x.id === sel);
 
+  const duplicate = (e: El) => add({ ...e, id: uid(), x: e.x + 5, y: e.y + 5, locked: false });
+  const move = (id: string, dir: -1 | 1) =>
+    setEls((a) => {
+      const i = a.findIndex((x) => x.id === id);
+      const j = i + dir;
+      if (j < 0 || j >= a.length) return a;
+      const b = [...a];
+      [b[i], b[j]] = [b[j], b[i]];
+      return b;
+    });
+
   const addImage = (file: File | undefined) => {
     if (!file) return;
     const r = new FileReader();
@@ -95,7 +136,7 @@ export default function CanvasEditor() {
       const i = new window.Image();
       i.onload = () => {
         const width = Math.min(100, w - 20);
-        add({ id: uid(), type: "image", src, x: 10, y: 10, width, height: (width * i.height) / i.width, rotation: 0 });
+        add({ id: uid(), type: "image", src, x: 10, y: 10, width, height: (width * i.height) / i.width, ...common });
       };
       i.src = src;
     };
@@ -115,7 +156,7 @@ export default function CanvasEditor() {
 
   return (
     <div className="flex min-h-screen flex-col bg-neutral-100 text-neutral-900 md:flex-row">
-      <aside className="flex shrink-0 flex-col gap-4 border-b border-black/10 bg-white p-4 md:w-72 md:border-r md:border-b-0">
+      <aside className="flex shrink-0 flex-col gap-4 md:sticky md:top-0 md:h-screen md:overflow-y-auto border-b border-black/10 bg-white p-4 md:w-72 md:border-r md:border-b-0">
         <h1 className="text-lg font-semibold">Editor libero (prova)</h1>
 
         <fieldset className="flex flex-wrap gap-2">
@@ -129,10 +170,10 @@ export default function CanvasEditor() {
         </fieldset>
 
         <div className="flex flex-wrap gap-2">
-          <button className={btn} onClick={() => add({ id: uid(), type: "text", x: 20, y: 40, width: 100, height: 10, rotation: 0, text: "Testo", fontSize: 8, fill: "#173033" })}>
+          <button className={btn} onClick={() => add(newText())}>
             + Testo
           </button>
-          <button className={btn} onClick={() => add({ id: uid(), type: "rect", x: 20, y: 60, width: 60, height: 30, rotation: 0, fill: "#9ccfd0" })}>
+          <button className={btn} onClick={() => add({ id: uid(), type: "rect", x: 20, y: 60, width: 60, height: 30, ...common, fill: "#9ccfd0", radius: 0 })}>
             + Rettangolo
           </button>
           <label className={`${btn} cursor-pointer`}>
@@ -143,31 +184,67 @@ export default function CanvasEditor() {
 
         {cur ? (
           <div className="flex flex-col gap-2 text-sm">
-            <p className="font-medium">Elemento selezionato</p>
+            <p className="font-medium">Proprietà</p>
             {cur.type === "text" && (
               <>
                 <textarea className="rounded-lg border border-black/15 p-2" rows={3} value={cur.text} onChange={(e) => patch(cur.id, { text: e.target.value })} />
-                <label className="flex items-center gap-2">
-                  Dimensione
-                  <input type="number" min={2} className="w-20 rounded-lg border border-black/15 p-1" value={Math.round(cur.fontSize * 10) / 10} onChange={(e) => patch(cur.id, { fontSize: Number(e.target.value) || 2 })} />
-                  mm
-                </label>
+                <select className="rounded-lg border border-black/15 p-1.5" value={cur.fontFamily} onChange={(e) => patch(cur.id, { fontFamily: e.target.value })}>
+                  {FONTS.map((f) => <option key={f.label} value={f.value}>{f.label}</option>)}
+                </select>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button aria-pressed={cur.bold} className={`${btn} font-bold ${cur.bold ? "bg-neutral-900 text-white hover:bg-neutral-800" : ""}`} onClick={() => patch(cur.id, { bold: !cur.bold })}>B</button>
+                  <button aria-pressed={cur.italic} className={`${btn} italic ${cur.italic ? "bg-neutral-900 text-white hover:bg-neutral-800" : ""}`} onClick={() => patch(cur.id, { italic: !cur.italic })}>I</button>
+                  {(["left", "center", "right"] as const).map((al) => (
+                    <button key={al} aria-pressed={cur.align === al} className={`${btn} ${cur.align === al ? "bg-neutral-900 text-white hover:bg-neutral-800" : ""}`} onClick={() => patch(cur.id, { align: al })}>
+                      {al === "left" ? "Sx" : al === "center" ? "Ct" : "Dx"}
+                    </button>
+                  ))}
+                </div>
+                <Num label="Dimensione (mm)" value={cur.fontSize} min={2} onChange={(v) => patch(cur.id, { fontSize: v })} />
               </>
             )}
+            {cur.type === "rect" && <Num label="Angoli (mm)" value={cur.radius} min={0} onChange={(v) => patch(cur.id, { radius: v })} />}
             {cur.type !== "image" && (
               <label className="flex items-center gap-2">
                 Colore
                 <input type="color" value={cur.fill} onChange={(e) => patch(cur.id, { fill: e.target.value })} />
               </label>
             )}
+            <label className="flex items-center gap-2">
+              Opacità
+              <input type="range" min={0} max={1} step={0.05} value={cur.opacity} onChange={(e) => patch(cur.id, { opacity: Number(e.target.value) })} />
+              {Math.round(cur.opacity * 100)}%
+            </label>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+              <Num label="X" value={cur.x} onChange={(v) => patch(cur.id, { x: v })} />
+              <Num label="Y" value={cur.y} onChange={(v) => patch(cur.id, { y: v })} />
+              <Num label="L" value={cur.width} min={1} onChange={(v) => patch(cur.id, { width: v })} />
+              <Num label="A" value={cur.height} min={1} onChange={(v) => patch(cur.id, { height: v })} />
+              <Num label="Rot°" value={cur.rotation} onChange={(v) => patch(cur.id, { rotation: v })} />
+            </div>
             <div className="flex gap-2">
-              <button className={btn} onClick={() => setEls((a) => [...a.filter((x) => x.id !== cur.id), cur])}>Porta avanti</button>
+              <button className={btn} onClick={() => duplicate(cur)}>Duplica</button>
               <button className={btn} onClick={() => { setEls((a) => a.filter((x) => x.id !== cur.id)); setSel(null); }}>Elimina</button>
             </div>
           </div>
         ) : (
-          <p className="text-sm text-neutral-500">Seleziona un elemento per modificarlo. Trascina, ridimensiona e ruota con le maniglie.</p>
+          <p className="text-sm text-neutral-500">Seleziona un elemento per modificarlo. Trascina, ridimensiona e ruota con le maniglie; frecce per spostare (Maiusc = 5 mm).</p>
         )}
+
+        <div className="flex flex-col gap-1 text-sm">
+          <p className="font-medium">Livelli</p>
+          {[...els].reverse().map((e) => (
+            <div key={e.id} className={`flex items-center gap-1 rounded-lg px-1.5 py-1 ${e.id === sel ? "bg-neutral-900/10" : ""}`}>
+              <button className={`min-w-0 flex-1 truncate text-left ${e.visible ? "" : "text-neutral-400 line-through"}`} onClick={() => setSel(e.id)}>
+                {label(e)}
+              </button>
+              <button title="Su" aria-label="Porta su" className="px-1 hover:bg-black/5" onClick={() => move(e.id, 1)}>↑</button>
+              <button title="Giù" aria-label="Porta giù" className="px-1 hover:bg-black/5" onClick={() => move(e.id, -1)}>↓</button>
+              <button title="Mostra/nascondi" aria-label="Mostra o nascondi" aria-pressed={!e.visible} className="px-1 hover:bg-black/5" onClick={() => patch(e.id, { visible: !e.visible })}>{e.visible ? "👁" : "—"}</button>
+              <button title="Blocca" aria-label="Blocca o sblocca" aria-pressed={e.locked} className="px-1 hover:bg-black/5" onClick={() => patch(e.id, { locked: !e.locked })}>{e.locked ? "🔒" : "🔓"}</button>
+            </div>
+          ))}
+        </div>
       </aside>
 
       <main ref={wrap} className="flex flex-1 justify-center overflow-auto p-4">
@@ -183,22 +260,29 @@ export default function CanvasEditor() {
             <Layer ref={layerRef}>
               <Rect name="paper" width={w} height={h} fill="#fff" />
               {els.map((el) => {
-                const common = {
+                const props = {
                   id: el.id,
                   x: el.x,
                   y: el.y,
                   width: el.width,
                   height: el.height,
                   rotation: el.rotation,
-                  draggable: true,
+                  opacity: el.opacity,
+                  visible: el.visible,
+                  draggable: !el.locked,
+                  listening: !el.locked,
                   onClick: () => setSel(el.id),
                   onTap: () => setSel(el.id),
                   onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => patch(el.id, { x: e.target.x(), y: e.target.y() }),
                   onTransformEnd: (e: Konva.KonvaEventObject<Event>) => onTransformEnd(e, el),
                 };
-                if (el.type === "text") return <Text key={el.id} {...common} text={el.text} fontSize={el.fontSize} fill={el.fill} fontFamily="system-ui, sans-serif" />;
-                if (el.type === "rect") return <Rect key={el.id} {...common} fill={el.fill} />;
-                return <ImageNode key={el.id} el={el} {...common} />;
+                if (el.type === "text")
+                  return (
+                    <Text key={el.id} {...props} text={el.text} fontSize={el.fontSize} fill={el.fill} fontFamily={el.fontFamily} align={el.align}
+                      fontStyle={`${el.italic ? "italic " : ""}${el.bold ? "bold" : "normal"}`} />
+                  );
+                if (el.type === "rect") return <Rect key={el.id} {...props} fill={el.fill} cornerRadius={el.radius} />;
+                return <ImageNode key={el.id} el={el} {...props} />;
               })}
               <Transformer ref={trRef} rotateEnabled keepRatio={false} boundBoxFunc={(o, n) => (n.width < 5 || n.height < 5 ? o : n)} />
             </Layer>
