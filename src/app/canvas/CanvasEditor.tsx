@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { flushSync } from "react-dom";
 import { Image as KImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
@@ -207,6 +207,7 @@ export default function CanvasEditor() {
       ),
     );
   };
+  const [panel, setPanel] = useState("text"); // sección abierta junto al carril de iconos (escritorio)
   const [tab, setTab] = useState<"canvas" | "tools">("canvas"); // solo en móvil; en escritorio se ven las dos
   const [multi, setMulti] = useState(false); // modo táctil: tocar suma elementos a la selección
   const addedOnTouch = useRef(false);
@@ -806,69 +807,59 @@ export default function CanvasEditor() {
   );
   const hint = "Seleziona un elemento per modificarlo, oppure trascina sulla carta per selezionarne di più (Maiusc per aggiungere). Frecce per spostare (Maiusc = 5 mm).";
 
-  return (
-    <>
-    {/* Medidas explícitas: los nombres A2 y A1 no son tamaños de página válidos en CSS */}
-    <style>{`@page { size: ${sheet.w}mm ${sheet.h}mm; margin: 0; }`}</style>
-    <div className="flex h-dvh flex-col bg-surface text-ink print:hidden">
-      <header className="shrink-0 border-b border-laguna/60 bg-surface pt-[env(safe-area-inset-top)]">
-        <div className="flex h-12 items-center gap-2 px-3 md:gap-3 md:px-4">
-          <Tip label="Torna al menù" hint="Esci dall'editor libero. Le modifiche sono già salvate.">
-            <Link href="/" className={`inline-flex h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold hover:bg-laguna/30 md:h-9 ${focus}`}>
-              <Icon d={ICONS.left} className="size-[18px]" />
-              Menù
-            </Link>
-          </Tip>
-          <Link href="/" aria-label="Menudo" className={`hidden rounded-md sm:block ${focus}`}>
-            <Brand />
-          </Link>
-          <p className="min-w-0 flex-1 truncate text-xs text-ink/70" aria-live="polite">
-            Editor libero · Le modifiche si salvano da sole
-          </p>
-          <Tip label="Annulla" hint="Ctrl+Z">
-            <button className={iconBtn} aria-label="Annulla" disabled={!hist.past.length} onClick={undo}>
-              <Icon d={ICONS.undo} className="size-[18px]" />
-            </button>
-          </Tip>
-          <Tip label="Ripeti" hint="Ctrl+Maiusc+Z">
-            <button className={iconBtn} aria-label="Ripeti" disabled={!hist.future.length} onClick={redo}>
-              <Icon d={ICONS.redo} className="size-[18px]" />
-            </button>
-          </Tip>
-          <Tip label={dark ? "Tema chiaro" : "Tema scuro"} hint="Cambia l'aspetto dell'editor">
-            <button className={iconBtn} aria-label={dark ? "Tema chiaro" : "Tema scuro"} onClick={toggleTheme}>
-              <Icon d={dark ? ICONS.sun : ICONS.moon} className="size-[18px]" />
-            </button>
-          </Tip>
-          <button
-            className={`hidden h-9 shrink-0 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white lift hover:brightness-110 disabled:opacity-50 md:inline-flex ${focus}`}
-            title="Stampa" disabled={busy} onClick={print}
-          >
-            <Icon d={ICONS.print} className="size-[18px]" />
-            Stampa
+  // Plantillas de texto y formas de las secciones «Testo» y «Forme»
+  const textPresets: { name: string; hint: string; cls: string; o: Partial<Extract<El, { type: "text" }>> }[] = [
+    { name: "Titolo", hint: "Per il nome del locale o le sezioni", cls: "text-xl font-bold", o: { fontSize: 16, bold: true, fontFamily: "display", width: 170 } },
+    { name: "Sottotitolo", hint: "Per le categorie del menù", cls: "text-base font-semibold", o: { fontSize: 10, bold: true, width: 170 } },
+    { name: "Corpo", hint: "Per piatti, ingredienti e prezzi", cls: "text-sm", o: { fontSize: 6, width: 170 } },
+  ];
+  const shapeBase = { x: 20, y: 60, ...common };
+  const shapes = [
+    { name: "Rettangolo", hint: "Un riquadro pieno, utile come sfondo", icon: ICONS.rect, el: { type: "rect", ...shapeBase, width: 60, height: 30, fill: PALETTE[2].hex, radius: 0 } as const },
+    { name: "Cerchio", hint: "Un cerchio pieno, anche per le icone", icon: ICONS.circle, el: { type: "rect", ...shapeBase, width: 40, height: 40, fill: PALETTE[2].hex, radius: 20 } as const },
+    { name: "Linea", hint: "Separa le sezioni del menù", icon: ICONS.line, el: { type: "line", ...shapeBase, width: 80, height: 1, fill: PALETTE[0].hex, thickness: 0.6, dash: false } as const },
+    { name: "Punteggiata", hint: "Per guidare l'occhio fino al prezzo", icon: ICONS.dots, el: { type: "line", ...shapeBase, width: 80, height: 1, fill: PALETTE[0].hex, thickness: 0.8, dash: true } as const },
+  ];
+
+  // Secciones del editor: carril de iconos en escritorio; en móvil se apilan todas en la pestaña «Strumenti»
+  const sections = [
+    { id: "text", label: "Testo", hint: "Titoli e paragrafi da scrivere sulla carta", icon: ICONS.text, body: (
+      <>
+        <p className="text-sm text-ink/70">Scegli uno stile, poi scrivi direttamente sulla carta.</p>
+        {textPresets.map((p) => (
+          <button key={p.name} className={`flex w-full flex-col items-start gap-0.5 rounded-lg border border-laguna bg-surface px-3 py-3 text-left lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => add(newText(p.o))}>
+            <span className={p.cls}>{p.name}</span>
+            <span className="text-xs text-ink/70">{p.hint}</span>
           </button>
+        ))}
+      </>
+    ) },
+    { id: "shapes", label: "Forme", hint: "Rettangoli, cerchi e linee", icon: ICONS.rect, body: (
+      <>
+        <p className="text-sm text-ink/70">Tocca una forma per aggiungerla alla carta.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {shapes.map((s) => (
+            <button key={s.name} title={s.hint} className={`flex flex-col items-center gap-1.5 rounded-lg border border-laguna bg-surface px-2 py-3 text-center lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => add({ ...s.el, id: uid() } as El)}>
+              <Icon d={s.icon} className="size-7 text-mare" />
+              <span className="text-[13px] font-semibold">{s.name}</span>
+              <span className="text-xs leading-tight text-ink/70">{s.hint}</span>
+            </button>
+          ))}
         </div>
-      </header>
-
-      <div className="flex min-h-0 flex-1">
-      <aside aria-label="Strumenti" className={`${tab === "tools" ? "block" : "hidden"} w-full shrink-0 overflow-y-auto bg-surface pb-24 md:block md:w-[280px] md:border-r md:border-laguna/60 md:pb-0`}>
-        <Group title="Documento" icon={ICONS.edit} open>
-          <button className={`${primary} w-full`} disabled={busy} onClick={importMenu}>
-            <Icon d={ICONS.edit} className="size-[18px]" />
-            Importa il menù attuale
-          </button>
-          {importMsg && <p role="status" className="text-sm text-ink/65">{importMsg}</p>}
-          <div className="flex flex-wrap gap-2">
-            <button className={secondary} disabled={busy} onClick={exportPdf}><Icon d={ICONS.download} className="size-4" />PDF</button>
-            <button className={secondary} disabled={busy} onClick={exportPng}><Icon d={ICONS.download} className="size-4" />PNG</button>
-            <button className={secondary} disabled={busy} onClick={print}><Icon d={ICONS.print} className="size-4" />Stampa</button>
-            <button className={secondary} onClick={() => { if (confirm("Cancellare tutto e ricominciare?")) { setPages(() => [starter()]); goPage(0); } }}><Icon d={ICONS.reset} className="size-4" />Nuovo</button>
-          </div>
-          {exportError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">{exportError}</p>}
-          {saveError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">Non c&apos;è spazio per salvare: ci sono troppe immagini. Il lavoro non verrà ripristinato se ricarichi.</p>}
-        </Group>
-
-        <Group title="Pagine" icon={ICONS.pages}>
+      </>
+    ) },
+    { id: "images", label: "Immagini", hint: "Foto e loghi", icon: ICONS.image, body: (
+      <>
+        <p className="text-sm text-ink/70">Aggiungi una foto o un logo. Le immagini grandi vengono ridotte per entrare nel salvataggio.</p>
+        <label className={`${primary} relative w-full cursor-pointer focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink`}>
+          <Icon d={ICONS.image} className="size-[18px]" />
+          Carica un&apos;immagine
+          <input type="file" accept="image/*" className="sr-only" onChange={(e) => { addImage(e.target.files?.[0]); e.target.value = ""; }} />
+        </label>
+      </>
+    ) },
+    { id: "pages", label: "Pagine", hint: "Aggiungi, duplica e ordina le pagine", icon: ICONS.pages, body: (
+      <>
           <p className="text-sm font-semibold">Pagina {page + 1} di {hist.pages.length}</p>
           <div className="flex flex-wrap gap-1">
             <button className={iconBtn} aria-label="Nuova pagina" title="Nuova pagina" onClick={addPage}><Icon d={ICONS.plus} /></button>
@@ -877,9 +868,10 @@ export default function CanvasEditor() {
             <button className={iconBtn} aria-label="Sposta avanti" title="Sposta avanti" disabled={page === hist.pages.length - 1} onClick={() => movePage(1)}><Icon d={ICONS.right} /></button>
             <button className={iconBtn} aria-label="Elimina pagina" title="Elimina pagina" disabled={hist.pages.length < 2} onClick={deletePage}><Icon d={ICONS.trash} /></button>
           </div>
-        </Group>
-
-        <Group title="Foglio" icon={ICONS.sheet}>
+      </>
+    ) },
+    { id: "sheet", label: "Foglio", hint: "Carta, copie e numeri di tavolo", icon: ICONS.sheet, body: (
+      <>
           <fieldset>
             <legend className="mb-1.5 text-sm font-semibold">Carta</legend>
             <div className="flex flex-wrap gap-2">
@@ -927,24 +919,11 @@ export default function CanvasEditor() {
               <p className="text-sm text-ink/65">Lascia vuoto per scriverlo a penna. In pantalla il numero è solo un segnaposto.</p>
             </fieldset>
           )}
-        </Group>
-
-        <Group title="Aggiungi" icon={ICONS.plus} open>
-          <div className="flex flex-wrap gap-2">
-            <button className={secondary} onClick={() => add(newText())}><Icon d={ICONS.text} className="size-4" />Testo</button>
-            <button className={secondary} onClick={() => add({ id: uid(), type: "rect", x: 20, y: 60, width: 60, height: 30, ...common, fill: PALETTE[2].hex, radius: 0 })}><Icon d={ICONS.rect} className="size-4" />Rettangolo</button>
-            <label className={secondary}>
-              <Icon d={ICONS.image} className="size-4" />
-              Immagine
-              <input type="file" accept="image/*" className="sr-only" onChange={(e) => { addImage(e.target.files?.[0]); e.target.value = ""; }} />
-            </label>
-          </div>
-        </Group>
-
-        <div className="lg:hidden">{properties}</div>
-
-        <Group title="Livelli" icon={ICONS.layers}>
-          {sels.length === 0 && <p className="text-sm text-ink/65 lg:hidden">Seleziona un elemento per modificarlo, oppure trascina sulla carta per selezionarne di più (Maiusc per aggiungere). Frecce per spostare (Maiusc = 5 mm).</p>}
+      </>
+    ) },
+    { id: "layers", label: "Livelli", hint: "Ordine, visibilità e blocco degli elementi", icon: ICONS.layers, body: (
+      <>
+          {sels.length === 0 && <p className="text-sm text-ink/70 lg:hidden">{hint}</p>}
           <ul className="-mx-2 space-y-0.5">
             {[...els].reverse().map((e) => (
               <li key={e.id} className={`flex items-center gap-0.5 rounded-lg px-2 py-0.5 ${sels.includes(e.id) ? "bg-laguna/40" : ""}`}>
@@ -959,9 +938,24 @@ export default function CanvasEditor() {
               </li>
             ))}
           </ul>
-        </Group>
-
-        <Group title="Archivio" icon={ICONS.archive}>
+      </>
+    ) },
+    { id: "archive", label: "File", hint: "Importa, esporta e salva i design", icon: ICONS.archive, body: (
+      <>
+          <button className={`${primary} w-full`} disabled={busy} onClick={importMenu}>
+            <Icon d={ICONS.edit} className="size-[18px]" />
+            Importa il menù attuale
+          </button>
+          {importMsg && <p role="status" className="text-sm text-ink/65">{importMsg}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button className={secondary} disabled={busy} onClick={exportPdf}><Icon d={ICONS.download} className="size-4" />PDF</button>
+            <button className={secondary} disabled={busy} onClick={exportPng}><Icon d={ICONS.download} className="size-4" />PNG</button>
+            <button className={secondary} disabled={busy} onClick={print}><Icon d={ICONS.print} className="size-4" />Stampa</button>
+            <button className={secondary} onClick={() => { if (confirm("Cancellare tutto e ricominciare?")) { setPages(() => [starter()]); goPage(0); } }}><Icon d={ICONS.reset} className="size-4" />Nuovo</button>
+          </div>
+          {exportError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">{exportError}</p>}
+          {saveError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">Non c&apos;è spazio per salvare: ci sono troppe immagini. Il lavoro non verrà ripristinato se ricarichi.</p>}
+        <hr className="border-laguna/50" />
           <div className="flex gap-2">
             <input
               aria-label="Nome del design" className={input} placeholder="Nome del design" value={designName}
@@ -983,7 +977,84 @@ export default function CanvasEditor() {
               </li>
             ))}
           </ul>
-        </Group>
+      </>
+    ) },
+  ];
+  const active = sections.find((s) => s.id === panel) ?? sections[0];
+
+  return (
+    <>
+    {/* Medidas explícitas: los nombres A2 y A1 no son tamaños de página válidos en CSS */}
+    <style>{`@page { size: ${sheet.w}mm ${sheet.h}mm; margin: 0; }`}</style>
+    <div className="flex h-dvh flex-col bg-surface text-ink print:hidden">
+      <header className="shrink-0 border-b border-laguna/60 bg-surface pt-[env(safe-area-inset-top)]">
+        <div className="flex h-12 items-center gap-2 px-3 md:gap-3 md:px-4">
+          <Tip label="Torna al menù" hint="Esci dall'editor libero. Le modifiche sono già salvate.">
+            <Link href="/" className={`inline-flex h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold hover:bg-laguna/30 md:h-9 ${focus}`}>
+              <Icon d={ICONS.left} className="size-[18px]" />
+              Menù
+            </Link>
+          </Tip>
+          <Link href="/" aria-label="Menudo" className={`hidden rounded-md sm:block ${focus}`}>
+            <Brand />
+          </Link>
+          <p className="min-w-0 flex-1 truncate text-xs text-ink/70" aria-live="polite">
+            Editor libero · Le modifiche si salvano da sole
+          </p>
+          <Tip label="Annulla" hint="Ctrl+Z">
+            <button className={iconBtn} aria-label="Annulla" disabled={!hist.past.length} onClick={undo}>
+              <Icon d={ICONS.undo} className="size-[18px]" />
+            </button>
+          </Tip>
+          <Tip label="Ripeti" hint="Ctrl+Maiusc+Z">
+            <button className={iconBtn} aria-label="Ripeti" disabled={!hist.future.length} onClick={redo}>
+              <Icon d={ICONS.redo} className="size-[18px]" />
+            </button>
+          </Tip>
+          <Tip label={dark ? "Tema chiaro" : "Tema scuro"} hint="Cambia l'aspetto dell'editor">
+            <button className={iconBtn} aria-label={dark ? "Tema chiaro" : "Tema scuro"} onClick={toggleTheme}>
+              <Icon d={dark ? ICONS.sun : ICONS.moon} className="size-[18px]" />
+            </button>
+          </Tip>
+          <button
+            className={`hidden h-9 shrink-0 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white lift hover:brightness-110 disabled:opacity-50 md:inline-flex ${focus}`}
+            title="Stampa" disabled={busy} onClick={print}
+          >
+            <Icon d={ICONS.print} className="size-[18px]" />
+            Stampa
+          </button>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+      {/* Escritorio: carril de iconos y una sección cada vez, como en Canva */}
+      <div className="hidden md:flex">
+        <nav aria-label="Sezioni" className="flex w-16 shrink-0 flex-col items-center gap-1 border-r border-laguna/60 bg-surface py-2">
+          {sections.map((s) => (
+            <Tip key={s.id} side="right" label={s.label} hint={s.hint}>
+              <button
+                aria-label={s.label} aria-pressed={panel === s.id} onClick={() => setPanel(s.id)}
+                className={`grid size-11 place-items-center rounded-lg transition-colors ${focus} ${panel === s.id ? "bg-brand text-white" : "text-ink/70 hover:bg-laguna/30 hover:text-ink"}`}
+              >
+                <Icon d={s.icon} className="size-[22px]" />
+              </button>
+            </Tip>
+          ))}
+        </nav>
+        <aside aria-label={active.label} className="w-[240px] shrink-0 overflow-y-auto border-r border-laguna/60 bg-surface">
+          <h2 className="px-4 pt-4 pb-3 font-display text-[15px] font-semibold">{active.label}</h2>
+          <div className="space-y-3 px-4 pb-4">{active.body}</div>
+          <div className="border-t border-laguna/50 lg:hidden">{properties}</div>
+        </aside>
+      </div>
+      {/* Móvil: pestaña «Strumenti» con todas las secciones apiladas */}
+      <aside aria-label="Strumenti" className={`${tab === "tools" ? "block" : "hidden"} w-full shrink-0 overflow-y-auto bg-surface pb-24 md:hidden`}>
+        {sections.map((s) => (
+          <Fragment key={s.id}>
+            <Group title={s.label} icon={s.icon} open={s.id === "text"}>{s.body}</Group>
+            {s.id === "images" && properties}
+          </Fragment>
+        ))}
       </aside>
 
       <main ref={wrap} className={`${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:block md:px-6 md:pb-6`}>
