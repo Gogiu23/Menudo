@@ -6,7 +6,7 @@ import { PALETTE, SHAPES, type Grad, type ShapeKind } from "./model";
 import type { Tr } from "./i18n";
 
 export const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink";
-export const input = `w-full rounded-lg border border-laguna bg-surface px-3 py-2.5 text-base placeholder:text-ink/40 md:py-2 md:text-[0.95em] focus:border-mare focus:outline-2 focus:outline-offset-0 focus:outline-mare/40`;
+export const input = `w-full rounded-lg border border-transparent bg-laguna/20 px-3 py-2.5 text-base transition-[background-color,box-shadow,border-color] placeholder:text-ink/45 hover:bg-laguna/30 focus:border-mare focus:bg-surface focus:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-mare)_22%,transparent)] focus:outline-none md:py-2 md:text-[0.95em]`;
 export const primary = `inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 font-semibold text-white lift hover:brightness-110 ${focus}`;
 // relative: contiene el input sr-only (absolute) del botón de subir imagen
 export const secondary = `relative inline-flex cursor-pointer items-center gap-2 rounded-lg border border-mare bg-surface px-3 py-2 text-sm font-semibold glow lift hover:bg-laguna/25 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink disabled:pointer-events-none disabled:opacity-40`;
@@ -37,6 +37,7 @@ export const ICONS = {
   reset: "M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4",
   zoomIn: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5M8 11h6M11 8v6",
   zoomOut: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5M8 11h6",
+  search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5",
   alignLeft: "M4 6h16M4 10h10M4 14h16M4 18h10",
   alignCenter: "M4 6h16M7 10h10M4 14h16M7 18h10",
   alignRight: "M4 6h16M10 10h10M4 14h16M10 18h10",
@@ -123,7 +124,12 @@ export function ColorRow({ value, onChange, tr, label }: { value: string; onChan
           className={`size-7 rounded-full ring-1 ring-laguna ring-offset-2 ring-offset-surface aria-pressed:ring-2 aria-pressed:ring-mare ${focus}`}
           style={{ background: c.hex }} onClick={() => onChange(c.hex)} />
       ))}
-      <input type="color" aria-label={`${label}: ${tr("Altro colore")}`} className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={value} onChange={(e) => onChange(e.target.value)} />
+      {/* Color libre: aro de arcoíris (indica «otro color») con el color actual dentro; el input nativo va encima, invisible */}
+      <label title={tr("Altro colore")} className="relative size-7 cursor-pointer rounded-full p-[2.5px] ring-offset-2 ring-offset-surface focus-within:ring-2 focus-within:ring-mare"
+        style={{ background: "conic-gradient(#ff5f5f, #ffd24d, #7bd86b, #4dd4e8, #5b8cff, #c26bff, #ff5f5f)" }}>
+        <span className="block size-full rounded-full ring-2 ring-surface" style={{ background: value }} />
+        <input type="color" aria-label={`${label}: ${tr("Altro colore")}`} className="absolute inset-0 size-full cursor-pointer opacity-0" value={value} onChange={(e) => onChange(e.target.value)} />
+      </label>
     </div>
   );
 }
@@ -145,7 +151,7 @@ export function GradientControls({ fill, grad, onChange, tr }: { fill: string; g
           <ColorRow value={grad.to} onChange={(to) => onChange({ ...grad, to })} tr={tr} label={tr("Colore finale")} />
           <label className="flex items-center gap-2 text-[13px] font-semibold">
             {tr("Angolo")}
-            <input type="range" className="min-w-0 flex-1 accent-mare" min={0} max={360} step={15} value={grad.angle} onChange={(e) => onChange({ ...grad, angle: Number(e.target.value) })} />
+            <Range min={0} max={360} step={15} value={grad.angle} label={tr("Angolo")} onChange={(angle) => onChange({ ...grad, angle })} />
             <span className="w-10 text-right font-normal tabular-nums">{grad.angle}°</span>
           </label>
         </>
@@ -154,16 +160,45 @@ export function GradientControls({ fill, grad, onChange, tr }: { fill: string; g
   );
 }
 
-export function Num({ label, value, min, onChange }: { label: string; value: number; min?: number; onChange: (v: number) => void }) {
+// Deslizador propio: la pista se rellena hasta el valor (--pct, ver globals.css)
+export function Range({ value, min, max, step, label, onChange }: { value: number; min: number; max: number; step: number; label: string; onChange: (v: number) => void }) {
   return (
-    <label className="flex items-center justify-between gap-2 text-xs font-semibold md:text-[13px]">
+    <input
+      type="range" aria-label={label} className="range min-w-0 flex-1" min={min} max={max} step={step} value={value}
+      style={{ "--pct": `${((value - min) / (max - min)) * 100}%` } as React.CSSProperties}
+      onChange={(e) => onChange(Number(e.target.value))}
+    />
+  );
+}
+
+// Interruptor en vez de casilla: el texto a la izquierda y el botón deslizante a la derecha
+export function Switch({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode }) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+      <span>{children}</span>
+      <input type="checkbox" role="switch" className="peer sr-only" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span aria-hidden className="relative h-6 w-10 shrink-0 rounded-full bg-laguna/60 transition-colors after:absolute after:top-0.5 after:left-0.5 after:size-5 after:rounded-full after:bg-white after:shadow-md after:transition-transform peer-checked:bg-brand peer-checked:after:translate-x-4 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink" />
+    </label>
+  );
+}
+
+// Campo numérico con botones − / + (con el teclado sirven las flechas del propio campo)
+export function Num({ label, value, min, step = 1, onChange }: { label: string; value: number; min?: number; step?: number; onChange: (v: number) => void }) {
+  const bump = (d: number) => onChange(Math.max(min ?? -Infinity, Math.round((value + d) * 100) / 100));
+  const btn = "grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-base leading-none text-ink/70 transition-colors hover:bg-laguna/40 hover:text-ink active:bg-laguna/60";
+  return (
+    <label className="flex items-center justify-between gap-3 text-[13px] font-semibold">
       {label}
-      <input
-        type="number" step="any" min={min}
-        className="w-20 rounded-lg border border-laguna bg-surface px-2 py-1.5 text-sm font-normal tabular-nums md:py-1 focus:border-mare focus:outline-2 focus:outline-offset-0 focus:outline-mare/40"
-        value={Math.round(value * 10) / 10}
-        onChange={(e) => onChange(Math.max(min ?? -Infinity, Number(e.target.value) || 0))}
-      />
+      <span className="flex shrink-0 items-center rounded-lg border border-transparent bg-laguna/20 p-0.5 transition-[background-color,box-shadow,border-color] focus-within:border-mare focus-within:bg-surface focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-mare)_22%,transparent)] hover:bg-laguna/30">
+        <button type="button" tabIndex={-1} aria-hidden className={btn} onClick={() => bump(-step)}>−</button>
+        <input
+          type="number" step="any" min={min}
+          className="w-14 bg-transparent text-center text-sm font-normal tabular-nums outline-none"
+          value={Math.round(value * 10) / 10}
+          onChange={(e) => onChange(Math.max(min ?? -Infinity, Number(e.target.value) || 0))}
+        />
+        <button type="button" tabIndex={-1} aria-hidden className={btn} onClick={() => bump(step)}>+</button>
+      </span>
     </label>
   );
 }

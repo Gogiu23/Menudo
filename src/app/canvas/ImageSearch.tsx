@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { Tr } from "./i18n";
-import { focus, input, primary } from "./ui";
+import { focus, Icon, ICONS, input, primary } from "./ui";
 
 /* Busca PNG transparentes en Pixabay (vía /api/images, la misma ruta del editor principal) y entrega el elegido como archivo.
    Va sin <form> porque las secciones del carril ya están dentro de uno. */
@@ -54,10 +54,13 @@ export function ImageSearch({ onPick, tr, lang }: { onPick: (f: File) => void; t
   return (
     <div role="search" className="space-y-3">
       <div className="flex gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Icon d={ICONS.search} className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink/50" />
         <input
-          className={input} type="search" aria-label={tr("Cerca immagini")} placeholder={tr("Es. pizza")} value={q}
+          className={`${input} pl-9`} type="search" aria-label={tr("Cerca immagini")} placeholder={tr("Es. pizza")} value={q}
           onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }}
         />
+        </div>
         <button type="button" className={`${primary} px-3`} disabled={status === "searching"} onClick={search}>{tr("Cerca")}</button>
       </div>
       <p className="text-sm text-ink/70" aria-live="polite">{status && tr(MSG[status])}</p>

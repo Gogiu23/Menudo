@@ -13,7 +13,7 @@ import type Konva from "konva";
 import { common, Copies, COPIES, COPY_NAMES, El, FONTS, fontFamily, fontStyleOf, fillGrad, Grad, gradPoints, newText, PALETTE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
-import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, secondary, ShapeIcon } from "./ui";
+import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, Range, secondary, ShapeIcon, Switch } from "./ui";
 import { Tip } from "./Tip";
 import { useGlow } from "./glow";
 import type { Lang } from "../i18n";
@@ -900,12 +900,9 @@ export default function CanvasEditor() {
           </div>
           <div className="space-y-3">
             <Num label={tr("Dimensione (mm)")} value={cur.fontSize} min={2} onChange={(v) => patch(cur.id, { fontSize: v })} />
-            <Num label={tr("Interlinea")} value={cur.lineHeight ?? 1.2} min={0.5} onChange={(v) => patch(cur.id, { lineHeight: v })} />
+            <Num label={tr("Interlinea")} value={cur.lineHeight ?? 1.2} min={0.5} step={0.1} onChange={(v) => patch(cur.id, { lineHeight: v })} />
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" className="size-4 accent-mare" checked={!!cur.table} onChange={(e) => patch(cur.id, { table: e.target.checked })} />
-            {tr("Numero di tavolo (diverso per ogni copia)")}
-          </label>
+          <Switch checked={!!cur.table} onChange={(v) => patch(cur.id, { table: v })}>{tr("Numero di tavolo (diverso per ogni copia)")}</Switch>
         </Block>
       )}
       {cur && cur.type !== "image" && (
@@ -918,18 +915,15 @@ export default function CanvasEditor() {
         <Block title={tr("Aspetto")}>
           <label className="flex items-center gap-2 text-[13px] font-semibold">
             {tr("Opacità")}
-            <input type="range" className="min-w-0 flex-1 accent-mare" min={0} max={1} step={0.05} value={cur.opacity} onChange={(e) => patch(cur.id, { opacity: Number(e.target.value) })} />
+            <Range min={0} max={1} step={0.05} value={cur.opacity} label={tr("Opacità")} onChange={(v) => patch(cur.id, { opacity: v })} />
             <span className="w-10 text-right font-normal tabular-nums">{Math.round(cur.opacity * 100)}%</span>
           </label>
           {cur.type === "rect" && <Num label={tr("Angoli (mm)")} value={cur.radius} min={0} onChange={(v) => patch(cur.id, { radius: v })} />}
-          {cur.type === "tiles" && <Num label={tr("Dimensione maiolica")} value={cur.k} min={0.1} onChange={(v) => patch(cur.id, { k: v })} />}
+          {cur.type === "tiles" && <Num label={tr("Dimensione maiolica")} value={cur.k} min={0.1} step={0.1} onChange={(v) => patch(cur.id, { k: v })} />}
           {cur.type === "line" && (
             <>
-              <Num label={tr("Spessore (mm)")} value={cur.thickness} min={0.1} onChange={(v) => patch(cur.id, { thickness: v })} />
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" className="size-4 accent-mare" checked={cur.dash} onChange={(e) => patch(cur.id, { dash: e.target.checked })} />
-                {tr("Punteggiata")}
-              </label>
+              <Num label={tr("Spessore (mm)")} value={cur.thickness} min={0.1} step={0.1} onChange={(v) => patch(cur.id, { thickness: v })} />
+              <Switch checked={cur.dash} onChange={(v) => patch(cur.id, { dash: v })}>{tr("Punteggiata")}</Switch>
             </>
           )}
         </Block>
