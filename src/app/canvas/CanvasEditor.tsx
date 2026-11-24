@@ -18,23 +18,39 @@ const PAPERS: Record<Paper, { w: number; h: number }> = {
 
 type Base = { id: string; x: number; y: number; width: number; height: number; rotation: number; opacity: number; visible: boolean; locked: boolean };
 type El =
-  | (Base & { type: "text"; text: string; fontSize: number; fill: string; fontFamily: string; bold: boolean; italic: boolean; align: "left" | "center" | "right" })
+  | (Base & { type: "text"; text: string; fontSize: number; fill: string; fontFamily: FontKey; bold: boolean; italic: boolean; align: "left" | "center" | "right" })
   | (Base & { type: "rect"; fill: string; radius: number })
   | (Base & { type: "image"; src: string });
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
-const FONTS = [
-  { label: "Sans", value: "system-ui, sans-serif" },
-  { label: "Serif", value: "Georgia, 'Times New Roman', serif" },
-  { label: "Mono", value: "ui-monospace, Menlo, monospace" },
-  { label: "Corsivo", value: "'Brush Script MT', cursive" },
+// Misma paleta y tipografías que el editor principal (ver globals.css y layout.tsx)
+const INK = "#173033";
+const PALETTE = [
+  { name: "Inchiostro", hex: INK },
+  { name: "Mare", hex: "#68A7AD" },
+  { name: "Laguna", hex: "#99C4C8" },
+  { name: "Sabbia", hex: "#E5CB9F" },
+  { name: "Limone", hex: "#EEE4AB" },
+  { name: "Bianco", hex: "#FFFFFF" },
 ];
+const FONTS = [
+  { label: "Titillium", key: "sans", cssVar: "--font-titillium", fallback: "system-ui, sans-serif" },
+  { label: "Bodoni", key: "display", cssVar: "--font-bodoni", fallback: "Georgia, serif" },
+] as const;
+type FontKey = (typeof FONTS)[number]["key"];
+
+// Canvas no entiende var(): se lee el nombre real de la fuente que next/font define en <html>
+function fontFamily(key: FontKey) {
+  const f = FONTS.find((x) => x.key === key)!;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(f.cssVar).trim();
+  return v ? `${v}, ${f.fallback}` : f.fallback;
+}
 
 const common = { rotation: 0, opacity: 1, visible: true, locked: false };
 const newText = (o: Partial<Extract<El, { type: "text" }>> = {}): El => ({
   id: uid(), type: "text", x: 20, y: 40, width: 100, height: 10, ...common,
-  text: "Testo", fontSize: 8, fill: "#173033", fontFamily: FONTS[0].value, bold: false, italic: false, align: "left", ...o,
+  text: "Testo", fontSize: 8, fill: INK, fontFamily: "sans", bold: false, italic: false, align: "left", ...o,
 });
 const label = (e: El) => (e.type === "text" ? e.text.split("\n")[0].slice(0, 24) || "Testo" : e.type === "rect" ? "Rettangolo" : "Immagine");
 
@@ -57,22 +73,28 @@ function Num({ label, value, min, onChange }: { label: string; value: number; mi
   return (
     <label className="flex items-center justify-between gap-2">
       {label}
-      <input type="number" step="any" min={min} className="w-20 rounded-lg border border-black/15 p-1" value={Math.round(value * 10) / 10} onChange={(e) => onChange(Math.max(min ?? -Infinity, Number(e.target.value) || 0))} />
+      <input type="number" step="any" min={min} className="w-20 rounded-lg border border-ink/20 p-1" value={Math.round(value * 10) / 10} onChange={(e) => onChange(Math.max(min ?? -Infinity, Number(e.target.value) || 0))} />
     </label>
   );
 }
 
-const btn = "rounded-lg border border-black/15 bg-white px-3 py-1.5 text-sm hover:bg-black/5 disabled:opacity-40";
+const btn = "rounded-lg border border-ink/20 bg-white px-3 py-1.5 text-sm hover:bg-laguna/30 disabled:opacity-40";
 
 export default function CanvasEditor() {
   const [paper, setPaper] = useState<Paper>("A4");
-  const [els, setEls] = useState<El[]>(() => [newText({ y: 20, width: 170, height: 20, text: "Menù", fontSize: 14, bold: true })]);
+  const [els, setEls] = useState<El[]>(() => [newText({ y: 20, width: 170, height: 20, text: "Menù", fontSize: 14, fontFamily: "display" })]);
+  const [, setFontsReady] = useState(0);
   const [sel, setSel] = useState<string | null>(null);
   const [zoom, setZoom] = useState(2); // px por mm
   const wrap = useRef<HTMLDivElement>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const layerRef = useRef<Konva.Layer>(null);
   const { w, h } = PAPERS[paper];
+
+  // Las fuentes web se descargan al usarse en el DOM: se piden aquí y se repinta el lienzo al llegar
+  useEffect(() => {
+    Promise.all(FONTS.flatMap((f) => ["400", "700"].map((w) => document.fonts.load(`${w} 16px ${fontFamily(f.key)}`)))).then(() => setFontsReady((n) => n + 1));
+  }, []);
 
   // Ajusta el zoom para que la hoja quepa en el ancho disponible
   useEffect(() => {
@@ -155,14 +177,14 @@ export default function CanvasEditor() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-neutral-100 text-neutral-900 md:flex-row">
-      <aside className="flex shrink-0 flex-col gap-4 md:sticky md:top-0 md:h-screen md:overflow-y-auto border-b border-black/10 bg-white p-4 md:w-72 md:border-r md:border-b-0">
-        <h1 className="text-lg font-semibold">Editor libero (prova)</h1>
+    <div className="flex min-h-screen flex-col bg-laguna/35 text-ink md:flex-row">
+      <aside className="flex shrink-0 flex-col gap-4 md:sticky md:top-0 md:h-screen md:overflow-y-auto border-b border-laguna/60 bg-white p-4 md:w-72 md:border-r md:border-b-0">
+        <h1 className="font-display text-lg font-semibold">Editor libero (prova)</h1>
 
         <fieldset className="flex flex-wrap gap-2">
           <legend className="mb-1 text-sm font-medium">Carta</legend>
           {(Object.keys(PAPERS) as Paper[]).map((p) => (
-            <label key={p} className={`cursor-pointer rounded-lg px-2 py-1 text-xs ring-1 ${paper === p ? "bg-neutral-900 text-white ring-neutral-900" : "ring-black/15"}`}>
+            <label key={p} className={`cursor-pointer rounded-lg px-2 py-1 text-xs ring-1 ${paper === p ? "bg-mare font-semibold text-ink ring-mare" : "ring-ink/20"}`}>
               <input type="radio" name="paper" className="sr-only" checked={paper === p} onChange={() => setPaper(p)} />
               {p} ({PAPERS[p].w} × {PAPERS[p].h} mm)
             </label>
@@ -173,7 +195,7 @@ export default function CanvasEditor() {
           <button className={btn} onClick={() => add(newText())}>
             + Testo
           </button>
-          <button className={btn} onClick={() => add({ id: uid(), type: "rect", x: 20, y: 60, width: 60, height: 30, ...common, fill: "#9ccfd0", radius: 0 })}>
+          <button className={btn} onClick={() => add({ id: uid(), type: "rect", x: 20, y: 60, width: 60, height: 30, ...common, fill: PALETTE[2].hex, radius: 0 })}>
             + Rettangolo
           </button>
           <label className={`${btn} cursor-pointer`}>
@@ -187,15 +209,15 @@ export default function CanvasEditor() {
             <p className="font-medium">Proprietà</p>
             {cur.type === "text" && (
               <>
-                <textarea className="rounded-lg border border-black/15 p-2" rows={3} value={cur.text} onChange={(e) => patch(cur.id, { text: e.target.value })} />
-                <select className="rounded-lg border border-black/15 p-1.5" value={cur.fontFamily} onChange={(e) => patch(cur.id, { fontFamily: e.target.value })}>
-                  {FONTS.map((f) => <option key={f.label} value={f.value}>{f.label}</option>)}
+                <textarea className="rounded-lg border border-ink/20 p-2" rows={3} value={cur.text} onChange={(e) => patch(cur.id, { text: e.target.value })} />
+                <select className="rounded-lg border border-ink/20 p-1.5" value={cur.fontFamily} onChange={(e) => patch(cur.id, { fontFamily: e.target.value as FontKey })}>
+                  {FONTS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
                 </select>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <button aria-pressed={cur.bold} className={`${btn} font-bold ${cur.bold ? "bg-neutral-900 text-white hover:bg-neutral-800" : ""}`} onClick={() => patch(cur.id, { bold: !cur.bold })}>B</button>
-                  <button aria-pressed={cur.italic} className={`${btn} italic ${cur.italic ? "bg-neutral-900 text-white hover:bg-neutral-800" : ""}`} onClick={() => patch(cur.id, { italic: !cur.italic })}>I</button>
+                  <button aria-pressed={cur.bold} className={`${btn} font-bold ${cur.bold ? "bg-mare text-ink font-semibold hover:bg-mare" : ""}`} onClick={() => patch(cur.id, { bold: !cur.bold })}>B</button>
+                  <button aria-pressed={cur.italic} className={`${btn} italic ${cur.italic ? "bg-mare text-ink font-semibold hover:bg-mare" : ""}`} onClick={() => patch(cur.id, { italic: !cur.italic })}>I</button>
                   {(["left", "center", "right"] as const).map((al) => (
-                    <button key={al} aria-pressed={cur.align === al} className={`${btn} ${cur.align === al ? "bg-neutral-900 text-white hover:bg-neutral-800" : ""}`} onClick={() => patch(cur.id, { align: al })}>
+                    <button key={al} aria-pressed={cur.align === al} className={`${btn} ${cur.align === al ? "bg-mare text-ink font-semibold hover:bg-mare" : ""}`} onClick={() => patch(cur.id, { align: al })}>
                       {al === "left" ? "Sx" : al === "center" ? "Ct" : "Dx"}
                     </button>
                   ))}
@@ -205,14 +227,19 @@ export default function CanvasEditor() {
             )}
             {cur.type === "rect" && <Num label="Angoli (mm)" value={cur.radius} min={0} onChange={(v) => patch(cur.id, { radius: v })} />}
             {cur.type !== "image" && (
-              <label className="flex items-center gap-2">
-                Colore
-                <input type="color" value={cur.fill} onChange={(e) => patch(cur.id, { fill: e.target.value })} />
-              </label>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="mr-1">Colore</span>
+                {PALETTE.map((c) => (
+                  <button key={c.hex} title={c.name} aria-label={c.name} aria-pressed={cur.fill.toLowerCase() === c.hex.toLowerCase()}
+                    className="size-7 rounded-full ring-1 ring-ink/20 ring-offset-2 aria-pressed:ring-2 aria-pressed:ring-ink"
+                    style={{ background: c.hex }} onClick={() => patch(cur.id, { fill: c.hex })} />
+                ))}
+                <input type="color" aria-label="Altro colore" className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={cur.fill} onChange={(e) => patch(cur.id, { fill: e.target.value })} />
+              </div>
             )}
             <label className="flex items-center gap-2">
               Opacità
-              <input type="range" min={0} max={1} step={0.05} value={cur.opacity} onChange={(e) => patch(cur.id, { opacity: Number(e.target.value) })} />
+              <input type="range" className="accent-mare" min={0} max={1} step={0.05} value={cur.opacity} onChange={(e) => patch(cur.id, { opacity: Number(e.target.value) })} />
               {Math.round(cur.opacity * 100)}%
             </label>
             <div className="grid grid-cols-2 gap-x-3 gap-y-1">
@@ -228,27 +255,27 @@ export default function CanvasEditor() {
             </div>
           </div>
         ) : (
-          <p className="text-sm text-neutral-500">Seleziona un elemento per modificarlo. Trascina, ridimensiona e ruota con le maniglie; frecce per spostare (Maiusc = 5 mm).</p>
+          <p className="text-sm text-ink/65">Seleziona un elemento per modificarlo. Trascina, ridimensiona e ruota con le maniglie; frecce per spostare (Maiusc = 5 mm).</p>
         )}
 
         <div className="flex flex-col gap-1 text-sm">
           <p className="font-medium">Livelli</p>
           {[...els].reverse().map((e) => (
-            <div key={e.id} className={`flex items-center gap-1 rounded-lg px-1.5 py-1 ${e.id === sel ? "bg-neutral-900/10" : ""}`}>
-              <button className={`min-w-0 flex-1 truncate text-left ${e.visible ? "" : "text-neutral-400 line-through"}`} onClick={() => setSel(e.id)}>
+            <div key={e.id} className={`flex items-center gap-1 rounded-lg px-1.5 py-1 ${e.id === sel ? "bg-laguna/50" : ""}`}>
+              <button className={`min-w-0 flex-1 truncate text-left ${e.visible ? "" : "text-ink/40 line-through"}`} onClick={() => setSel(e.id)}>
                 {label(e)}
               </button>
-              <button title="Su" aria-label="Porta su" className="px-1 hover:bg-black/5" onClick={() => move(e.id, 1)}>↑</button>
-              <button title="Giù" aria-label="Porta giù" className="px-1 hover:bg-black/5" onClick={() => move(e.id, -1)}>↓</button>
-              <button title="Mostra/nascondi" aria-label="Mostra o nascondi" aria-pressed={!e.visible} className="px-1 hover:bg-black/5" onClick={() => patch(e.id, { visible: !e.visible })}>{e.visible ? "👁" : "—"}</button>
-              <button title="Blocca" aria-label="Blocca o sblocca" aria-pressed={e.locked} className="px-1 hover:bg-black/5" onClick={() => patch(e.id, { locked: !e.locked })}>{e.locked ? "🔒" : "🔓"}</button>
+              <button title="Su" aria-label="Porta su" className="px-1 hover:bg-laguna/30" onClick={() => move(e.id, 1)}>↑</button>
+              <button title="Giù" aria-label="Porta giù" className="px-1 hover:bg-laguna/30" onClick={() => move(e.id, -1)}>↓</button>
+              <button title="Mostra/nascondi" aria-label="Mostra o nascondi" aria-pressed={!e.visible} className="px-1 hover:bg-laguna/30" onClick={() => patch(e.id, { visible: !e.visible })}>{e.visible ? "👁" : "—"}</button>
+              <button title="Blocca" aria-label="Blocca o sblocca" aria-pressed={e.locked} className="px-1 hover:bg-laguna/30" onClick={() => patch(e.id, { locked: !e.locked })}>{e.locked ? "🔒" : "🔓"}</button>
             </div>
           ))}
         </div>
       </aside>
 
       <main ref={wrap} className="flex flex-1 justify-center overflow-auto p-4">
-        <div className="h-fit shadow-xl">
+        <div className="h-fit shadow-[0_18px_40px_-18px_rgb(23_48_51/0.45)]">
           <Stage
             width={w * zoom}
             height={h * zoom}
@@ -278,13 +305,13 @@ export default function CanvasEditor() {
                 };
                 if (el.type === "text")
                   return (
-                    <Text key={el.id} {...props} text={el.text} fontSize={el.fontSize} fill={el.fill} fontFamily={el.fontFamily} align={el.align}
+                    <Text key={el.id} {...props} text={el.text} fontSize={el.fontSize} fill={el.fill} fontFamily={fontFamily(el.fontFamily)} align={el.align}
                       fontStyle={`${el.italic ? "italic " : ""}${el.bold ? "bold" : "normal"}`} />
                   );
                 if (el.type === "rect") return <Rect key={el.id} {...props} fill={el.fill} cornerRadius={el.radius} />;
                 return <ImageNode key={el.id} el={el} {...props} />;
               })}
-              <Transformer ref={trRef} rotateEnabled keepRatio={false} boundBoxFunc={(o, n) => (n.width < 5 || n.height < 5 ? o : n)} />
+              <Transformer ref={trRef} borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" rotateEnabled keepRatio={false} boundBoxFunc={(o, n) => (n.width < 5 || n.height < 5 ? o : n)} />
             </Layer>
           </Stage>
         </div>
