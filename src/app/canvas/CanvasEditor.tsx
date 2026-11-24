@@ -9,7 +9,7 @@ import type Konva from "konva";
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
 import { common, Copies, COPIES, El, FONTS, FontKey, fontFamily, fontStyleOf, newText, PALETTE, PAPERS, Paper, sheetFor, tilePattern, tileScale, uid } from "./model";
-import { menuToElements, readSavedMenu } from "./menuTemplate";
+import { menuToPages, readSavedMenu } from "./menuTemplate";
 
 const label = (e: El) =>
   e.type === "text" ? e.text.split("\n")[0].slice(0, 24) || "Testo" : { rect: "Rettangolo", image: "Immagine", tiles: "Maioliche", line: "Linea" }[e.type];
@@ -43,22 +43,27 @@ function Num({ label, value, min, onChange }: { label: string; value: number; mi
   );
 }
 
-/* Fase 10: zoom (botones, Ctrl+rueda, pellizco) sobre el ajuste al ancho.
+/* Fase 11: varias páginas (copertina incluida al importar), exportadas en un solo PDF.
+   Fase 10: zoom (botones, Ctrl+rueda, pellizco) sobre el ajuste al ancho.
    Fase 9: uso en móvil (pestañas Carta/Strumenti, barra inferior, modo selección múltiple táctil, maniglie grandes).
    Fase 6: guías de alineación con imán (Alt las desactiva) y texto con altura automática.
    Fase 4: exportar a PNG y PDF a resolución de impresión, e imprimir.
    Fase 3: guardado automático en localStorage y deshacer/rehacer */
 const STORAGE_KEY = "menudo:canvas:v1";
 const MAX_HISTORY = 100;
-type History = { past: El[][]; els: El[]; future: El[][] };
+type History = { past: El[][][]; pages: El[][]; future: El[][][] }; // cada paso del historial guarda todas las páginas
 const starter = (): El[] => [newText({ y: 20, width: 170, height: 20, text: "Menù", fontSize: 14, fontFamily: "display" })];
 
-function load(): { paper: Paper; copies: Copies; els: El[] } {
+function load(): { paper: Paper; copies: Copies; pages: El[][] } {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
-    if (raw && raw.paper in PAPERS && Array.isArray(raw.els)) return { ...raw, copies: COPIES.includes(raw.copies) ? raw.copies : 1 };
+    const copies = COPIES.includes(raw?.copies) ? raw.copies : 1;
+    if (raw && raw.paper in PAPERS) {
+      if (Array.isArray(raw.pages) && raw.pages.length && raw.pages.every(Array.isArray)) return { paper: raw.paper, copies, pages: raw.pages };
+      if (Array.isArray(raw.els)) return { paper: raw.paper, copies, pages: [raw.els] }; // formato de las fases 3-10: una sola página
+    }
   } catch {}
-  return { paper: "A4", copies: 1, els: starter() };
+  return { paper: "A4", copies: 1, pages: [starter()] };
 }
 
 // Reduce la foto: las del móvil pesan varios MB y no caben en localStorage
@@ -90,9 +95,11 @@ export default function CanvasEditor() {
   // Si el papel elegido no admite esas copias (p. ej. 4 × A3), se vuelve a 1
   const copies: Copies = sheetFor(paper, wanted) ? wanted : 1;
   const sheet = sheetFor(paper, copies)!;
-  const [hist, setHist] = useState<History>({ past: [], els: init.els, future: [] });
+  const [hist, setHist] = useState<History>({ past: [], pages: init.pages, future: [] });
+  const [pageIdx, setPageIdx] = useState(0);
+  const page = Math.min(pageIdx, hist.pages.length - 1); // deshacer puede quitar páginas
   const [saveError, setSaveError] = useState(false);
-  const els = hist.els;
+  const els = hist.pages[page];
   const lastKey = useRef("");
   const lastTime = useRef(0);
 
@@ -105,19 +112,66 @@ export default function CanvasEditor() {
     const merge = !!key && key === lastKey.current && now - lastTime.current < 1000;
     lastKey.current = key ?? "";
     lastTime.current = now;
+    const pg = page;
     setHist((h) => {
-      const next = typeof f === "function" ? f(h.els) : f;
-      if (next === h.els) return h;
-      return { past: merge ? h.past : [...h.past, h.els].slice(-MAX_HISTORY), els: next, future: [] };
+      const cur = h.pages[pg];
+      const next = typeof f === "function" ? f(cur) : f;
+      if (next === cur) return h;
+      const pages = h.pages.map((p, i) => (i === pg ? next : p));
+      return { past: merge ? h.past : [...h.past, h.pages].slice(-MAX_HISTORY), pages, future: [] };
     });
+  };
+  // Cambios que afectan a la lista de páginas (añadir, duplicar, borrar, mover): un paso de historial
+  const setPages = (f: (p: El[][]) => El[][]) => {
+    lastKey.current = "";
+    setHist((h) => ({ past: [...h.past, h.pages].slice(-MAX_HISTORY), pages: f(h.pages), future: [] }));
+  };
+  const goPage = (i: number) => {
+    setPageIdx(i);
+    setSels([]);
+  };
+  const pageWaiter = useRef<{ i: number; ok: () => void } | null>(null);
+  useEffect(() => {
+    if (pageWaiter.current?.i === page) {
+      pageWaiter.current.ok();
+      pageWaiter.current = null;
+    }
+  }, [page]);
+  const addPage = () => {
+    setPages((p) => [...p.slice(0, page + 1), [], ...p.slice(page + 1)]);
+    goPage(page + 1);
+  };
+  const duplicatePage = () => {
+    const groups = new Map<string, string>();
+    const copy = hist.pages[page].map((e) => {
+      if (e.group && !groups.has(e.group)) groups.set(e.group, uid());
+      return { ...e, id: uid(), group: e.group && groups.get(e.group) } as El;
+    });
+    setPages((p) => [...p.slice(0, page + 1), copy, ...p.slice(page + 1)]);
+    goPage(page + 1);
+  };
+  const deletePage = () => {
+    if (hist.pages.length < 2) return;
+    setPages((p) => p.filter((_, i) => i !== page));
+    goPage(Math.max(0, page - 1));
+  };
+  const movePage = (d: -1 | 1) => {
+    const j = page + d;
+    if (j < 0 || j >= hist.pages.length) return;
+    setPages((p) => {
+      const b = [...p];
+      [b[page], b[j]] = [b[j], b[page]];
+      return b;
+    });
+    setPageIdx(j);
   };
   const undo = () => {
     lastKey.current = "";
-    setHist((h) => (h.past.length ? { past: h.past.slice(0, -1), els: h.past[h.past.length - 1], future: [h.els, ...h.future] } : h));
+    setHist((h) => (h.past.length ? { past: h.past.slice(0, -1), pages: h.past[h.past.length - 1], future: [h.pages, ...h.future] } : h));
   };
   const redo = () => {
     lastKey.current = "";
-    setHist((h) => (h.future.length ? { past: [...h.past, h.els], els: h.future[0], future: h.future.slice(1) } : h));
+    setHist((h) => (h.future.length ? { past: [...h.past, h.pages], pages: h.future[0], future: h.future.slice(1) } : h));
   };
   const [, setFontsReady] = useState(0);
   const [sels, setSels] = useState<string[]>([]);
@@ -141,7 +195,7 @@ export default function CanvasEditor() {
   const stageRef = useRef<Konva.Stage>(null);
   const [busy, setBusy] = useState(false);
   const [exportError, setExportError] = useState("");
-  const [printSrc, setPrintSrc] = useState("");
+  const [printSrcs, setPrintSrcs] = useState<string[]>([]);
   const [importMsg, setImportMsg] = useState("");
   const { w, h } = PAPERS[paper];
 
@@ -205,14 +259,14 @@ export default function CanvasEditor() {
   useEffect(() => {
     const t = setTimeout(() => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, copies, els }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, copies, pages: hist.pages }));
         setSaveError(false);
       } catch {
         setSaveError(true); // normalmente: demasiadas imágenes para el límite del navegador
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [paper, copies, els]);
+  }, [paper, copies, hist.pages]);
 
   // `merge`: ediciones desde el panel (escribir, deslizadores) que deben deshacerse de una vez
   const patch = (id: string, p: Partial<El>, merge = true) =>
@@ -340,19 +394,58 @@ export default function CanvasEditor() {
       setBusy(false);
     }
   };
-  const exportPng = () => run(async () => download((await compose()).url, `menu-${paper}-x${copies}.png`));
+  // Recorre las páginas mostrándolas una a una (el lienzo solo pinta la actual), espera a que se
+  // dibujen y devuelve el resultado de `fn` para cada una. Al terminar vuelve a la página en que estaba.
+  const eachPage = async <T,>(fn: () => Promise<T>): Promise<T[]> => {
+    const start = page;
+    let shown = page;
+    const out: T[] = [];
+    try {
+      for (let i = 0; i < hist.pages.length; i++) {
+        if (hist.pages.length > 1) {
+          setSels([]);
+          if (shown !== i) {
+            // se espera al commit de React (el efecto de `page` avisa), no a un número fijo de fotogramas
+            await new Promise<void>((ok) => {
+              pageWaiter.current = { i, ok };
+              setPageIdx(i);
+            });
+            shown = i;
+          }
+          await new Promise((ok) => requestAnimationFrame(ok));
+          // las imágenes se cargan de forma asíncrona: se espera (máx. 3 s) a que estén todas
+          for (let t = 0; t < 60 && !stageRef.current!.find("Image").every((n) => (n as Konva.Image).image()); t++) await new Promise((ok) => setTimeout(ok, 50));
+        }
+        out.push(await fn());
+      }
+    } finally {
+      setPageIdx(start);
+    }
+    return out;
+  };
+  const exportPng = () =>
+    run(async () => {
+      const urls = (await eachPage(compose)).map((c) => c.url);
+      for (const [i, url] of urls.entries()) {
+        download(url, `menu-${paper}-x${copies}${urls.length > 1 ? `-p${i + 1}` : ""}.png`);
+        if (i < urls.length - 1) await new Promise((ok) => setTimeout(ok, 300)); // los navegadores descartan descargas simultáneas
+      }
+    });
   const exportPdf = () =>
     run(async () => {
       const { PDFDocument } = await import("pdf-lib");
-      const png = await fetch((await compose()).url).then((r) => r.arrayBuffer());
+      const urls = (await eachPage(compose)).map((c) => c.url);
       const doc = await PDFDocument.create();
       const pt = (mm: number) => (mm / MM_PER_INCH) * 72;
-      const page = doc.addPage([pt(sheet.w), pt(sheet.h)]);
-      page.drawImage(await doc.embedPng(png), { x: 0, y: 0, width: pt(sheet.w), height: pt(sheet.h) });
+      for (const url of urls) {
+        const png = await fetch(url).then((r) => r.arrayBuffer());
+        const pg = doc.addPage([pt(sheet.w), pt(sheet.h)]);
+        pg.drawImage(await doc.embedPng(png), { x: 0, y: 0, width: pt(sheet.w), height: pt(sheet.h) });
+      }
       const bytes = await doc.save();
-      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
-      download(url, `menu-${paper}-x${copies}.pdf`);
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      const href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
+      download(href, `menu-${paper}-x${copies}.pdf`);
+      setTimeout(() => URL.revokeObjectURL(href), 10_000);
     });
   // Imán al arrastrar: los bordes y el centro del elemento se pegan a los de la hoja y a los de los demás
   const snap = (e: Konva.KonvaEventObject<DragEvent>, id: string) => {
@@ -388,17 +481,20 @@ export default function CanvasEditor() {
       setImportMsg("");
       const menu = readSavedMenu();
       if (!menu) return setImportMsg("Nessun menù trovato: crealo prima nell'editor principale.");
-      setEls(await menuToElements(menu, paper));
-      setSel(null);
-      setImportMsg(menu.coverOn ? "Importata la pagina del menù (la copertina non è inclusa)." : "Menù importato.");
+      const pages = await menuToPages(menu, paper);
+      setPages(() => pages);
+      goPage(pages.length - 1); // la página del menú; la copertina es la anterior
+      setImportMsg(pages.length > 1 ? "Menù importato, con la copertina." : "Menù importato.");
     });
   const print = () =>
     run(async () => {
-      const { url } = await compose();
-      const im = new window.Image();
-      im.src = url;
-      await im.decode();
-      setPrintSrc(url);
+      const urls = (await eachPage(compose)).map((c) => c.url);
+      await Promise.all(urls.map(async (u) => {
+        const im = new window.Image();
+        im.src = u;
+        await im.decode();
+      }));
+      setPrintSrcs(urls);
       await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
       window.print();
     });
@@ -499,13 +595,24 @@ export default function CanvasEditor() {
         <div className="flex flex-wrap items-center gap-2">
           <button className={btn} disabled={!hist.past.length} onClick={undo} title="Ctrl+Z">↶ Annulla</button>
           <button className={btn} disabled={!hist.future.length} onClick={redo} title="Ctrl+Maiusc+Z">↷ Ripeti</button>
-          <button className={btn} onClick={() => { if (confirm("Cancellare tutto e ricominciare?")) { setEls(starter()); setSel(null); } }}>Nuovo</button>
+          <button className={btn} onClick={() => { if (confirm("Cancellare tutto e ricominciare?")) { setPages(() => [starter()]); goPage(0); } }}>Nuovo</button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button className={`${btn} bg-mare font-semibold hover:bg-mare`} disabled={busy} onClick={print}>Stampa</button>
           <button className={btn} disabled={busy} onClick={exportPdf}>PDF</button>
           <button className={btn} disabled={busy} onClick={exportPng}>PNG</button>
         </div>
+        <div className="flex flex-col gap-1.5 text-sm">
+          <p className="font-medium">Pagina {page + 1} di {hist.pages.length}</p>
+          <div className="flex flex-wrap gap-1.5">
+            <button className={`${btn} px-2 py-1 text-xs`} onClick={addPage}>+ Pagina</button>
+            <button className={`${btn} px-2 py-1 text-xs`} onClick={duplicatePage}>Duplica</button>
+            <button className={`${btn} px-2 py-1 text-xs`} aria-label="Sposta indietro" disabled={page === 0} onClick={() => movePage(-1)}>←</button>
+            <button className={`${btn} px-2 py-1 text-xs`} aria-label="Sposta avanti" disabled={page === hist.pages.length - 1} onClick={() => movePage(1)}>→</button>
+            <button className={`${btn} px-2 py-1 text-xs`} disabled={hist.pages.length < 2} onClick={deletePage}>Elimina</button>
+          </div>
+        </div>
+
         <div className="flex flex-col gap-1">
           <button className={btn} disabled={busy} onClick={importMenu}>Importa il menù attuale</button>
           {importMsg && <p role="status" className="text-sm text-ink/65">{importMsg}</p>}
@@ -660,6 +767,13 @@ export default function CanvasEditor() {
           </button>
           <button aria-label="Ingrandisci" className="size-8 rounded-full hover:bg-laguna/30" onClick={() => setMul((m) => Math.min(maxMul, m * 1.25))}>+</button>
         </div>
+        {hist.pages.length > 1 && (
+          <div role="tablist" aria-label="Pagine" className="fixed top-3 left-3 z-10 flex max-w-[55vw] flex-wrap gap-1 md:left-[19.5rem]">
+            {hist.pages.map((_, i) => (
+              <button key={i} role="tab" aria-selected={i === page} className={`size-8 rounded-full text-sm shadow-md ring-1 ring-ink/10 ${i === page ? "bg-mare font-semibold" : "bg-white/95"}`} onClick={() => goPage(i)}>{i + 1}</button>
+            ))}
+          </div>
+        )}
         {/* m-auto centra la hoja cuando cabe y deja desplazarse cuando es mayor que el área (justify-center la cortaría) */}
         <div className="m-auto h-fit shrink-0 shadow-[0_18px_40px_-18px_rgb(23_48_51/0.45)]">
           <Stage
@@ -763,8 +877,12 @@ export default function CanvasEditor() {
       </nav>
     </div>
     {/* Solo al imprimir: la hoja renderizada a alta resolución, a tamaño real */}
-    {/* eslint-disable-next-line @next/next/no-img-element -- data URL local, no hay nada que optimizar */}
-    <div className="hidden print:block">{printSrc && <img src={printSrc} alt="" style={{ width: `${sheet.w}mm`, height: `${sheet.h}mm`, display: "block" }} />}</div>
+    <div className="hidden print:block">
+      {printSrcs.map((src, i) => (
+        // eslint-disable-next-line @next/next/no-img-element -- data URL local, no hay nada que optimizar
+        <img key={i} src={src} alt="" className={i < printSrcs.length - 1 ? "break-after-page" : ""} style={{ width: `${sheet.w}mm`, height: `${sheet.h}mm`, display: "block" }} />
+      ))}
+    </div>
     </>
   );
 }

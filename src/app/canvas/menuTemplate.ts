@@ -53,19 +53,9 @@ function logoSize(src: string): Promise<{ w: number; h: number }> {
   });
 }
 
-export async function menuToElements(m: Menu, paper: Paper): Promise<El[]> {
-  // Las fuentes web deben estar cargadas antes de medir
-  // allSettled: si una fuente no baja (sin red), se mide con la de reserva en vez de fallar
-  await Promise.allSettled(
-    FONTS.flatMap((f) => ["400", "700", "italic 400", "italic 700"].map((s) => document.fonts.load(`${s} 16px ${fontFamily(f.key)}`))),
-  );
-  const logo = m.logo ? await logoSize(m.logo) : { w: 0, h: 0 };
-
+function makeHelpers(getGroup: () => string | undefined) {
   const out: El[] = [];
-  // Cada bloque (cabecera, sección, pie…) comparte `group`: se selecciona y mueve de una vez
-  let group: string | undefined;
-  const base = (x: number, y: number, width: number, height: number) => ({ id: uid(), x, y, width, height, ...common, group });
-
+  const base = (x: number, y: number, width: number, height: number) => ({ id: uid(), x, y, width, height, ...common, group: getGroup() });
   const text = (t: string, x: number, y: number, width: number, o: T) => {
     const { h } = measure(t, o, width);
     out.push({
@@ -75,6 +65,39 @@ export async function menuToElements(m: Menu, paper: Paper): Promise<El[]> {
     return h;
   };
   const bar = (x: number, y: number, w: number, h: number, fill: string) => out.push({ ...base(x, y, w, h), type: "rect", fill, radius: h / 2 });
+  return { out, base, text, bar };
+}
+
+// Escala los elementos (calculados en A4) al papel elegido
+function scaleTo(out: El[], paper: Paper): El[] {
+  const sc = PAPERS[paper].w / W;
+  return out.map((e) => {
+    const s = { ...e, x: e.x * sc, y: e.y * sc, width: e.width * sc, height: e.height * sc };
+    if (s.type === "text") s.fontSize *= sc;
+    if (s.type === "rect") {
+      s.radius *= sc;
+      if (s.strokeW) s.strokeW *= sc;
+    }
+    if (s.type === "line") s.thickness *= sc;
+    if (s.type === "tiles") s.k *= sc;
+    return s;
+  });
+}
+
+async function loadFonts() {
+  // allSettled: si una fuente no baja (sin red), se mide con la de reserva en vez de fallar
+  await Promise.allSettled(
+    FONTS.flatMap((f) => ["400", "700", "italic 400", "italic 700"].map((s) => document.fonts.load(`${s} 16px ${fontFamily(f.key)}`))),
+  );
+}
+
+async function contentPage(m: Menu, paper: Paper): Promise<El[]> {
+  await loadFonts();
+  const logo = m.logo ? await logoSize(m.logo) : { w: 0, h: 0 };
+
+  // Cada bloque (cabecera, sección, pie…) comparte `group`: se selecciona y mueve de una vez
+  let group: string | undefined;
+  const { out, base, text, bar } = makeHelpers(() => group);
 
   const z = m.textSize;
   const total = m.priceMode === "total";
@@ -204,17 +227,53 @@ export async function menuToElements(m: Menu, paper: Paper): Promise<El[]> {
     y += s.h + gap + space;
   }
 
-  /* Escala al papel elegido */
-  const sc = PAPERS[paper].w / W;
-  return out.map((e) => {
-    const s = { ...e, x: e.x * sc, y: e.y * sc, width: e.width * sc, height: e.height * sc };
-    if (s.type === "text") s.fontSize *= sc;
-    if (s.type === "rect") {
-      s.radius *= sc;
-      if (s.strokeW) s.strokeW *= sc;
+  return scaleTo(out, paper);
+}
+
+/* Copertina: foto o baldosas a toda la página y, en el centro, un recuadro blanco con logo, nombre y subtítulo */
+async function coverPage(m: Menu, paper: Paper): Promise<El[]> {
+  await loadFonts();
+  let group: string | undefined = undefined;
+  const { out, base, text } = makeHelpers(() => group);
+  const accent = m.accent;
+  const BOX = 150;
+  const IN = BOX - 28;
+  const logo = m.logo ? await logoSize(m.logo) : { w: 0, h: 0 };
+
+  if (m.cover) {
+    const img = await logoSize(m.cover); // tamaño natural, en mm
+    if (img.w > 0) {
+      const k = Math.max(W / img.w, H / img.h); // object-cover: llena la página y lo que sobra queda fuera
+      out.push({ ...base((W - img.w * k) / 2, (H - img.h * k) / 2, img.w * k, img.h * k), type: "image", src: m.cover });
     }
-    if (s.type === "line") s.thickness *= sc;
-    if (s.type === "tiles") s.k *= sc;
-    return s;
-  });
+  } else if (m.tiles) {
+    out.push({ ...base(0, 0, W, H), type: "tiles", fill: accent, k: 1.6 });
+  }
+
+  const title: T = { font: "display", bold: true, size: 15 * m.titleSize, lh: 1.05, align: "center" };
+  const sub: T = { font: "display", italic: true, size: 7, lh: 1.5, align: "center" };
+  const lk = logo.w > 0 ? Math.min(1, 80 / logo.w, 38 / logo.h) : 0;
+  const bar = m.tiles ? 8 : 0;
+  const inner = (logo.w > 0 ? logo.h * lk + 6 : 0) + measure(m.name, title, IN).h + (m.subtitle ? 2 + measure(m.subtitle, sub, IN).h : 0);
+  const boxH = bar + 14 + inner + 14;
+  const y0 = (H - boxH) / 2;
+  const x0 = (W - BOX) / 2;
+
+  group = uid();
+  out.push({ ...base(x0, y0, BOX, boxH), type: "rect", fill: "#ffffff", radius: 0 });
+  if (m.tiles) out.push({ ...base(x0, y0, BOX, bar), type: "tiles", fill: accent, k: 0.8 });
+  let y = y0 + bar + 14;
+  if (logo.w > 0) {
+    out.push({ ...base(W / 2 - (logo.w * lk) / 2, y, logo.w * lk, logo.h * lk), type: "image", src: m.logo });
+    y += logo.h * lk + 6;
+  }
+  y += text(m.name, x0 + 14, y, IN, title);
+  if (m.subtitle) text(m.subtitle, x0 + 14, y + 2, IN, sub);
+  return scaleTo(out, paper);
+}
+
+/** Páginas de la carta: copertina (si está activada) y página del menú. */
+export async function menuToPages(m: Menu, paper: Paper): Promise<El[][]> {
+  const content = await contentPage(m, paper);
+  return m.coverOn ? [await coverPage(m, paper), content] : [content];
 }
