@@ -6,7 +6,7 @@ import { formatPrice } from "./price";
 
 type Item = { name: string; desc: string; price: string };
 type Section = { title: string; items: Item[] };
-type Menu = {
+export type Menu = {
   name: string;
   subtitle: string;
   logo: string;

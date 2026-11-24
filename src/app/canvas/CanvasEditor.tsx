@@ -1,58 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Image as KImage, Layer, Rect, Stage, Text, Transformer } from "react-konva";
+import { Image as KImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
 import type Konva from "konva";
 
 /* Fase 1: lienzo con papel A2–A5, elementos básicos y transformador.
    Fase 2: panel de propiedades completo y panel de capas (orden, ocultar, bloquear, duplicar).
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
-type Paper = "A2" | "A3" | "A4" | "A5";
-const PAPERS: Record<Paper, { w: number; h: number }> = {
-  A2: { w: 420, h: 594 },
-  A3: { w: 297, h: 420 },
-  A4: { w: 210, h: 297 },
-  A5: { w: 148, h: 210 },
-};
+import { common, El, FONTS, FontKey, fontFamily, fontStyleOf, newText, PALETTE, PAPERS, Paper, tilePattern, tileScale, uid } from "./model";
+import { menuToElements, readSavedMenu } from "./menuTemplate";
 
-type Base = { id: string; x: number; y: number; width: number; height: number; rotation: number; opacity: number; visible: boolean; locked: boolean };
-type El =
-  | (Base & { type: "text"; text: string; fontSize: number; fill: string; fontFamily: FontKey; bold: boolean; italic: boolean; align: "left" | "center" | "right" })
-  | (Base & { type: "rect"; fill: string; radius: number })
-  | (Base & { type: "image"; src: string });
-
-const uid = () => Math.random().toString(36).slice(2, 9);
-
-// Misma paleta y tipografías que el editor principal (ver globals.css y layout.tsx)
-const INK = "#173033";
-const PALETTE = [
-  { name: "Inchiostro", hex: INK },
-  { name: "Mare", hex: "#68A7AD" },
-  { name: "Laguna", hex: "#99C4C8" },
-  { name: "Sabbia", hex: "#E5CB9F" },
-  { name: "Limone", hex: "#EEE4AB" },
-  { name: "Bianco", hex: "#FFFFFF" },
-];
-const FONTS = [
-  { label: "Titillium", key: "sans", cssVar: "--font-titillium", fallback: "system-ui, sans-serif" },
-  { label: "Bodoni", key: "display", cssVar: "--font-bodoni", fallback: "Georgia, serif" },
-] as const;
-type FontKey = (typeof FONTS)[number]["key"];
-
-// Canvas no entiende var(): se lee el nombre real de la fuente que next/font define en <html>
-function fontFamily(key: FontKey) {
-  const f = FONTS.find((x) => x.key === key)!;
-  const v = getComputedStyle(document.documentElement).getPropertyValue(f.cssVar).trim();
-  return v ? `${v}, ${f.fallback}` : f.fallback;
-}
-
-const common = { rotation: 0, opacity: 1, visible: true, locked: false };
-const newText = (o: Partial<Extract<El, { type: "text" }>> = {}): El => ({
-  id: uid(), type: "text", x: 20, y: 40, width: 100, height: 10, ...common,
-  text: "Testo", fontSize: 8, fill: INK, fontFamily: "sans", bold: false, italic: false, align: "left", ...o,
-});
-const label = (e: El) => (e.type === "text" ? e.text.split("\n")[0].slice(0, 24) || "Testo" : e.type === "rect" ? "Rettangolo" : "Immagine");
+const label = (e: El) =>
+  e.type === "text" ? e.text.split("\n")[0].slice(0, 24) || "Testo" : { rect: "Rettangolo", image: "Immagine", tiles: "Maioliche", line: "Linea" }[e.type];
 
 function useImage(src: string) {
   const [img, setImg] = useState<HTMLImageElement>();
@@ -67,6 +27,11 @@ function useImage(src: string) {
 function ImageNode({ el, ...rest }: { el: Extract<El, { type: "image" }> } & Konva.NodeConfig) {
   const img = useImage(el.src);
   return <KImage image={img} {...rest} />;
+}
+
+function TilesNode({ el, ...rest }: { el: Extract<El, { type: "tiles" }> } & Konva.NodeConfig) {
+  const sc = tileScale(el.k);
+  return <Rect {...rest} fillPatternImage={tilePattern(el.fill) as unknown as HTMLImageElement} fillPatternScale={{ x: sc, y: sc }} fillPatternRepeat="repeat" />;
 }
 
 function Num({ label, value, min, onChange }: { label: string; value: number; min?: number; onChange: (v: number) => void }) {
@@ -155,11 +120,12 @@ export default function CanvasEditor() {
   const [busy, setBusy] = useState(false);
   const [exportError, setExportError] = useState("");
   const [printSrc, setPrintSrc] = useState("");
+  const [importMsg, setImportMsg] = useState("");
   const { w, h } = PAPERS[paper];
 
   // Las fuentes web se descargan al usarse en el DOM: se piden aquí y se repinta el lienzo al llegar
   useEffect(() => {
-    Promise.all(FONTS.flatMap((f) => ["400", "700"].map((w) => document.fonts.load(`${w} 16px ${fontFamily(f.key)}`)))).then(() => setFontsReady((n) => n + 1));
+    Promise.allSettled(FONTS.flatMap((f) => ["400", "700"].map((w) => document.fonts.load(`${w} 16px ${fontFamily(f.key)}`)))).then(() => setFontsReady((n) => n + 1));
   }, []);
 
   // Ajusta el zoom para que la hoja quepa en el ancho disponible
@@ -277,8 +243,9 @@ export default function CanvasEditor() {
     setExportError("");
     try {
       await job();
-    } catch {
-      setExportError("Non sono riuscito a creare il file. Prova con una carta più piccola o meno immagini.");
+    } catch (e) {
+      console.error(e);
+      setExportError("Non sono riuscito a completare l'operazione. Prova con una carta più piccola o meno immagini.");
     } finally {
       setBusy(false);
     }
@@ -296,6 +263,16 @@ export default function CanvasEditor() {
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
       download(url, `menu-${paper}.pdf`);
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    });
+  // Rehace el lienzo a partir de la carta del editor principal; Annulla lo deshace
+  const importMenu = () =>
+    run(async () => {
+      setImportMsg("");
+      const menu = readSavedMenu();
+      if (!menu) return setImportMsg("Nessun menù trovato: crealo prima nell'editor principale.");
+      setEls(await menuToElements(menu, paper));
+      setSel(null);
+      setImportMsg(menu.coverOn ? "Importata la pagina del menù (la copertina non è inclusa)." : "Menù importato.");
     });
   const print = () =>
     run(async () => {
@@ -335,6 +312,10 @@ export default function CanvasEditor() {
           <button className={`${btn} bg-mare font-semibold hover:bg-mare`} disabled={busy} onClick={print}>Stampa</button>
           <button className={btn} disabled={busy} onClick={exportPdf}>PDF</button>
           <button className={btn} disabled={busy} onClick={exportPng}>PNG</button>
+        </div>
+        <div className="flex flex-col gap-1">
+          <button className={btn} disabled={busy} onClick={importMenu}>Importa il menù attuale</button>
+          {importMsg && <p role="status" className="text-sm text-ink/65">{importMsg}</p>}
         </div>
         {exportError && <p role="alert" className="rounded-lg bg-limone/60 p-2 text-sm">{exportError}</p>}
         {saveError && <p role="alert" className="rounded-lg bg-limone/60 p-2 text-sm">Non c&apos;è spazio per salvare: ci sono troppe immagini. Il lavoro non verrà ripristinato se ricarichi.</p>}
@@ -381,6 +362,17 @@ export default function CanvasEditor() {
                   ))}
                 </div>
                 <Num label="Dimensione (mm)" value={cur.fontSize} min={2} onChange={(v) => patch(cur.id, { fontSize: v })} />
+                <Num label="Interlinea" value={cur.lineHeight ?? 1.2} min={0.5} onChange={(v) => patch(cur.id, { lineHeight: v })} />
+              </>
+            )}
+            {cur.type === "tiles" && <Num label="Dimensione maiolica" value={cur.k} min={0.1} onChange={(v) => patch(cur.id, { k: v })} />}
+            {cur.type === "line" && (
+              <>
+                <Num label="Spessore (mm)" value={cur.thickness} min={0.1} onChange={(v) => patch(cur.id, { thickness: v })} />
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" className="size-4 accent-mare" checked={cur.dash} onChange={(e) => patch(cur.id, { dash: e.target.checked })} />
+                  Punteggiata
+                </label>
               </>
             )}
             {cur.type === "rect" && <Num label="Angoli (mm)" value={cur.radius} min={0} onChange={(v) => patch(cur.id, { radius: v })} />}
@@ -465,9 +457,12 @@ export default function CanvasEditor() {
                 if (el.type === "text")
                   return (
                     <Text key={el.id} {...props} text={el.text} fontSize={el.fontSize} fill={el.fill} fontFamily={fontFamily(el.fontFamily)} align={el.align}
-                      fontStyle={`${el.italic ? "italic " : ""}${el.bold ? "bold" : "normal"}`} />
+                      fontStyle={fontStyleOf(el)} lineHeight={el.lineHeight ?? 1.2} />
                   );
-                if (el.type === "rect") return <Rect key={el.id} {...props} fill={el.fill} cornerRadius={el.radius} />;
+                if (el.type === "rect") return <Rect key={el.id} {...props} fill={el.fill} cornerRadius={el.radius} stroke={el.stroke} strokeWidth={el.strokeW} />;
+                if (el.type === "tiles") return <TilesNode key={el.id} el={el} {...props} />;
+                if (el.type === "line")
+                  return <Line key={el.id} {...props} points={[0, 0, el.width, 0]} stroke={el.fill} strokeWidth={el.thickness} lineCap="round" dash={el.dash ? [0.01, el.thickness * 2] : undefined} hitStrokeWidth={4} />;
                 return <ImageNode key={el.id} el={el} {...props} />;
               })}
               <Transformer ref={trRef} borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" rotateEnabled keepRatio={false} boundBoxFunc={(o, n) => (n.width < 5 || n.height < 5 ? o : n)} />
