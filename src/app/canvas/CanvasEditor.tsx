@@ -43,7 +43,8 @@ function Num({ label, value, min, onChange }: { label: string; value: number; mi
   );
 }
 
-/* Fase 4: exportar a PNG y PDF a resolución de impresión, e imprimir.
+/* Fase 6: guías de alineación con imán (Alt las desactiva) y texto con altura automática.
+   Fase 4: exportar a PNG y PDF a resolución de impresión, e imprimir.
    Fase 3: guardado automático en localStorage y deshacer/rehacer */
 const STORAGE_KEY = "menudo:canvas:v1";
 const MAX_HISTORY = 100;
@@ -113,6 +114,7 @@ export default function CanvasEditor() {
   const [, setFontsReady] = useState(0);
   const [sel, setSel] = useState<string | null>(null);
   const [zoom, setZoom] = useState(2); // px por mm
+  const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
   const wrap = useRef<HTMLDivElement>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const layerRef = useRef<Konva.Layer>(null);
@@ -264,6 +266,34 @@ export default function CanvasEditor() {
       download(url, `menu-${paper}.pdf`);
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
     });
+  // Imán al arrastrar: los bordes y el centro del elemento se pegan a los de la hoja y a los de los demás
+  const snap = (e: Konva.KonvaEventObject<DragEvent>, id: string) => {
+    const node = e.target;
+    if (e.evt.altKey) return setGuides({ v: [], h: [] });
+    const layer = layerRef.current!;
+    const tol = 4 / zoom; // 4 px de pantalla
+    const xs = [0, w / 2, w];
+    const ys = [0, h / 2, h];
+    for (const o of els) {
+      const n = o.id !== id && o.visible ? layer.findOne("#" + o.id) : undefined;
+      if (!n) continue;
+      const b = n.getClientRect({ relativeTo: layer });
+      xs.push(b.x, b.x + b.width / 2, b.x + b.width);
+      ys.push(b.y, b.y + b.height / 2, b.y + b.height);
+    }
+    const best = (mine: number[], targets: number[]) => {
+      let r: { d: number; t: number } | null = null;
+      for (const m of mine) for (const t of targets) if (Math.abs(t - m) <= tol && (!r || Math.abs(t - m) < Math.abs(r.d))) r = { d: t - m, t };
+      return r;
+    };
+    const box = node.getClientRect({ relativeTo: layer });
+    const bx = best([box.x, box.x + box.width / 2, box.x + box.width], xs);
+    const by = best([box.y, box.y + box.height / 2, box.y + box.height], ys);
+    if (bx) node.x(node.x() + bx.d);
+    if (by) node.y(node.y() + by.d);
+    setGuides({ v: bx ? [bx.t] : [], h: by ? [by.t] : [] });
+  };
+
   // Rehace el lienzo a partir de la carta del editor principal; Annulla lo deshace
   const importMenu = () =>
     run(async () => {
@@ -396,7 +426,7 @@ export default function CanvasEditor() {
               <Num label="X" value={cur.x} onChange={(v) => patch(cur.id, { x: v })} />
               <Num label="Y" value={cur.y} onChange={(v) => patch(cur.id, { y: v })} />
               <Num label="L" value={cur.width} min={1} onChange={(v) => patch(cur.id, { width: v })} />
-              <Num label="A" value={cur.height} min={1} onChange={(v) => patch(cur.id, { height: v })} />
+              {cur.type !== "text" && <Num label="A" value={cur.height} min={1} onChange={(v) => patch(cur.id, { height: v })} />}
               <Num label="Rot°" value={cur.rotation} onChange={(v) => patch(cur.id, { rotation: v })} />
             </div>
             <div className="flex gap-2">
@@ -451,12 +481,16 @@ export default function CanvasEditor() {
                   listening: !el.locked,
                   onClick: () => setSel(el.id),
                   onTap: () => setSel(el.id),
-                  onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => patch(el.id, { x: e.target.x(), y: e.target.y() }, false),
+                  onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => snap(e, el.id),
+                  onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
+                    setGuides({ v: [], h: [] });
+                    patch(el.id, { x: e.target.x(), y: e.target.y() }, false);
+                  },
                   onTransformEnd: (e: Konva.KonvaEventObject<Event>) => onTransformEnd(e, el),
                 };
                 if (el.type === "text")
                   return (
-                    <Text key={el.id} {...props} text={el.text} fontSize={el.fontSize} fill={el.fill} fontFamily={fontFamily(el.fontFamily)} align={el.align}
+                    <Text key={el.id} {...props} height={undefined} text={el.text} fontSize={el.fontSize} fill={el.fill} fontFamily={fontFamily(el.fontFamily)} align={el.align}
                       fontStyle={fontStyleOf(el)} lineHeight={el.lineHeight ?? 1.2} />
                   );
                 if (el.type === "rect") return <Rect key={el.id} {...props} fill={el.fill} cornerRadius={el.radius} stroke={el.stroke} strokeWidth={el.strokeW} />;
@@ -465,6 +499,8 @@ export default function CanvasEditor() {
                   return <Line key={el.id} {...props} points={[0, 0, el.width, 0]} stroke={el.fill} strokeWidth={el.thickness} lineCap="round" dash={el.dash ? [0.01, el.thickness * 2] : undefined} hitStrokeWidth={4} />;
                 return <ImageNode key={el.id} el={el} {...props} />;
               })}
+              {guides.v.map((x) => <Line key={"v" + x} points={[x, 0, x, h]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
+              {guides.h.map((y) => <Line key={"h" + y} points={[0, y, w, y]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
               <Transformer ref={trRef} borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" rotateEnabled keepRatio={false} boundBoxFunc={(o, n) => (n.width < 5 || n.height < 5 ? o : n)} />
             </Layer>
           </Stage>
