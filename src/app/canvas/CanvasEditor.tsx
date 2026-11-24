@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { flushSync } from "react-dom";
 import { Image as KImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
 import type Konva from "konva";
 
@@ -12,6 +13,7 @@ import type Konva from "konva";
 import { common, Copies, COPIES, COPY_NAMES, El, FONTS, FontKey, fontFamily, fontStyleOf, newText, PALETTE, PAPERS, Paper, sheetFor, tilePattern, tileScale, uid } from "./model";
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
+import { Brand, chip, chipOn, focus, Group, Icon, ICONS, iconBtn, input, Num, primary, secondary } from "./ui";
 
 const label = (e: El) =>
   e.type === "text" ? e.text.split("\n")[0].slice(0, 24) || "Testo" : { rect: "Rettangolo", image: "Immagine", tiles: "Maioliche", line: "Linea" }[e.type];
@@ -36,15 +38,6 @@ function TilesNode({ el, ...rest }: { el: Extract<El, { type: "tiles" }> } & Kon
   return <Rect {...rest} fillPatternImage={tilePattern(el.fill) as unknown as HTMLImageElement} fillPatternScale={{ x: sc, y: sc }} fillPatternRepeat="repeat" />;
 }
 
-function Num({ label, value, min, onChange }: { label: string; value: number; min?: number; onChange: (v: number) => void }) {
-  return (
-    <label className="flex items-center justify-between gap-2">
-      {label}
-      <input type="number" step="any" min={min} className="w-20 rounded-lg border border-ink/20 bg-surface text-ink p-1" value={Math.round(value * 10) / 10} onChange={(e) => onChange(Math.max(min ?? -Infinity, Number(e.target.value) || 0))} />
-    </label>
-  );
-}
-
 /* Fase 15: archivo de diseños con nombre (IndexedDB): guardar, abrir y borrar.
    Fase 14: números de mesa distintos en cada copia del folio.
    Fase 11: varias páginas (copertina incluida al importar), exportadas en un solo PDF.
@@ -55,6 +48,7 @@ function Num({ label, value, min, onChange }: { label: string; value: number; mi
    Fase 3: guardado automático en localStorage y deshacer/rehacer */
 const STORAGE_KEY = "menudo:canvas:v1";
 const MAX_HISTORY = 100;
+const THEME_KEY = "menudo:theme"; // el mismo que el editor principal
 type History = { past: El[][][]; pages: El[][]; future: El[][][] }; // cada paso del historial guarda todas las páginas
 const starter = (): El[] => [newText({ y: 20, width: 170, height: 20, text: "Menù", fontSize: 14, fontFamily: "display" })];
 
@@ -90,8 +84,6 @@ function shrink(src: string, maxPx: number, png: boolean): Promise<{ src: string
 const DPI = 300;
 const MAX_PIXELS = 16_000_000; // por encima, iOS Safari y otros navegadores móviles se quedan sin memoria de canvas
 const MM_PER_INCH = 25.4;
-
-const btn = "rounded-lg border border-ink/20 bg-surface px-3 py-1.5 text-sm hover:bg-laguna/30 disabled:opacity-40";
 
 export default function CanvasEditor() {
   const [init] = useState(load);
@@ -183,6 +175,37 @@ export default function CanvasEditor() {
   const [sels, setSels] = useState<string[]>([]);
   const sel = sels.length === 1 ? sels[0] : null; // un solo elemento: se muestra el panel de propiedades
   const setSel = (id: string | null) => setSels(id ? [id] : []);
+  const [dark, setDark] = useState(() => {
+    try {
+      return localStorage.getItem(THEME_KEY) === "dark";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  }, [dark]);
+  // Mismo cambio de tema que el editor principal: un círculo que se expande desde el botón
+  const toggleTheme = (e: React.MouseEvent<HTMLElement>) => {
+    const next = !dark;
+    try {
+      localStorage.setItem(THEME_KEY, next ? "dark" : "light");
+    } catch {}
+    const apply = () => {
+      flushSync(() => setDark(next));
+      document.documentElement.dataset.theme = next ? "dark" : "light";
+    };
+    if (!document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return apply();
+    const b = e.currentTarget.getBoundingClientRect();
+    const [x, y] = [b.left + b.width / 2, b.top + b.height / 2];
+    const rad = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    document.startViewTransition(apply).ready.then(() =>
+      document.documentElement.animate(
+        { clipPath: [`circle(0 at ${x}px ${y}px)`, `circle(${rad}px at ${x}px ${y}px)`] },
+        { duration: 550, easing: "cubic-bezier(0.22, 1, 0.36, 1)", pseudoElement: "::view-transition-new(root)" },
+      ),
+    );
+  };
   const [tab, setTab] = useState<"canvas" | "tools">("canvas"); // solo en móvil; en escritorio se ven las dos
   const [multi, setMulti] = useState(false); // modo táctil: tocar suma elementos a la selección
   const addedOnTouch = useRef(false);
@@ -697,245 +720,275 @@ export default function CanvasEditor() {
     setMarquee(null);
   };
 
+  const ball = `grid size-11 place-items-center rounded-full bg-surface text-ink shadow-[0_8px_24px_-8px_rgb(14_26_43/0.45)] ring-1 ring-laguna/60 lift hover:text-mare disabled:pointer-events-none disabled:opacity-40 ${focus}`;
+  const small = `${secondary} px-3 py-1.5 text-xs`;
+  const pillOpt = (on: boolean) => (on ? chipOn : chip);
+  const pct = Math.round(Math.min(mul, maxMul) * 100);
+  const hasTable = hist.pages.some((pg) => pg.some((e) => e.type === "text" && e.table));
+
   return (
     <>
-    <style>{`@page { size: ${sheet.name} ${sheet.landscape ? "landscape" : "portrait"}; margin: 0; }`}</style>
-    <div className="flex min-h-screen flex-col bg-laguna/35 text-ink md:flex-row print:hidden">
-      <aside className={`${tab === "tools" ? "flex" : "hidden"} md:flex shrink-0 flex-col gap-4 pb-24 md:pb-4 md:sticky md:top-0 md:h-screen md:overflow-y-auto border-b border-laguna/60 bg-surface p-4 md:w-72 md:border-r md:border-b-0`}>
-        <div className="flex items-baseline justify-between gap-2">
-          <h1 className="font-display text-lg font-semibold">Editor libero (prova)</h1>
-          <Link href="/" className="shrink-0 text-sm underline decoration-laguna underline-offset-4">← Menudo</Link>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button className={btn} disabled={!hist.past.length} onClick={undo} title="Ctrl+Z">↶ Annulla</button>
-          <button className={btn} disabled={!hist.future.length} onClick={redo} title="Ctrl+Maiusc+Z">↷ Ripeti</button>
-          <button className={btn} onClick={() => { if (confirm("Cancellare tutto e ricominciare?")) { setPages(() => [starter()]); goPage(0); } }}>Nuovo</button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button className={`${btn} bg-mare font-semibold hover:bg-mare`} disabled={busy} onClick={print}>Stampa</button>
-          <button className={btn} disabled={busy} onClick={exportPdf}>PDF</button>
-          <button className={btn} disabled={busy} onClick={exportPng}>PNG</button>
-        </div>
-        <div className="flex flex-col gap-1.5 text-sm">
-          <p className="font-medium">Pagina {page + 1} di {hist.pages.length}</p>
-          <div className="flex flex-wrap gap-1.5">
-            <button className={`${btn} px-2 py-1 text-xs`} onClick={addPage}>+ Pagina</button>
-            <button className={`${btn} px-2 py-1 text-xs`} onClick={duplicatePage}>Duplica</button>
-            <button className={`${btn} px-2 py-1 text-xs`} aria-label="Sposta indietro" disabled={page === 0} onClick={() => movePage(-1)}>←</button>
-            <button className={`${btn} px-2 py-1 text-xs`} aria-label="Sposta avanti" disabled={page === hist.pages.length - 1} onClick={() => movePage(1)}>→</button>
-            <button className={`${btn} px-2 py-1 text-xs`} disabled={hist.pages.length < 2} onClick={deletePage}>Elimina</button>
-          </div>
-        </div>
-
-        <fieldset className="flex flex-col gap-1.5 text-sm">
-          <legend className="mb-1 font-medium">Archivio</legend>
-          <div className="flex gap-1.5">
-            <input
-              aria-label="Nome del design" className="min-w-0 flex-1 rounded-lg border border-ink/20 bg-surface text-ink p-1.5" placeholder="Nome del design" value={designName}
-              onChange={(e) => setDesignName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveDesign()}
-            />
-            <button className={btn} onClick={saveDesign}>Salva</button>
-          </div>
-          {archiveMsg && <p role="status" className="text-xs text-ink/65">{archiveMsg}</p>}
-          {saved.map((d) => (
-            <div key={d.id} className="flex items-center gap-1.5 rounded-lg bg-surface px-2 py-1 ring-1 ring-ink/10">
-              <div className="min-w-0 flex-1">
-                <p className="truncate">{d.name}</p>
-                <p className="text-xs text-ink/55">
-                  {d.doc.paper} · {d.doc.pages.length} {d.doc.pages.length === 1 ? "pagina" : "pagine"} · {new Date(d.savedAt).toLocaleDateString("it-IT", { day: "numeric", month: "short" })}
-                </p>
-              </div>
-              <button className={`${btn} px-2 py-1 text-xs`} onClick={() => openDesign(d)}>Apri</button>
-              <button aria-label={`Elimina ${d.name}`} className="px-1.5 text-ink/60 hover:bg-laguna/30" onClick={() => removeDesign(d)}>✕</button>
-            </div>
-          ))}
-        </fieldset>
-
-        <div className="flex flex-col gap-1">
-          <button className={btn} disabled={busy} onClick={importMenu}>Importa il menù attuale</button>
-          {importMsg && <p role="status" className="text-sm text-ink/65">{importMsg}</p>}
-        </div>
-        {exportError && <p role="alert" className="rounded-lg bg-limone/60 p-2 text-sm">{exportError}</p>}
-        {saveError && <p role="alert" className="rounded-lg bg-limone/60 p-2 text-sm">Non c&apos;è spazio per salvare: ci sono troppe immagini. Il lavoro non verrà ripristinato se ricarichi.</p>}
-
-        <fieldset className="flex flex-wrap gap-2">
-          <legend className="mb-1 text-sm font-medium">Carta</legend>
-          {(Object.keys(PAPERS) as Paper[]).map((p) => (
-            <label key={p} className={`cursor-pointer rounded-lg px-2 py-1 text-xs ring-1 ${paper === p ? "bg-mare font-semibold text-ink ring-mare" : "ring-ink/20"}`}>
-              <input type="radio" name="paper" className="sr-only" checked={paper === p} onChange={() => {
-                setPaper(p);
-                setMul(1);
-              }} />
-              {p} ({PAPERS[p].w} × {PAPERS[p].h} mm)
-            </label>
-          ))}
-        </fieldset>
-
-        <fieldset className="flex flex-col gap-1">
-          <legend className="mb-1 text-sm font-medium">Copie per foglio</legend>
-          <div className="flex flex-wrap gap-2">
-            {COPIES.map((n) => {
-              const sh = sheetFor(paper, n);
-              return (
-                <label key={n} className={`rounded-lg px-2 py-1 text-xs ring-1 ${!sh ? "cursor-not-allowed opacity-40 ring-ink/20" : copies === n ? "cursor-pointer bg-mare font-semibold text-ink ring-mare" : "cursor-pointer ring-ink/20"}`}>
-                  <input type="radio" name="copies" className="sr-only" disabled={!sh} checked={copies === n} onChange={() => setCopies(n)} />
-                  {n === 1 ? "1 copia" : `${n} copie`}
-                </label>
-              );
-            })}
-          </div>
-          <p className="text-xs text-ink/65">
-            Foglio: {sheet.name} {sheet.landscape ? "orizzontale" : "verticale"} ({sheet.w} × {sheet.h} mm)
+    {/* Medidas explícitas: los nombres A2 y A1 no son tamaños de página válidos en CSS */}
+    <style>{`@page { size: ${sheet.w}mm ${sheet.h}mm; margin: 0; }`}</style>
+    <div className="flex h-dvh flex-col bg-surface text-ink print:hidden">
+      <header className="shrink-0 border-b border-laguna/60 bg-surface pt-[env(safe-area-inset-top)]">
+        <div className="flex h-12 items-center gap-2 px-3 md:gap-3 md:px-4">
+          <Link href="/" aria-label="Menudo" className={`rounded-md ${focus}`}>
+            <Brand />
+          </Link>
+          <p className="min-w-0 flex-1 truncate text-xs text-ink/60" aria-live="polite">
+            Editor libero · Le modifiche si salvano da sole
           </p>
-        </fieldset>
-
-        {hist.pages.some((p) => p.some((e) => e.type === "text" && e.table)) && (
-          <fieldset className="flex flex-col gap-1.5 text-sm">
-            <legend className="mb-1 font-medium">Numeri di tavolo</legend>
-            {COPY_NAMES[copies].map((where, c) => (
-              <label key={c} className="flex items-center justify-between gap-2">
-                {where}
-                <input
-                  className="w-20 rounded-lg border border-ink/20 bg-surface text-ink p-1 text-center" maxLength={4} inputMode="numeric" placeholder="a penna"
-                  value={tables[c] ?? ""}
-                  onChange={(e) => setTables((t) => Object.assign([...t], { [c]: e.target.value }))}
-                />
-              </label>
-            ))}
-            <p className="text-xs text-ink/65">Lascia vuoto per scriverlo a penna. In pantalla il numero è solo un segnaposto.</p>
-          </fieldset>
-        )}
-
-        <div className="flex flex-wrap gap-2">
-          <button className={btn} onClick={() => add(newText())}>
-            + Testo
+          <button className={iconBtn} aria-label="Annulla" title="Annulla (Ctrl+Z)" disabled={!hist.past.length} onClick={undo}>
+            <Icon d={ICONS.undo} className="size-[18px]" />
           </button>
-          <button className={btn} onClick={() => add({ id: uid(), type: "rect", x: 20, y: 60, width: 60, height: 30, ...common, fill: PALETTE[2].hex, radius: 0 })}>
-            + Rettangolo
+          <button className={iconBtn} aria-label="Ripeti" title="Ripeti (Ctrl+Maiusc+Z)" disabled={!hist.future.length} onClick={redo}>
+            <Icon d={ICONS.redo} className="size-[18px]" />
           </button>
-          <label className={`${btn} cursor-pointer`}>
-            + Immagine
-            <input type="file" accept="image/*" className="sr-only" onChange={(e) => { addImage(e.target.files?.[0]); e.target.value = ""; }} />
-          </label>
+          <button className={iconBtn} aria-label={dark ? "Tema chiaro" : "Tema scuro"} title={dark ? "Tema chiaro" : "Tema scuro"} onClick={toggleTheme}>
+            <Icon d={dark ? ICONS.sun : ICONS.moon} className="size-[18px]" />
+          </button>
+          <button
+            className={`hidden size-9 shrink-0 place-items-center rounded-lg bg-brand text-white lift hover:brightness-110 disabled:opacity-50 md:grid ${focus}`}
+            aria-label="Stampa" title="Stampa" disabled={busy} onClick={print}
+          >
+            <Icon d={ICONS.print} className="size-[18px]" />
+          </button>
         </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+      <aside aria-label="Strumenti" className={`${tab === "tools" ? "block" : "hidden"} w-full shrink-0 overflow-y-auto bg-surface pb-24 md:block md:w-[320px] md:border-r md:border-laguna/60 md:pb-0`}>
+        <Group title="Documento" icon={ICONS.edit} open>
+          <button className={`${primary} w-full`} disabled={busy} onClick={importMenu}>
+            <Icon d={ICONS.edit} className="size-[18px]" />
+            Importa il menù attuale
+          </button>
+          {importMsg && <p role="status" className="text-sm text-ink/65">{importMsg}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button className={secondary} disabled={busy} onClick={exportPdf}><Icon d={ICONS.download} className="size-4" />PDF</button>
+            <button className={secondary} disabled={busy} onClick={exportPng}><Icon d={ICONS.download} className="size-4" />PNG</button>
+            <button className={secondary} disabled={busy} onClick={print}><Icon d={ICONS.print} className="size-4" />Stampa</button>
+            <button className={secondary} onClick={() => { if (confirm("Cancellare tutto e ricominciare?")) { setPages(() => [starter()]); goPage(0); } }}><Icon d={ICONS.reset} className="size-4" />Nuovo</button>
+          </div>
+          {exportError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">{exportError}</p>}
+          {saveError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">Non c&apos;è spazio per salvare: ci sono troppe immagini. Il lavoro non verrà ripristinato se ricarichi.</p>}
+        </Group>
+
+        <Group title="Pagine" icon={ICONS.pages}>
+          <p className="text-sm font-semibold">Pagina {page + 1} di {hist.pages.length}</p>
+          <div className="flex flex-wrap gap-1">
+            <button className={iconBtn} aria-label="Nuova pagina" title="Nuova pagina" onClick={addPage}><Icon d={ICONS.plus} /></button>
+            <button className={iconBtn} aria-label="Duplica pagina" title="Duplica pagina" onClick={duplicatePage}><Icon d={ICONS.copy} /></button>
+            <button className={iconBtn} aria-label="Sposta indietro" title="Sposta indietro" disabled={page === 0} onClick={() => movePage(-1)}><Icon d={ICONS.left} /></button>
+            <button className={iconBtn} aria-label="Sposta avanti" title="Sposta avanti" disabled={page === hist.pages.length - 1} onClick={() => movePage(1)}><Icon d={ICONS.right} /></button>
+            <button className={iconBtn} aria-label="Elimina pagina" title="Elimina pagina" disabled={hist.pages.length < 2} onClick={deletePage}><Icon d={ICONS.trash} /></button>
+          </div>
+        </Group>
+
+        <Group title="Foglio" icon={ICONS.sheet}>
+          <fieldset>
+            <legend className="mb-1.5 text-sm font-semibold">Carta</legend>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(PAPERS) as Paper[]).map((p) => (
+                <label key={p} className={pillOpt(paper === p)}>
+                  <input type="radio" name="paper" className="sr-only" checked={paper === p} onChange={() => {
+                    setPaper(p);
+                    setMul(1);
+                  }} />
+                  {p} <span className="font-normal opacity-80">({PAPERS[p].w} × {PAPERS[p].h} mm)</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend className="mb-1.5 text-sm font-semibold">Copie per foglio</legend>
+            <div className="flex flex-wrap gap-2">
+              {COPIES.map((n) => {
+                const sh = sheetFor(paper, n);
+                return (
+                  <label key={n} className={`${pillOpt(copies === n)} ${sh ? "" : "pointer-events-none opacity-40"}`}>
+                    <input type="radio" name="copies" className="sr-only" disabled={!sh} checked={copies === n} onChange={() => setCopies(n)} />
+                    {n === 1 ? "1 copia" : `${n} copie`}
+                  </label>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-sm text-ink/65">
+              Foglio: {sheet.name} {sheet.landscape ? "orizzontale" : "verticale"} ({sheet.w} × {sheet.h} mm)
+            </p>
+          </fieldset>
+          {hasTable && (
+            <fieldset className="space-y-2">
+              <legend className="mb-1.5 text-sm font-semibold">Numeri di tavolo</legend>
+              {COPY_NAMES[copies].map((where, c) => (
+                <label key={c} className="flex items-center justify-between gap-2 text-sm">
+                  {where}
+                  <input
+                    className={`${input} w-24 text-center`} maxLength={4} inputMode="numeric" placeholder="a penna"
+                    value={tables[c] ?? ""}
+                    onChange={(e) => setTables((t) => Object.assign([...t], { [c]: e.target.value }))}
+                  />
+                </label>
+              ))}
+              <p className="text-sm text-ink/65">Lascia vuoto per scriverlo a penna. In pantalla il numero è solo un segnaposto.</p>
+            </fieldset>
+          )}
+        </Group>
+
+        <Group title="Aggiungi" icon={ICONS.plus} open>
+          <div className="flex flex-wrap gap-2">
+            <button className={secondary} onClick={() => add(newText())}><Icon d={ICONS.text} className="size-4" />Testo</button>
+            <button className={secondary} onClick={() => add({ id: uid(), type: "rect", x: 20, y: 60, width: 60, height: 30, ...common, fill: PALETTE[2].hex, radius: 0 })}><Icon d={ICONS.rect} className="size-4" />Rettangolo</button>
+            <label className={secondary}>
+              <Icon d={ICONS.image} className="size-4" />
+              Immagine
+              <input type="file" accept="image/*" className="sr-only" onChange={(e) => { addImage(e.target.files?.[0]); e.target.value = ""; }} />
+            </label>
+          </div>
+        </Group>
 
         {sels.length > 0 && (
-          <div className="flex flex-col gap-2 text-sm">
-            <p className="font-medium">{sels.length === 1 ? "Elemento selezionato" : `${sels.length} elementi selezionati`}</p>
+          <Group title={sels.length === 1 ? "Elemento" : `${sels.length} elementi`} icon={ICONS.design} open>
             <div className="flex flex-wrap gap-1.5">
               {([["l", "Sx", "a sinistra"], ["c", "Ct", "al centro"], ["r", "Dx", "a destra"], ["t", "Alto", "in alto"], ["m", "Mezzo", "al centro in verticale"], ["b", "Basso", "in basso"]] as const).map(([m, t, d]) => (
-                <button key={m} title={`Allinea ${d}`} aria-label={`Allinea ${d}`} className={`${btn} px-2 py-1 text-xs`} onClick={() => align(m)}>{t}</button>
+                <button key={m} title={`Allinea ${d}`} aria-label={`Allinea ${d}`} className={small} onClick={() => align(m)}>{t}</button>
               ))}
             </div>
             <div className="flex flex-wrap gap-2">
-              {sels.length > 1 && <button className={btn} onClick={group} title="Ctrl+G">Raggruppa</button>}
-              {selEls.some((x) => x.group) && <button className={btn} onClick={ungroup} title="Ctrl+Maiusc+G">Separa</button>}
-              <button className={btn} onClick={duplicateSel} title="Ctrl+D">Duplica</button>
-              <button className={btn} onClick={removeSel}>Elimina</button>
+              {sels.length > 1 && <button className={secondary} onClick={group} title="Ctrl+G"><Icon d={ICONS.group} className="size-4" />Raggruppa</button>}
+              {selEls.some((x) => x.group) && <button className={secondary} onClick={ungroup} title="Ctrl+Maiusc+G"><Icon d={ICONS.ungroup} className="size-4" />Separa</button>}
+              <button className={secondary} onClick={duplicateSel} title="Ctrl+D"><Icon d={ICONS.copy} className="size-4" />Duplica</button>
+              <button className={secondary} onClick={removeSel}><Icon d={ICONS.trash} className="size-4" />Elimina</button>
             </div>
-          </div>
-        )}
-
-        {cur ? (
-          <div className="flex flex-col gap-2 text-sm">
-            <p className="font-medium">Proprietà</p>
-            {cur.type === "text" && (
-              <>
-                <textarea className="rounded-lg border border-ink/20 bg-surface text-ink p-2" rows={3} value={cur.text} onChange={(e) => patch(cur.id, { text: e.target.value })} />
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" className="size-4 accent-mare" checked={!!cur.table} onChange={(e) => patch(cur.id, { table: e.target.checked })} />
-                  Numero di tavolo (diverso per ogni copia)
+            {cur && (
+              <div className="space-y-3">
+                {cur.type === "text" && (
+                  <>
+                    <textarea className={input} rows={3} value={cur.text} onChange={(e) => patch(cur.id, { text: e.target.value })} />
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" className="size-4 accent-mare" checked={!!cur.table} onChange={(e) => patch(cur.id, { table: e.target.checked })} />
+                      Numero di tavolo (diverso per ogni copia)
+                    </label>
+                    <select className={input} aria-label="Carattere" value={cur.fontFamily} onChange={(e) => patch(cur.id, { fontFamily: e.target.value as FontKey })}>
+                      {FONTS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+                    </select>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button aria-pressed={cur.bold} className={`${iconBtn} font-bold ${cur.bold ? "bg-laguna/40 text-ink" : ""}`} aria-label="Grassetto" onClick={() => patch(cur.id, { bold: !cur.bold })}>B</button>
+                      <button aria-pressed={cur.italic} className={`${iconBtn} italic ${cur.italic ? "bg-laguna/40 text-ink" : ""}`} aria-label="Corsivo" onClick={() => patch(cur.id, { italic: !cur.italic })}>I</button>
+                      {(["left", "center", "right"] as const).map((al) => (
+                        <button key={al} aria-pressed={cur.align === al} className={`${iconBtn} ${cur.align === al ? "bg-laguna/40 text-ink" : ""}`} aria-label={`Allinea testo ${al === "left" ? "a sinistra" : al === "center" ? "al centro" : "a destra"}`} onClick={() => patch(cur.id, { align: al })}>
+                          <Icon d={al === "left" ? ICONS.alignLeft : al === "center" ? ICONS.alignCenter : ICONS.alignRight} className="size-[18px]" />
+                        </button>
+                      ))}
+                    </div>
+                    <Num label="Dimensione (mm)" value={cur.fontSize} min={2} onChange={(v) => patch(cur.id, { fontSize: v })} />
+                    <Num label="Interlinea" value={cur.lineHeight ?? 1.2} min={0.5} onChange={(v) => patch(cur.id, { lineHeight: v })} />
+                  </>
+                )}
+                {cur.type === "tiles" && <Num label="Dimensione maiolica" value={cur.k} min={0.1} onChange={(v) => patch(cur.id, { k: v })} />}
+                {cur.type === "line" && (
+                  <>
+                    <Num label="Spessore (mm)" value={cur.thickness} min={0.1} onChange={(v) => patch(cur.id, { thickness: v })} />
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" className="size-4 accent-mare" checked={cur.dash} onChange={(e) => patch(cur.id, { dash: e.target.checked })} />
+                      Punteggiata
+                    </label>
+                  </>
+                )}
+                {cur.type === "rect" && <Num label="Angoli (mm)" value={cur.radius} min={0} onChange={(v) => patch(cur.id, { radius: v })} />}
+                {cur.type !== "image" && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="mr-1 text-sm font-semibold">Colore</span>
+                    {PALETTE.map((c) => (
+                      <button key={c.hex} title={c.name} aria-label={c.name} aria-pressed={cur.fill.toLowerCase() === c.hex.toLowerCase()}
+                        className={`size-7 rounded-full ring-1 ring-laguna ring-offset-2 ring-offset-surface aria-pressed:ring-2 aria-pressed:ring-mare ${focus}`}
+                        style={{ background: c.hex }} onClick={() => patch(cur.id, { fill: c.hex })} />
+                    ))}
+                    <input type="color" aria-label="Altro colore" className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={cur.fill} onChange={(e) => patch(cur.id, { fill: e.target.value })} />
+                  </div>
+                )}
+                <label className="flex items-center gap-2 text-sm font-semibold">
+                  Opacità
+                  <input type="range" className="flex-1 accent-mare" min={0} max={1} step={0.05} value={cur.opacity} onChange={(e) => patch(cur.id, { opacity: Number(e.target.value) })} />
+                  <span className="w-10 text-right font-normal tabular-nums">{Math.round(cur.opacity * 100)}%</span>
                 </label>
-                <select className="rounded-lg border border-ink/20 bg-surface text-ink p-1.5" value={cur.fontFamily} onChange={(e) => patch(cur.id, { fontFamily: e.target.value as FontKey })}>
-                  {FONTS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-                </select>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <button aria-pressed={cur.bold} className={`${btn} font-bold ${cur.bold ? "bg-mare text-ink font-semibold hover:bg-mare" : ""}`} onClick={() => patch(cur.id, { bold: !cur.bold })}>B</button>
-                  <button aria-pressed={cur.italic} className={`${btn} italic ${cur.italic ? "bg-mare text-ink font-semibold hover:bg-mare" : ""}`} onClick={() => patch(cur.id, { italic: !cur.italic })}>I</button>
-                  {(["left", "center", "right"] as const).map((al) => (
-                    <button key={al} aria-pressed={cur.align === al} className={`${btn} ${cur.align === al ? "bg-mare text-ink font-semibold hover:bg-mare" : ""}`} onClick={() => patch(cur.id, { align: al })}>
-                      {al === "left" ? "Sx" : al === "center" ? "Ct" : "Dx"}
-                    </button>
-                  ))}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                  <Num label="X" value={cur.x} onChange={(v) => patch(cur.id, { x: v })} />
+                  <Num label="Y" value={cur.y} onChange={(v) => patch(cur.id, { y: v })} />
+                  <Num label="L" value={cur.width} min={1} onChange={(v) => patch(cur.id, { width: v })} />
+                  {cur.type !== "text" && <Num label="A" value={cur.height} min={1} onChange={(v) => patch(cur.id, { height: v })} />}
+                  <Num label="Rot°" value={cur.rotation} onChange={(v) => patch(cur.id, { rotation: v })} />
                 </div>
-                <Num label="Dimensione (mm)" value={cur.fontSize} min={2} onChange={(v) => patch(cur.id, { fontSize: v })} />
-                <Num label="Interlinea" value={cur.lineHeight ?? 1.2} min={0.5} onChange={(v) => patch(cur.id, { lineHeight: v })} />
-              </>
-            )}
-            {cur.type === "tiles" && <Num label="Dimensione maiolica" value={cur.k} min={0.1} onChange={(v) => patch(cur.id, { k: v })} />}
-            {cur.type === "line" && (
-              <>
-                <Num label="Spessore (mm)" value={cur.thickness} min={0.1} onChange={(v) => patch(cur.id, { thickness: v })} />
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" className="size-4 accent-mare" checked={cur.dash} onChange={(e) => patch(cur.id, { dash: e.target.checked })} />
-                  Punteggiata
-                </label>
-              </>
-            )}
-            {cur.type === "rect" && <Num label="Angoli (mm)" value={cur.radius} min={0} onChange={(v) => patch(cur.id, { radius: v })} />}
-            {cur.type !== "image" && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="mr-1">Colore</span>
-                {PALETTE.map((c) => (
-                  <button key={c.hex} title={c.name} aria-label={c.name} aria-pressed={cur.fill.toLowerCase() === c.hex.toLowerCase()}
-                    className="size-7 rounded-full ring-1 ring-ink/20 ring-offset-2 aria-pressed:ring-2 aria-pressed:ring-ink"
-                    style={{ background: c.hex }} onClick={() => patch(cur.id, { fill: c.hex })} />
-                ))}
-                <input type="color" aria-label="Altro colore" className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={cur.fill} onChange={(e) => patch(cur.id, { fill: e.target.value })} />
               </div>
             )}
-            <label className="flex items-center gap-2">
-              Opacità
-              <input type="range" className="accent-mare" min={0} max={1} step={0.05} value={cur.opacity} onChange={(e) => patch(cur.id, { opacity: Number(e.target.value) })} />
-              {Math.round(cur.opacity * 100)}%
-            </label>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-              <Num label="X" value={cur.x} onChange={(v) => patch(cur.id, { x: v })} />
-              <Num label="Y" value={cur.y} onChange={(v) => patch(cur.id, { y: v })} />
-              <Num label="L" value={cur.width} min={1} onChange={(v) => patch(cur.id, { width: v })} />
-              {cur.type !== "text" && <Num label="A" value={cur.height} min={1} onChange={(v) => patch(cur.id, { height: v })} />}
-              <Num label="Rot°" value={cur.rotation} onChange={(v) => patch(cur.id, { rotation: v })} />
-            </div>
-          </div>
-        ) : sels.length === 0 ? (
-          <p className="text-sm text-ink/65">Seleziona un elemento per modificarlo, oppure trascina sulla carta per selezionarne di più (Maiusc per aggiungere). Frecce per spostare (Maiusc = 5 mm).</p>
-        ) : null}
+          </Group>
+        )}
 
-        <div className="flex flex-col gap-1 text-sm">
-          <p className="font-medium">Livelli</p>
-          {[...els].reverse().map((e) => (
-            <div key={e.id} className={`flex items-center gap-1 rounded-lg px-1.5 py-1 ${sels.includes(e.id) ? "bg-laguna/50" : ""}`}>
-              <button className={`min-w-0 flex-1 truncate text-left ${e.visible ? "" : "text-ink/40 line-through"}`} onClick={(ev) => pick(e.id, ev.shiftKey || ev.ctrlKey || ev.metaKey)}>
-                {label(e)}
-                {e.group && <span className="ml-1 text-xs text-ink/45">gruppo</span>}
-              </button>
-              <button title="Su" aria-label="Porta su" className="px-1 hover:bg-laguna/30" onClick={() => move(e.id, 1)}>↑</button>
-              <button title="Giù" aria-label="Porta giù" className="px-1 hover:bg-laguna/30" onClick={() => move(e.id, -1)}>↓</button>
-              <button title="Mostra/nascondi" aria-label="Mostra o nascondi" aria-pressed={!e.visible} className="px-1 hover:bg-laguna/30" onClick={() => patch(e.id, { visible: !e.visible })}>{e.visible ? "👁" : "—"}</button>
-              <button title="Blocca" aria-label="Blocca o sblocca" aria-pressed={e.locked} className="px-1 hover:bg-laguna/30" onClick={() => patch(e.id, { locked: !e.locked })}>{e.locked ? "🔒" : "🔓"}</button>
-            </div>
-          ))}
-        </div>
+        <Group title="Livelli" icon={ICONS.layers}>
+          {sels.length === 0 && <p className="text-sm text-ink/65">Seleziona un elemento per modificarlo, oppure trascina sulla carta per selezionarne di più (Maiusc per aggiungere). Frecce per spostare (Maiusc = 5 mm).</p>}
+          <ul className="-mx-2 space-y-0.5">
+            {[...els].reverse().map((e) => (
+              <li key={e.id} className={`flex items-center gap-0.5 rounded-lg px-2 py-0.5 ${sels.includes(e.id) ? "bg-laguna/40" : ""}`}>
+                <button className={`min-w-0 flex-1 truncate py-1.5 text-left text-sm ${focus} ${e.visible ? "" : "text-ink/40 line-through"}`} onClick={(ev) => pick(e.id, ev.shiftKey || ev.ctrlKey || ev.metaKey)}>
+                  {label(e)}
+                  {e.group && <span className="ml-1 text-xs text-ink/45">gruppo</span>}
+                </button>
+                <button title="Porta su" aria-label="Porta su" className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => move(e.id, 1)}><Icon d={ICONS.up} className="size-4" /></button>
+                <button title="Porta giù" aria-label="Porta giù" className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => move(e.id, -1)}><Icon d={ICONS.down} className="size-4" /></button>
+                <button title="Mostra o nascondi" aria-label="Mostra o nascondi" aria-pressed={!e.visible} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { visible: !e.visible })}><Icon d={e.visible ? ICONS.eye : ICONS.eyeOff} className="size-4" /></button>
+                <button title="Blocca o sblocca" aria-label="Blocca o sblocca" aria-pressed={e.locked} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { locked: !e.locked })}><Icon d={e.locked ? ICONS.lock : ICONS.unlock} className="size-4" /></button>
+              </li>
+            ))}
+          </ul>
+        </Group>
+
+        <Group title="Archivio" icon={ICONS.archive}>
+          <div className="flex gap-2">
+            <input
+              aria-label="Nome del design" className={input} placeholder="Nome del design" value={designName}
+              onChange={(e) => setDesignName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveDesign()}
+            />
+            <button className={secondary} onClick={saveDesign}><Icon d={ICONS.save} className="size-4" />Salva</button>
+          </div>
+          {archiveMsg && <p role="status" className="text-sm text-ink/65">{archiveMsg}</p>}
+          <ul className="space-y-2">
+            {saved.map((d) => (
+              <li key={d.id} className="flex items-center gap-2 rounded-lg bg-surface px-3 py-2 ring-1 ring-laguna/60">
+                <button className={`min-w-0 flex-1 text-left ${focus}`} onClick={() => openDesign(d)} title={`Apri «${d.name}»`}>
+                  <p className="truncate text-sm font-semibold">{d.name}</p>
+                  <p className="text-xs text-ink/55">
+                    {d.doc.paper} · {d.doc.pages.length} {d.doc.pages.length === 1 ? "pagina" : "pagine"} · {new Date(d.savedAt).toLocaleDateString("it-IT", { day: "numeric", month: "short" })}
+                  </p>
+                </button>
+                <button aria-label={`Elimina ${d.name}`} title="Elimina" className={iconBtn} onClick={() => removeDesign(d)}><Icon d={ICONS.trash} className="size-4" /></button>
+              </li>
+            ))}
+          </ul>
+        </Group>
       </aside>
 
-      <main ref={wrap} className={`${tab === "canvas" ? "flex" : "hidden"} md:flex flex-1 overflow-auto p-4 pb-40 md:pb-4`}>
-        <div className="fixed top-3 right-3 z-10 flex items-center gap-0.5 rounded-full bg-surface/95 p-1 text-sm shadow-md ring-1 ring-ink/10 md:right-5">
-          <button aria-label="Riduci" className="size-8 rounded-full hover:bg-laguna/30" onClick={() => zoomBy(1 / 1.25)}>−</button>
-          <button title="Adatta alla larghezza" className="min-w-14 rounded-full px-1 py-1 text-xs tabular-nums hover:bg-laguna/30" onClick={() => setMul(1)}>
-            {Math.round(Math.min(mul, maxMul) * 100)}%
-          </button>
-          <button aria-label="Ingrandisci" className="size-8 rounded-full hover:bg-laguna/30" onClick={() => zoomBy(1.25)}>+</button>
+      <main ref={wrap} className={`${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:block md:px-6 md:pb-6`}>
+        {/* sticky dentro de la zona que se desplaza (no fixed): las bolas quedan dentro de su caja, como en el editor principal */}
+        <div className="pointer-events-none sticky top-1/2 z-20 -mb-5 h-0">
+          <div role="group" aria-label={`Zoom ${pct}%`} className="pointer-events-auto absolute right-0 flex -translate-y-1/2 flex-col gap-2">
+            <button className={ball} aria-label="Ingrandisci" title={`Ingrandisci · ${pct}%`} disabled={mul >= maxMul} onClick={() => zoomBy(1.25)}><Icon d={ICONS.zoomIn} /></button>
+            <button className={`${ball} text-xs font-semibold tabular-nums`} aria-label="Adatta alla larghezza" title="Adatta alla larghezza" onClick={() => setMul(1)}>{pct}%</button>
+            <button className={ball} aria-label="Riduci" title={`Riduci · ${pct}%`} disabled={mul <= 0.5} onClick={() => zoomBy(1 / 1.25)}><Icon d={ICONS.zoomOut} /></button>
+          </div>
         </div>
         {hist.pages.length > 1 && (
-          <div role="tablist" aria-label="Pagine" className="fixed top-3 left-3 z-10 flex max-w-[55vw] flex-wrap gap-1 md:left-[19.5rem]">
-            {hist.pages.map((_, i) => (
-              <button key={i} role="tab" aria-selected={i === page} className={`size-8 rounded-full text-sm shadow-md ring-1 ring-ink/10 ${i === page ? "bg-mare font-semibold" : "bg-surface/95"}`} onClick={() => goPage(i)}>{i + 1}</button>
-            ))}
+          <div className="pointer-events-none sticky top-3 z-20 -mb-9 h-0">
+            <div role="tablist" aria-label="Pagine" className="pointer-events-auto absolute left-0 flex max-w-[60%] flex-wrap gap-1.5">
+              {hist.pages.map((_, i) => (
+                <button key={i} role="tab" aria-selected={i === page} className={`grid size-9 place-items-center rounded-full text-sm font-semibold shadow-[0_8px_24px_-8px_rgb(14_26_43/0.45)] ring-1 ring-laguna/60 lift ${focus} ${i === page ? "bg-brand text-white" : "bg-surface"}`} onClick={() => goPage(i)}>{i + 1}</button>
+              ))}
+            </div>
           </div>
         )}
         {/* m-auto centra la hoja cuando cabe y deja desplazarse cuando es mayor que el área (justify-center la cortaría) */}
-        <div className="m-auto h-fit shrink-0 shadow-[0_18px_40px_-18px_rgb(23_48_51/0.45)]">
+        <div className="flex min-h-full py-4 md:py-6">
+        <div className="m-auto h-fit shrink-0 shadow-[0_18px_40px_-18px_rgb(14_26_43/0.45)]">
           <Stage
             ref={stageRef}
             width={w * zoom}
@@ -1017,23 +1070,38 @@ export default function CanvasEditor() {
             </Layer>
           </Stage>
         </div>
+        </div>
       </main>
+      </div>
 
       {/* Móvil: acciones de la selección y barra de pestañas, en la zona del pulgar */}
       {tab === "canvas" && sels.length > 0 && (
-        <div className="fixed inset-x-2 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] flex flex-wrap justify-center gap-1.5 rounded-2xl bg-surface/95 p-2 shadow-lg ring-1 ring-ink/10 md:hidden">
-          <button className={btn} onClick={duplicateSel}>Duplica</button>
-          {sels.length > 1 && <button className={btn} onClick={group}>Raggruppa</button>}
-          {selEls.some((x) => x.group) && <button className={btn} onClick={ungroup}>Separa</button>}
-          <button className={btn} onClick={removeSel}>Elimina</button>
+        <div className="fixed inset-x-2 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] flex flex-wrap justify-center gap-2 rounded-2xl bg-surface/95 p-2 shadow-lg ring-1 ring-laguna/60 backdrop-blur md:hidden">
+          <button className={secondary} onClick={duplicateSel}><Icon d={ICONS.copy} className="size-4" />Duplica</button>
+          {sels.length > 1 && <button className={secondary} onClick={group}><Icon d={ICONS.group} className="size-4" />Raggruppa</button>}
+          {selEls.some((x) => x.group) && <button className={secondary} onClick={ungroup}><Icon d={ICONS.ungroup} className="size-4" />Separa</button>}
+          <button className={secondary} onClick={removeSel}><Icon d={ICONS.trash} className="size-4" />Elimina</button>
         </div>
       )}
-      <nav aria-label="Sezioni" className="fixed inset-x-0 bottom-0 grid grid-cols-4 border-t border-laguna/60 bg-surface/95 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden">
-        {([["canvas", "Carta"], ["tools", "Strumenti"]] as const).map(([id, t]) => (
-          <button key={id} aria-current={tab === id ? "page" : undefined} className={`rounded-lg py-2 text-xs ${tab === id ? "bg-laguna/50 font-semibold" : "text-ink/65"}`} onClick={() => setTab(id)}>{t}</button>
+      <nav aria-label="Sezioni" className="fixed inset-x-0 bottom-0 grid grid-cols-5 border-t border-laguna/60 bg-surface/95 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden">
+        {([["canvas", "Carta", ICONS.canvas], ["tools", "Strumenti", ICONS.tools]] as const).map(([id, t, icon]) => (
+          <button key={id} aria-current={tab === id ? "page" : undefined} className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs ${focus} ${tab === id ? "font-semibold" : "text-ink/65"}`} onClick={() => setTab(id)}>
+            <span className={`grid h-7 w-12 place-items-center rounded-full transition-colors ${tab === id ? "bg-laguna/50" : ""}`}><Icon d={icon} /></span>
+            {t}
+          </button>
         ))}
-        <button className="rounded-lg py-2 text-xs disabled:opacity-40" disabled={!hist.past.length} onClick={undo}>↶ Annulla</button>
-        <button aria-pressed={multi} className={`rounded-lg py-2 text-xs ${multi ? "bg-mare font-semibold" : "text-ink/65"}`} onClick={() => setMulti((v) => !v)}>Multi</button>
+        <button className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs text-ink/65 disabled:opacity-40 ${focus}`} disabled={!hist.past.length} onClick={undo}>
+          <span className="grid h-7 w-12 place-items-center rounded-full"><Icon d={ICONS.undo} /></span>
+          Annulla
+        </button>
+        <button aria-pressed={multi} className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs ${focus} ${multi ? "font-semibold" : "text-ink/65"}`} onClick={() => setMulti((v) => !v)}>
+          <span className={`grid h-7 w-12 place-items-center rounded-full transition-colors ${multi ? "bg-laguna/50" : ""}`}><Icon d={ICONS.select} /></span>
+          Multi
+        </button>
+        <button className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs font-semibold disabled:opacity-50 ${focus}`} disabled={busy} onClick={print}>
+          <span className="grid h-7 w-12 place-items-center rounded-full bg-brand text-white"><Icon d={ICONS.print} /></span>
+          Stampa
+        </button>
       </nav>
     </div>
     {/* Solo al imprimir: la hoja renderizada a alta resolución, a tamaño real */}

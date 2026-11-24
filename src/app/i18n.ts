@@ -171,7 +171,9 @@ const it = {
   posX: "Orizzontale",
   posY: "Verticale",
   formatLegend: "Formato di stampa",
-  layouts: { "1": "A4", "2": "2 per foglio", "4": "4 per foglio", "6": "6 per foglio", m27: "Minuta 27 × 9,5 cm (2 per foglio)", m19: "Minuta 19,5 × 10 cm (2 per foglio)" },
+  paperLegend: "Tipo di carta",
+  paperFixed: "Questo formato ha misure fisse (A4)",
+  layouts: { "1": "1 per foglio", "2": "2 per foglio", "4": "4 per foglio", "6": "6 per foglio", m27: "Minuta 27 × 9,5 cm (2 per foglio)", m19: "Minuta 19,5 × 10 cm (2 per foglio)" },
   copies: {
     "1": ["Tavolo"],
     "2": ["A sinistra", "A destra"],
@@ -373,7 +375,9 @@ const es: typeof it = {
   posX: "Horizontal",
   posY: "Vertical",
   formatLegend: "Formato de impresión",
-  layouts: { "1": "A4", "2": "2 por hoja", "4": "4 por hoja", "6": "6 por hoja", m27: "Minuta 27 × 9,5 cm (2 por hoja)", m19: "Minuta 19,5 × 10 cm (2 por hoja)" },
+  paperLegend: "Tipo de papel",
+  paperFixed: "Este formato tiene medidas fijas (A4)",
+  layouts: { "1": "1 por hoja", "2": "2 por hoja", "4": "4 por hoja", "6": "6 por hoja", m27: "Minuta 27 × 9,5 cm (2 por hoja)", m19: "Minuta 19,5 × 10 cm (2 por hoja)" },
   copies: {
     "1": ["Mesa"],
     "2": ["Izquierda", "Derecha"],

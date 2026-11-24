@@ -145,7 +145,7 @@ const DESIGNS: Record<keyof Dict["designs"], Partial<Menu>> = {
 // Hoja A4 en mm, cuántas copias caben (n) y el nombre corto del selector
 // pw/ph: tamaño en mm con el que se maqueta cada copia antes de escalarla (por defecto A4)
 const SHEETS: Record<Layout, { w: number; h: number; n: number; cols: number; scale: number; orient: string; tag: string; pw?: number; ph?: number }> = {
-  "1": { w: 210, h: 297, n: 1, cols: 1, scale: 1, orient: "portrait", tag: "A4" },
+  "1": { w: 210, h: 297, n: 1, cols: 1, scale: 1, orient: "portrait", tag: "×1" },
   "2": { w: 297, h: 210, n: 2, cols: 2, scale: 148.5 / 210, orient: "landscape", tag: "×2" },
   "4": { w: 210, h: 297, n: 4, cols: 2, scale: 0.5, orient: "portrait", tag: "×4" },
   // Tarjetas de plato: 3×2 en vertical, 70×148,5 mm cada una (estrechas). Maquetadas a 100 mm de ancho
@@ -155,6 +155,27 @@ const SHEETS: Record<Layout, { w: number; h: number; n: number; cols: number; sc
   m27: { w: 210, h: 297, n: 2, cols: 2, scale: 0.7, orient: "portrait", tag: "27×9,5", pw: 95 / 0.7, ph: 270 / 0.7 },
   m19: { w: 210, h: 297, n: 2, cols: 2, scale: 0.7, orient: "portrait", tag: "19,5×10", pw: 100 / 0.7, ph: 195 / 0.7 },
 };
+
+// Tipos de papel (ISO 216), medidas en mm en vertical. La carta se diseña en A4 y la hoja entera se escala al papel
+type Paper = "A2" | "A3" | "A4" | "A5";
+const PAPERS: Record<Paper, { w: number; h: number }> = {
+  A2: { w: 420, h: 594 },
+  A3: { w: 297, h: 420 },
+  A4: { w: 210, h: 297 },
+  A5: { w: 148, h: 210 },
+};
+// Solo 1, 2 y 4 por hoja se reparten por proporción. Tarjetas y minutas miden lo que dicen en mm reales: se quedan en A4
+const SCALABLE: Layout[] = ["1", "2", "4"];
+const paperLabel = (p: Paper) => `${p} (${PAPERS[p].w} × ${PAPERS[p].h} mm)`;
+
+// La hoja del formato en el papel elegido: mismo reparto, todo multiplicado por lo que el papel mide respecto al A4
+function sheetOf(layout: Layout, paper: Paper) {
+  const s = SHEETS[layout];
+  if (!SCALABLE.includes(layout)) return s;
+  const p = PAPERS[paper];
+  const land = s.w > s.h;
+  return { ...s, w: land ? p.h : p.w, h: land ? p.w : p.h, scale: (s.scale * p.w) / 210 };
+}
 
 function load(): Menu {
   try {
@@ -880,8 +901,8 @@ const pageSize = (layout: Layout) => {
 };
 
 // Cada hueco mide exactamente lo que la copia: la línea discontinua es la de corte
-function Sheet({ layout, page }: { layout: Layout; page: (copy: number) => React.ReactNode }) {
-  const s = SHEETS[layout];
+function Sheet({ layout, paper, page }: { layout: Layout; paper: Paper; page: (copy: number) => React.ReactNode }) {
+  const s = sheetOf(layout, paper);
   const [cw, ch] = [(s.pw ?? 210) * s.scale, (s.ph ?? 297) * s.scale];
   return (
     <div
@@ -901,10 +922,11 @@ function Sheet({ layout, page }: { layout: Layout; page: (copy: number) => React
 
 // Escala la hoja para que quepa en el ancho disponible (móvil incluido)
 // scale: zoom elegido por el usuario sobre el ajuste a la pantalla (1 = ajustada)
-function Preview({ layout, scale, children }: { layout: Layout; scale: number; children: React.ReactNode }) {
+function Preview({ layout, paper, scale, children }: { layout: Layout; paper: Paper; scale: number; children: React.ReactNode }) {
   const [fit, setFit] = useState(0.6);
   const ref = useRef<HTMLDivElement>(null);
-  const [sheetW, sheetH] = [SHEETS[layout].w * 3.7795, SHEETS[layout].h * 3.7795]; // mm → px CSS
+  const sh = sheetOf(layout, paper);
+  const [sheetW, sheetH] = [sh.w * 3.7795, sh.h * 3.7795]; // mm → px CSS
   useEffect(() => {
     const el = ref.current!;
     const main = el.closest("main")!;
@@ -957,6 +979,7 @@ const ICONS = {
   eye: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
   archive: "M3 4h18v4H3zM5 8v12h14V8M10 12h4",
   canvas: "M3 4h18v16H3zM3 9h18M9 9v11",
+  paper: "M6 3h9l4 4v14H6zM14 3v5h5",
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5",
   share: "M12 3v12M8 7l4-4 4 4M7 11H5v10h14V11h-2",
   close: "M6 6l12 12M18 6L6 18",
@@ -1639,6 +1662,51 @@ function SheetIcon({ l, on }: { l: Layout; on: boolean }) {
 
 // Selector de formato desplegable: botón con el dibujo y el nombre corto; la lista, con el nombre completo.
 // Se cierra al elegir, al hacer clic fuera (el foco sale) o con Esc
+// Tipo de papel: mismo desplegable que el de formato. Solo se aplica a 1, 2 y 4 por hoja
+function PaperPicker({ value, onChange, layout }: { value: Paper; onChange: (p: Paper) => void; layout: Layout }) {
+  const t = useT();
+  const [list, setList] = useState(false);
+  const fixed = !SCALABLE.includes(layout);
+  return (
+    <div
+      className="relative"
+      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setList(false)}
+      onKeyDown={(e) => e.key === "Escape" && setList(false)}
+    >
+      <button
+        className={`flex h-9 items-center gap-2 rounded-lg bg-laguna/30 pr-2 pl-2.5 text-sm font-semibold lift hover:bg-laguna/45 disabled:pointer-events-none disabled:opacity-50 ${focus}`}
+        aria-haspopup="listbox"
+        aria-expanded={list}
+        aria-label={`${t.paperLegend}: ${fixed ? "A4" : paperLabel(value)}`}
+        title={fixed ? t.paperFixed : paperLabel(value)}
+        disabled={fixed}
+        onClick={() => setList(!list)}
+      >
+        <Icon d={ICONS.paper} className="size-4" />
+        <span className="whitespace-nowrap">{fixed ? "A4" : value}</span>
+        <Icon d={ICONS.down} className={`size-3.5 text-ink/60 transition-transform ${list ? "rotate-180" : ""}`} />
+      </button>
+      {list && (
+        <ul role="listbox" aria-label={t.paperLegend} className="absolute top-11 left-0 z-30 w-56 rounded-lg bg-surface py-1 shadow-lg ring-1 ring-laguna/60">
+          {(Object.keys(PAPERS) as Paper[]).map((p) => (
+            <li key={p} role="option" aria-selected={p === value}>
+              <button
+                className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-laguna/25 ${p === value ? "font-semibold text-mare" : ""} ${focus}`}
+                onClick={() => {
+                  onChange(p);
+                  setList(false);
+                }}
+              >
+                {paperLabel(p)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function LayoutPicker({ value, onChange }: { value: Layout; onChange: (l: Layout) => void }) {
   const t = useT();
   const [list, setList] = useState(false);
@@ -1789,6 +1857,7 @@ export default function Editor() {
   const t = T[lang];
   const [currentId, setCurrentId] = useState(loadCurrentId);
   const [layout, setLayout] = useState<Layout>("1");
+  const [paper, setPaper] = useState<Paper>("A4");
   const [saveError, setSaveError] = useState(false);
   const [tab, setTab] = useState<"edit" | "preview" | "archive">("archive");
   const [saved, setSaved] = useState<Saved[]>([]);
@@ -2153,7 +2222,7 @@ export default function Editor() {
 
   return (
     <LangCtx value={lang}>
-      <style>{`@page { size: A4 ${SHEETS[layout].orient}; margin: 0; }`}</style>
+      <style>{`@page { size: ${sheetOf(layout, paper).w}mm ${sheetOf(layout, paper).h}mm; margin: 0; }`}</style>
 
       {ctx && m.stickers[Number(ctx.k.slice(3))] && (
         <div
@@ -2700,6 +2769,7 @@ export default function Editor() {
               {/* Una sola barra fija: formato, zoom y retoque del elemento seleccionado; el resto es hoja */}
               <div data-toolbar className="sticky top-0 z-10 -mx-4 flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b border-laguna/60 bg-surface px-4 py-2 md:-mx-6 md:px-6">
                 <LayoutPicker value={layout} onChange={setLayout} />
+                <PaperPicker value={paper} onChange={setPaper} layout={layout} />
                 {desktop && (
                   <button
                     className={`${iconBtn} md:size-9 ${placing ? "bg-mare text-white hover:bg-mare" : ""}`}
@@ -2805,8 +2875,8 @@ export default function Editor() {
               <ZoomControl value={zoom} onChange={setZoom} />
               <EditCtx value={edit}>
                 {pages.map((p, i) => (
-                  <Preview key={i} layout={layout} scale={zoom}>
-                    <Sheet layout={layout} page={p} />
+                  <Preview key={i} layout={layout} paper={paper} scale={zoom}>
+                    <Sheet layout={layout} paper={paper} page={p} />
                   </Preview>
                 ))}
               </EditCtx>
@@ -2850,7 +2920,7 @@ export default function Editor() {
       <div className="hidden [print-color-adjust:exact] print:block">
         {pages.map((p, i) => (
           <div key={i} className="break-after-page">
-            <Sheet layout={layout} page={p} />
+            <Sheet layout={layout} paper={paper} page={p} />
           </div>
         ))}
       </div>
