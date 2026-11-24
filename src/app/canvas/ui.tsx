@@ -77,25 +77,25 @@ export function Brand() {
 export function Group({ title, icon, open, children }: { title: string; icon: string; open?: boolean; children: React.ReactNode }) {
   return (
     <details className="group border-b border-laguna/50" open={open}>
-      <summary className={`flex cursor-pointer list-none items-center gap-3 px-5 py-2.5 transition-colors hover:bg-laguna/15 [&::-webkit-details-marker]:hidden ${focus}`}>
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-laguna/25 text-mare transition-colors group-open:bg-brand group-open:text-white">
-          <Icon d={icon} className="size-[18px]" />
+      <summary className={`flex min-h-11 cursor-pointer list-none items-center gap-3 px-4 py-2.5 transition-colors hover:bg-laguna/15 [&::-webkit-details-marker]:hidden ${focus}`}>
+        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-laguna/25 text-mare transition-colors group-open:bg-brand group-open:text-white">
+          <Icon d={icon} className="size-4" />
         </span>
-        <h2 className="flex-1 font-display text-[17px] leading-tight font-semibold">{title}</h2>
+        <h2 className="flex-1 text-[13px] leading-tight font-semibold">{title}</h2>
         <Icon d={ICONS.down} className="size-4 shrink-0 text-ink/50 transition-transform group-open:rotate-180" />
       </summary>
-      <div className="space-y-4 px-5 pb-6">{children}</div>
+      <div className="space-y-3 px-4 pb-4">{children}</div>
     </details>
   );
 }
 
 export function Num({ label, value, min, onChange }: { label: string; value: number; min?: number; onChange: (v: number) => void }) {
   return (
-    <label className="flex items-center justify-between gap-2 text-sm font-semibold">
+    <label className="flex items-center justify-between gap-2 text-xs font-semibold md:text-[13px]">
       {label}
       <input
         type="number" step="any" min={min}
-        className="w-24 rounded-lg border border-laguna bg-surface px-2 py-1.5 text-sm font-normal focus:border-mare focus:outline-2 focus:outline-offset-0 focus:outline-mare/40"
+        className="w-20 rounded-lg border border-laguna bg-surface px-2 py-1.5 text-sm font-normal tabular-nums md:py-1 focus:border-mare focus:outline-2 focus:outline-offset-0 focus:outline-mare/40"
         value={Math.round(value * 10) / 10}
         onChange={(e) => onChange(Math.max(min ?? -Infinity, Number(e.target.value) || 0))}
       />

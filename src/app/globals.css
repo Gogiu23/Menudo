@@ -13,6 +13,9 @@
   --color-surface: #ffffff;
   --font-sans: var(--font-plex), system-ui, sans-serif;
   --font-display: var(--font-plex), system-ui, sans-serif;
+  /* Esquinas más redondeadas (Canva): controles 10 px, paneles y tarjetas 14 px */
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
 }
 
 :root {

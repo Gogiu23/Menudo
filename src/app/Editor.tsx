@@ -1206,14 +1206,14 @@ function Group(props: { title: string; hint?: string; icon: string; children: Re
   if (!side.wide)
     return (
       <details className="group border-b border-laguna/50">
-        <summary className={`flex cursor-pointer list-none items-center gap-3 px-5 py-2.5 transition-colors hover:bg-laguna/15 [&::-webkit-details-marker]:hidden ${focus}`}>
-          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-laguna/25 text-mare transition-colors group-open:bg-brand group-open:text-white">
-            <Icon d={icon} className="size-[18px]" />
+        <summary className={`flex min-h-11 cursor-pointer list-none items-center gap-3 px-4 py-2.5 transition-colors hover:bg-laguna/15 [&::-webkit-details-marker]:hidden ${focus}`}>
+          <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-laguna/25 text-mare transition-colors group-open:bg-brand group-open:text-white">
+            <Icon d={icon} className="size-4" />
           </span>
-          <h2 className="flex-1 font-display text-[17px] leading-tight font-semibold">{title}</h2>
+          <h2 className="flex-1 text-[13px] leading-tight font-semibold">{title}</h2>
           <Icon d={ICONS.down} className="size-4 shrink-0 text-ink/50 transition-transform group-open:rotate-180" />
         </summary>
-        <div className="space-y-4 px-5 pb-6">{body}</div>
+        <div className="space-y-3 px-4 pb-4">{body}</div>
       </details>
     );
   const on = side.open === title;
