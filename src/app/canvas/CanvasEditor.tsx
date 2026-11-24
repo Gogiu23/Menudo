@@ -126,6 +126,7 @@ export default function CanvasEditor() {
     setHist((h) => ({ past: [...h.past, h.pages].slice(-MAX_HISTORY), pages: f(h.pages), future: [] }));
   };
   const goPage = (i: number) => {
+    setEditing(null);
     setPageIdx(i);
     setSels([]);
   };
@@ -165,10 +166,12 @@ export default function CanvasEditor() {
     setPageIdx(j);
   };
   const undo = () => {
+    setEditing(null);
     lastKey.current = "";
     setHist((h) => (h.past.length ? { past: h.past.slice(0, -1), pages: h.past[h.past.length - 1], future: [h.pages, ...h.future] } : h));
   };
   const redo = () => {
+    setEditing(null);
     lastKey.current = "";
     setHist((h) => (h.future.length ? { past: [...h.past, h.pages], pages: h.future[0], future: h.future.slice(1) } : h));
   };
@@ -207,6 +210,7 @@ export default function CanvasEditor() {
       ),
     );
   };
+  const freshText = useRef<string | null>(null); // texto recién creado desde el menú: al abrirlo se selecciona entero
   const [editing, setEditing] = useState<string | null>(null); // texto que se está escribiendo directamente sobre la hoja
   const [panel, setPanel] = useState("text"); // sección abierta junto al carril de iconos (escritorio)
   const [tab, setTab] = useState<"canvas" | "tools">("canvas"); // solo en móvil; en escritorio se ven las dos
@@ -369,6 +373,7 @@ export default function CanvasEditor() {
   };
   const ungroup = () => setEls((a) => a.map((x) => (sels.includes(x.id) && x.group ? { ...x, group: undefined } : x)));
   const removeSel = () => {
+    setEditing(null);
     setEls((a) => a.filter((x) => !sels.includes(x.id)));
     setSels([]);
   };
@@ -769,7 +774,11 @@ export default function CanvasEditor() {
       )}
       {cur?.type === "text" && (
         <Block title="Testo">
-          <p className="text-xs text-ink/70">Doppio clic sul testo, sulla carta, per scriverlo.</p>
+          <button className={`${secondary} w-full justify-center`} onClick={() => { setTab("canvas"); setEditing(cur.id); }}>
+            <Icon d={ICONS.edit} className="size-4" />
+            Modifica testo
+          </button>
+          <p className="text-xs text-ink/70">Oppure doppio clic sul testo, sulla carta.</p>
           <select className={input} aria-label="Carattere" value={cur.fontFamily} onChange={(e) => patch(cur.id, { fontFamily: e.target.value as FontKey })}>
             {FONTS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
           </select>
@@ -853,7 +862,7 @@ export default function CanvasEditor() {
       <>
         <p className="text-sm text-ink/70">Scegli uno stile, poi scrivi direttamente sulla carta.</p>
         {textPresets.map((p) => (
-          <button key={p.name} className={`flex w-full flex-col items-start gap-0.5 rounded-lg border border-laguna bg-surface px-3 py-3 text-left lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => { const t = newText(p.o); add(t); setEditing(t.id); }}>
+          <button key={p.name} className={`flex w-full flex-col items-start gap-0.5 rounded-lg border border-laguna bg-surface px-3 py-3 text-left lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => { const t = newText(p.o); add(t); freshText.current = t.id; setTab("canvas"); setEditing(t.id); }}>
             <span className={p.cls}>{p.name}</span>
             <span className="text-xs text-ink/70">{p.hint}</span>
           </button>
@@ -1070,7 +1079,7 @@ export default function CanvasEditor() {
         </nav>
         <aside aria-label={active.label} className="w-[240px] shrink-0 overflow-y-auto border-r border-laguna/60 bg-surface">
           <h2 className="px-4 pt-4 pb-3 font-display text-[15px] font-semibold">{active.label}</h2>
-          <div className="space-y-3 px-4 pb-4">{active.body}</div>
+          <form className="space-y-3 px-4 pb-4" onSubmit={(e) => e.preventDefault()}>{active.body}</form>
           <div className="border-t border-laguna/50 lg:hidden">{properties}</div>
         </aside>
       </div>
@@ -1078,7 +1087,7 @@ export default function CanvasEditor() {
       <aside aria-label="Strumenti" className={`${tab === "tools" ? "block" : "hidden"} w-full shrink-0 overflow-y-auto bg-surface pb-24 md:hidden`}>
         {sections.map((s) => (
           <Fragment key={s.id}>
-            <Group title={s.label} icon={s.icon} open={s.id === "text"}>{s.body}</Group>
+            <Group title={s.label} icon={s.icon} open={s.id === "text"}><form className="space-y-3" onSubmit={(e) => e.preventDefault()}>{s.body}</form></Group>
             {s.id === "images" && properties}
           </Fragment>
         ))}
@@ -1188,11 +1197,16 @@ export default function CanvasEditor() {
           {editEl && (
             <textarea
               aria-label="Testo" autoFocus rows={1} value={editEl.text}
-              onFocus={(e) => e.currentTarget.select()}
+              onFocus={(e) => {
+                const t = e.currentTarget;
+                if (freshText.current === editEl.id) t.select();
+                else t.setSelectionRange(t.value.length, t.value.length);
+              }}
               ref={(t) => { if (t) { t.style.height = "auto"; t.style.height = `${t.scrollHeight}px`; } }}
               onChange={(e) => patch(editEl.id, { text: e.target.value })}
               onBlur={() => {
                 if (!editEl.text.trim()) { setEls((a) => a.filter((x) => x.id !== editEl.id)); setSels([]); } // un testo vuoto non resta sulla carta
+                freshText.current = null;
                 setEditing(null);
               }}
               onKeyDown={(e) => { if (e.key === "Escape" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) { e.preventDefault(); e.currentTarget.blur(); } }}
