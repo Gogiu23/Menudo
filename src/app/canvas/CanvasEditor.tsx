@@ -15,10 +15,12 @@ import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
 import { Block, Brand, chip, chipOn, focus, Group, Icon, ICONS, iconBtn, input, Num, primary, secondary, ShapeIcon } from "./ui";
 import { Tip } from "./Tip";
+import type { Lang } from "../i18n";
+import { LANG_KEY, loadLang, makeTr, type Tr } from "./i18n";
 import { ImageSearch } from "./ImageSearch";
 
-const label = (e: El) =>
-  e.type === "text" ? e.text.split("\n")[0].slice(0, 24) || "Testo" : e.type === "shape" ? SHAPES[e.kind].label : { rect: "Rettangolo", image: "Immagine", tiles: "Maioliche", line: "Linea" }[e.type];
+const label = (e: El, tr: Tr) =>
+  e.type === "text" ? e.text.split("\n")[0].slice(0, 24) || tr("Testo") : e.type === "shape" ? tr(SHAPES[e.kind].label) : tr({ rect: "Rettangolo", image: "Immagine", tiles: "Maioliche", line: "Linea" }[e.type]);
 
 function useImage(src: string) {
   const [img, setImg] = useState<HTMLImageElement>();
@@ -134,6 +136,17 @@ const MM_PER_INCH = 25.4;
 
 export default function CanvasEditor() {
   const [init] = useState(load);
+  const [lang, setLang] = useState<Lang>(loadLang); // el mismo idioma que el editor principal (menudo:lang)
+  const tr = makeTr(lang);
+  const changeLang = (l: Lang) => {
+    setLang(l);
+    try {
+      localStorage.setItem(LANG_KEY, l);
+    } catch {}
+  };
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
   const [paper, setPaper] = useState<Paper>(init.paper);
   const [wanted, setCopies] = useState<Copies>(init.copies);
   const [tables, setTables] = useState<string[]>(init.tables); // número de mesa de cada copia
@@ -559,7 +572,7 @@ export default function CanvasEditor() {
       await job();
     } catch (e) {
       console.error(e);
-      setExportError("Non sono riuscito a completare l'operazione. Prova con una carta più piccola o meno immagini.");
+      setExportError(tr("Non sono riuscito a completare l'operazione. Prova con una carta più piccola o meno immagini."));
     } finally {
       setBusy(false);
     }
@@ -647,35 +660,36 @@ export default function CanvasEditor() {
 
   // Archivo de diseños
   useEffect(() => {
-    designs.list().then(setSaved, () => setArchiveMsg("L'archivio non è disponibile su questo browser."));
+    designs.list().then(setSaved, () => setArchiveMsg(tr("L'archivio non è disponibile su questo browser.")));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al abrir el editor
   }, []);
   const refreshSaved = () => designs.list().then(setSaved);
   const saveDesign = async () => {
-    const name = designName.trim() || "Senza nome";
+    const name = designName.trim() || tr("Senza nome");
     try {
       const same = saved.find((d) => d.name.toLowerCase() === name.toLowerCase());
-      if (same && !confirm(`Esiste già «${same.name}». Sostituirlo?`)) return;
+      if (same && !confirm(lang === "es" ? `Ya existe «${same.name}». ¿Quieres reemplazarlo?` : `Esiste già «${same.name}». Sostituirlo?`)) return;
       await designs.save({ id: same?.id ?? uid(), name, savedAt: Date.now(), doc: { paper, copies, pages: hist.pages, tables, bg } });
       setDesignName("");
-      setArchiveMsg(`Salvato «${name}».`);
+      setArchiveMsg(lang === "es" ? `Guardado «${name}».` : `Salvato «${name}».`);
       await refreshSaved();
     } catch {
-      setArchiveMsg("Non sono riuscito a salvare: forse manca spazio sul dispositivo.");
+      setArchiveMsg(tr("Non sono riuscito a salvare: forse manca spazio sul dispositivo."));
     }
   };
   const openDesign = (d: Design) => {
-    if (!confirm(`Aprire «${d.name}»? Il lavoro attuale non salvato andrà perso.`)) return;
+    if (!confirm(lang === "es" ? `¿Abrir «${d.name}»? El trabajo actual sin guardar se perderá.` : `Aprire «${d.name}»? Il lavoro attuale non salvato andrà perso.`)) return;
     setPaper(d.doc.paper);
     setCopies(COPIES.includes(d.doc.copies) ? d.doc.copies : 1);
     setTables(d.doc.tables ?? []);
     setBg(okBg(d.doc.bg));
     setPages(() => d.doc.pages);
     goPage(0);
-    setArchiveMsg(`Aperto «${d.name}».`);
+    setArchiveMsg(lang === "es" ? `Abierto «${d.name}».` : `Aperto «${d.name}».`);
   };
   const removeDesign = async (d: Design) => {
-    if (!confirm(`Eliminare «${d.name}» dall'archivio?`)) return;
-    await designs.remove(d.id).catch(() => setArchiveMsg("Non sono riuscito a eliminarlo."));
+    if (!confirm(lang === "es" ? `¿Eliminar «${d.name}» del archivo?` : `Eliminare «${d.name}» dall'archivio?`)) return;
+    await designs.remove(d.id).catch(() => setArchiveMsg(tr("Non sono riuscito a eliminarlo.")));
     await refreshSaved();
   };
 
@@ -684,12 +698,12 @@ export default function CanvasEditor() {
     run(async () => {
       setImportMsg("");
       const menu = readSavedMenu();
-      if (!menu) return setImportMsg("Nessun menù trovato: crealo prima nell'editor principale.");
-      const pages = await menuToPages(menu, paper);
+      if (!menu) return setImportMsg(tr("Nessun menù trovato: crealo prima nell'editor principale."));
+      const pages = await menuToPages(menu, paper, tr("Tavolo n.:"));
       setPages(() => pages);
       setTables(menu.tableNumbers.map(String).slice(0, 4));
       goPage(pages.length - 1); // la página del menú; la copertina es la anterior
-      setImportMsg(pages.length > 1 ? "Menù importato, con la copertina." : "Menù importato.");
+      setImportMsg(pages.length > 1 ? tr("Menù importato, con la copertina.") : tr("Menù importato."));
     });
   const print = () =>
     run(async () => {
@@ -800,43 +814,43 @@ export default function CanvasEditor() {
   const properties = sels.length > 0 && (
     <div>
       <div className="border-b border-laguna/50 px-4 py-3">
-        <h2 className="font-display text-[15px] font-semibold">{cur ? label(cur) : `${sels.length} elementi`}</h2>
-        <p className="text-xs text-ink/70">{cur ? "Elemento selezionato" : "Selezione multipla"}</p>
+        <h2 className="font-display text-[15px] font-semibold">{cur ? label(cur, tr) : `${sels.length} ${tr("elementi")}`}</h2>
+        <p className="text-xs text-ink/70">{cur ? tr("Elemento selezionato") : tr("Selezione multipla")}</p>
       </div>
-      <Block title="Azioni">
+      <Block title={tr("Azioni")}>
         <div className="flex flex-wrap gap-1.5">
-          <Tip label="Duplica" hint="Ctrl+D"><button className={iconBtn} aria-label="Duplica" onClick={duplicateSel}><Icon d={ICONS.copy} className="size-[18px]" /></button></Tip>
-          {sels.length > 1 && <Tip label="Raggruppa" hint="Ctrl+G: si spostano insieme"><button className={iconBtn} aria-label="Raggruppa" onClick={group}><Icon d={ICONS.group} className="size-[18px]" /></button></Tip>}
-          {selEls.some((x) => x.group) && <Tip label="Separa" hint="Ctrl+Maiusc+G"><button className={iconBtn} aria-label="Separa" onClick={ungroup}><Icon d={ICONS.ungroup} className="size-[18px]" /></button></Tip>}
-          <Tip label="Elimina" hint="Canc"><button className={iconBtn} aria-label="Elimina" onClick={removeSel}><Icon d={ICONS.trash} className="size-[18px]" /></button></Tip>
+          <Tip label={tr("Duplica")} hint="Ctrl+D"><button className={iconBtn} aria-label={tr("Duplica")} onClick={duplicateSel}><Icon d={ICONS.copy} className="size-[18px]" /></button></Tip>
+          {sels.length > 1 && <Tip label={tr("Raggruppa")} hint={tr("Ctrl+G: si spostano insieme")}><button className={iconBtn} aria-label={tr("Raggruppa")} onClick={group}><Icon d={ICONS.group} className="size-[18px]" /></button></Tip>}
+          {selEls.some((x) => x.group) && <Tip label={tr("Separa")} hint={tr("Ctrl+Maiusc+G")}><button className={iconBtn} aria-label={tr("Separa")} onClick={ungroup}><Icon d={ICONS.ungroup} className="size-[18px]" /></button></Tip>}
+          <Tip label={tr("Elimina")} hint={tr("Canc")}><button className={iconBtn} aria-label={tr("Elimina")} onClick={removeSel}><Icon d={ICONS.trash} className="size-[18px]" /></button></Tip>
         </div>
       </Block>
-      <Block title="Allineamento">
+      <Block title={tr("Allineamento")}>
         <div className="grid grid-cols-3 gap-1.5">
-          {([["l", "Sinistra", "a sinistra"], ["c", "Centro", "al centro"], ["r", "Destra", "a destra"], ["t", "Alto", "in alto"], ["m", "Mezzo", "al centro in verticale"], ["b", "Basso", "in basso"]] as const).map(([m, t, d]) => (
-            <button key={m} title={`Allinea ${d}`} aria-label={`Allinea ${d}`} className={`${small} justify-center`} onClick={() => align(m)}>{t}</button>
+          {([["l", tr("Sinistra"), "a sinistra"], ["c", tr("Centro"), "al centro"], ["r", tr("Destra"), "a destra"], ["t", tr("Alto"), "in alto"], ["m", tr("Mezzo"), "al centro in verticale"], ["b", tr("Basso"), "in basso"]] as const).map(([m, t, d]) => (
+            <button key={m} title={tr(`Allinea ${d}`)} aria-label={tr(`Allinea ${d}`)} className={`${small} justify-center`} onClick={() => align(m)}>{t}</button>
           ))}
         </div>
       </Block>
       {cur && (
-        <Block title="Posizione e misure">
+        <Block title={tr("Posizione e misure")}>
           <div className="space-y-2">
             <Num label="X (mm)" value={cur.x} onChange={(v) => patch(cur.id, { x: v })} />
             <Num label="Y (mm)" value={cur.y} onChange={(v) => patch(cur.id, { y: v })} />
-            <Num label="Larghezza (mm)" value={cur.width} min={1} onChange={(v) => patch(cur.id, { width: v })} />
-            {cur.type !== "text" && <Num label="Altezza (mm)" value={cur.height} min={1} onChange={(v) => patch(cur.id, { height: v })} />}
-            <Num label="Rotazione (°)" value={cur.rotation} onChange={(v) => patch(cur.id, { rotation: v })} />
+            <Num label={tr("Larghezza (mm)")} value={cur.width} min={1} onChange={(v) => patch(cur.id, { width: v })} />
+            {cur.type !== "text" && <Num label={tr("Altezza (mm)")} value={cur.height} min={1} onChange={(v) => patch(cur.id, { height: v })} />}
+            <Num label={tr("Rotazione (°)")} value={cur.rotation} onChange={(v) => patch(cur.id, { rotation: v })} />
           </div>
         </Block>
       )}
       {cur?.type === "text" && (
-        <Block title="Testo">
+        <Block title={tr("Testo")}>
           <button className={`${secondary} w-full justify-center`} onClick={() => { setTab("canvas"); setEditing(cur.id); }}>
             <Icon d={ICONS.edit} className="size-4" />
-            Modifica testo
+            {tr("Modifica testo")}
           </button>
-          <p className="text-xs text-ink/70">Oppure doppio clic sul testo, sulla carta.</p>
-          <div role="radiogroup" aria-label="Carattere" className="max-h-52 space-y-0.5 overflow-y-auto rounded-lg border border-laguna p-1">
+          <p className="text-xs text-ink/70">{tr("Oppure doppio clic sul testo, sulla carta.")}</p>
+          <div role="radiogroup" aria-label={tr("Carattere")} className="max-h-52 space-y-0.5 overflow-y-auto rounded-lg border border-laguna p-1">
             {FONTS.map((f) => (
               <button key={f.key} type="button" role="radio" aria-checked={cur.fontFamily === f.key}
                 className={`flex w-full items-center rounded-md px-3 py-1.5 text-left text-lg hover:bg-laguna/30 ${focus} ${cur.fontFamily === f.key ? "bg-laguna/40 font-semibold" : ""}`}
@@ -846,10 +860,10 @@ export default function CanvasEditor() {
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Tip label="Grassetto"><button aria-pressed={cur.bold} className={`${iconBtn} font-bold ${cur.bold ? "bg-laguna/40 text-ink" : ""}`} aria-label="Grassetto" onClick={() => patch(cur.id, { bold: !cur.bold })}>B</button></Tip>
-            <Tip label="Corsivo"><button aria-pressed={cur.italic} className={`${iconBtn} italic ${cur.italic ? "bg-laguna/40 text-ink" : ""}`} aria-label="Corsivo" onClick={() => patch(cur.id, { italic: !cur.italic })}>I</button></Tip>
+            <Tip label={tr("Grassetto")}><button aria-pressed={cur.bold} className={`${iconBtn} font-bold ${cur.bold ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Grassetto")} onClick={() => patch(cur.id, { bold: !cur.bold })}>B</button></Tip>
+            <Tip label={tr("Corsivo")}><button aria-pressed={cur.italic} className={`${iconBtn} italic ${cur.italic ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Corsivo")} onClick={() => patch(cur.id, { italic: !cur.italic })}>I</button></Tip>
             {(["left", "center", "right"] as const).map((al) => {
-              const t = `Allinea testo ${al === "left" ? "a sinistra" : al === "center" ? "al centro" : "a destra"}`;
+              const t = tr(`Allinea testo ${al === "left" ? "a sinistra" : al === "center" ? "al centro" : "a destra"}`);
               return (
                 <Tip key={al} label={t}>
                   <button aria-pressed={cur.align === al} className={`${iconBtn} ${cur.align === al ? "bg-laguna/40 text-ink" : ""}`} aria-label={t} onClick={() => patch(cur.id, { align: al })}>
@@ -860,42 +874,42 @@ export default function CanvasEditor() {
             })}
           </div>
           <div className="space-y-2">
-            <Num label="Dimensione (mm)" value={cur.fontSize} min={2} onChange={(v) => patch(cur.id, { fontSize: v })} />
-            <Num label="Interlinea" value={cur.lineHeight ?? 1.2} min={0.5} onChange={(v) => patch(cur.id, { lineHeight: v })} />
+            <Num label={tr("Dimensione (mm)")} value={cur.fontSize} min={2} onChange={(v) => patch(cur.id, { fontSize: v })} />
+            <Num label={tr("Interlinea")} value={cur.lineHeight ?? 1.2} min={0.5} onChange={(v) => patch(cur.id, { lineHeight: v })} />
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" className="size-4 accent-mare" checked={!!cur.table} onChange={(e) => patch(cur.id, { table: e.target.checked })} />
-            Numero di tavolo (diverso per ogni copia)
+            {tr("Numero di tavolo (diverso per ogni copia)")}
           </label>
         </Block>
       )}
       {cur && cur.type !== "image" && (
-        <Block title="Colore">
+        <Block title={tr("Colore")}>
           <div className="flex flex-wrap items-center gap-2">
             {PALETTE.map((c) => (
-              <button key={c.hex} title={c.name} aria-label={c.name} aria-pressed={cur.fill.toLowerCase() === c.hex.toLowerCase()}
+              <button key={c.hex} title={tr(c.name)} aria-label={tr(c.name)} aria-pressed={cur.fill.toLowerCase() === c.hex.toLowerCase()}
                 className={`size-7 rounded-full ring-1 ring-laguna ring-offset-2 ring-offset-surface aria-pressed:ring-2 aria-pressed:ring-mare ${focus}`}
                 style={{ background: c.hex }} onClick={() => patch(cur.id, { fill: c.hex })} />
             ))}
-            <input type="color" aria-label="Altro colore" className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={cur.fill} onChange={(e) => patch(cur.id, { fill: e.target.value })} />
+            <input type="color" aria-label={tr("Altro colore")} className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={cur.fill} onChange={(e) => patch(cur.id, { fill: e.target.value })} />
           </div>
         </Block>
       )}
       {cur && (
-        <Block title="Aspetto">
+        <Block title={tr("Aspetto")}>
           <label className="flex items-center gap-2 text-[13px] font-semibold">
-            Opacità
+            {tr("Opacità")}
             <input type="range" className="min-w-0 flex-1 accent-mare" min={0} max={1} step={0.05} value={cur.opacity} onChange={(e) => patch(cur.id, { opacity: Number(e.target.value) })} />
             <span className="w-10 text-right font-normal tabular-nums">{Math.round(cur.opacity * 100)}%</span>
           </label>
-          {cur.type === "rect" && <Num label="Angoli (mm)" value={cur.radius} min={0} onChange={(v) => patch(cur.id, { radius: v })} />}
-          {cur.type === "tiles" && <Num label="Dimensione maiolica" value={cur.k} min={0.1} onChange={(v) => patch(cur.id, { k: v })} />}
+          {cur.type === "rect" && <Num label={tr("Angoli (mm)")} value={cur.radius} min={0} onChange={(v) => patch(cur.id, { radius: v })} />}
+          {cur.type === "tiles" && <Num label={tr("Dimensione maiolica")} value={cur.k} min={0.1} onChange={(v) => patch(cur.id, { k: v })} />}
           {cur.type === "line" && (
             <>
-              <Num label="Spessore (mm)" value={cur.thickness} min={0.1} onChange={(v) => patch(cur.id, { thickness: v })} />
+              <Num label={tr("Spessore (mm)")} value={cur.thickness} min={0.1} onChange={(v) => patch(cur.id, { thickness: v })} />
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" className="size-4 accent-mare" checked={cur.dash} onChange={(e) => patch(cur.id, { dash: e.target.checked })} />
-                Punteggiata
+                {tr("Punteggiata")}
               </label>
             </>
           )}
@@ -903,13 +917,13 @@ export default function CanvasEditor() {
       )}
     </div>
   );
-  const hint = "Seleziona un elemento per modificarlo, oppure trascina sulla carta per selezionarne di più (Maiusc per aggiungere). Frecce per spostare (Maiusc = 5 mm).";
+  const hint = tr("Seleziona un elemento per modificarlo, oppure trascina sulla carta per selezionarne di più (Maiusc per aggiungere). Frecce per spostare (Maiusc = 5 mm).");
 
   // Plantillas de texto y formas de las secciones «Testo» y «Forme»
   const textPresets: { name: string; hint: string; cls: string; o: Partial<Extract<El, { type: "text" }>> }[] = [
-    { name: "Titolo", hint: "Per il nome del locale o le sezioni", cls: "text-xl font-bold", o: { fontSize: 16, bold: true, fontFamily: "display", width: 170 } },
-    { name: "Sottotitolo", hint: "Per le categorie del menù", cls: "text-base font-semibold", o: { fontSize: 10, bold: true, width: 170 } },
-    { name: "Corpo", hint: "Per piatti, ingredienti e prezzi", cls: "text-sm", o: { fontSize: 6, width: 170 } },
+    { name: tr("Titolo"), hint: tr("Per il nome del locale o le sezioni"), cls: "text-xl font-bold", o: { fontSize: 16, bold: true, fontFamily: "display", width: 170 } },
+    { name: tr("Sottotitolo"), hint: tr("Per le categorie del menù"), cls: "text-base font-semibold", o: { fontSize: 10, bold: true, width: 170 } },
+    { name: tr("Corpo"), hint: tr("Per piatti, ingredienti e prezzi"), cls: "text-sm", o: { fontSize: 6, width: 170 } },
   ];
   const shapeBase = { x: 20, y: 60, ...common };
   const kinds = (stroke: boolean) => (Object.keys(SHAPES) as ShapeKind[]).filter((k) => SHAPES[k].stroke === stroke);
@@ -919,28 +933,28 @@ export default function CanvasEditor() {
   };
   const tile = `flex flex-col items-center gap-1.5 rounded-lg border border-laguna bg-surface px-2 py-3 text-center lift hover:border-mare hover:bg-laguna/15 ${focus}`;
   const shapes = [
-    { name: "Rettangolo", hint: "Un riquadro pieno, utile come sfondo", icon: ICONS.rect, el: { type: "rect", ...shapeBase, width: 60, height: 30, fill: PALETTE[2].hex, radius: 0 } as const },
-    { name: "Cerchio", hint: "Un cerchio pieno, anche per le icone", icon: ICONS.circle, el: { type: "rect", ...shapeBase, width: 40, height: 40, fill: PALETTE[2].hex, radius: 20 } as const },
-    { name: "Linea", hint: "Separa le sezioni del menù", icon: ICONS.line, el: { type: "line", ...shapeBase, width: 80, height: 1, fill: PALETTE[0].hex, thickness: 0.6, dash: false } as const },
-    { name: "Punteggiata", hint: "Per guidare l'occhio fino al prezzo", icon: ICONS.dots, el: { type: "line", ...shapeBase, width: 80, height: 1, fill: PALETTE[0].hex, thickness: 0.8, dash: true } as const },
+    { name: tr("Rettangolo"), hint: tr("Un riquadro pieno, utile come sfondo"), icon: ICONS.rect, el: { type: "rect", ...shapeBase, width: 60, height: 30, fill: PALETTE[2].hex, radius: 0 } as const },
+    { name: tr("Cerchio"), hint: tr("Un cerchio pieno, anche per le icone"), icon: ICONS.circle, el: { type: "rect", ...shapeBase, width: 40, height: 40, fill: PALETTE[2].hex, radius: 20 } as const },
+    { name: tr("Linea"), hint: tr("Separa le sezioni del menù"), icon: ICONS.line, el: { type: "line", ...shapeBase, width: 80, height: 1, fill: PALETTE[0].hex, thickness: 0.6, dash: false } as const },
+    { name: tr("Punteggiata"), hint: tr("Per guidare l'occhio fino al prezzo"), icon: ICONS.dots, el: { type: "line", ...shapeBase, width: 80, height: 1, fill: PALETTE[0].hex, thickness: 0.8, dash: true } as const },
   ];
 
   // Secciones del editor: carril de iconos en escritorio; en móvil se apilan todas en la pestaña «Strumenti»
   const sections = [
-    { id: "text", label: "Testo", hint: "Titoli e paragrafi da scrivere sulla carta", icon: ICONS.text, body: (
+    { id: "text", label: tr("Testo"), hint: tr("Titoli e paragrafi da scrivere sulla carta"), icon: ICONS.text, body: (
       <>
-        <p className="text-sm text-ink/70">Scegli uno stile, poi scrivi direttamente sulla carta.</p>
+        <p className="text-sm text-ink/70">{tr("Scegli uno stile, poi scrivi direttamente sulla carta.")}</p>
         {textPresets.map((p) => (
-          <button key={p.name} className={`flex w-full flex-col items-start gap-0.5 rounded-lg border border-laguna bg-surface px-3 py-3 text-left lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => { const t = newText({ ...p.o, width: Math.min(p.o.width ?? 100, w - 40) }); add(t); freshText.current = t.id; setTab("canvas"); setEditing(t.id); }}>
+          <button key={p.name} className={`flex w-full flex-col items-start gap-0.5 rounded-lg border border-laguna bg-surface px-3 py-3 text-left lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => { const t = newText({ ...p.o, text: tr("Testo"), width: Math.min(p.o.width ?? 100, w - 40) }); add(t); freshText.current = t.id; setTab("canvas"); setEditing(t.id); }}>
             <span className={p.cls}>{p.name}</span>
             <span className="text-xs text-ink/70">{p.hint}</span>
           </button>
         ))}
       </>
     ) },
-    { id: "shapes", label: "Forme", hint: "Rettangoli, cerchi e linee", icon: ICONS.rect, body: (
+    { id: "shapes", label: tr("Forme"), hint: tr("Rettangoli, cerchi e linee"), icon: ICONS.rect, body: (
       <>
-        <p className="text-sm text-ink/70">Tocca una forma per aggiungerla alla carta.</p>
+        <p className="text-sm text-ink/70">{tr("Tocca una forma per aggiungerla alla carta.")}</p>
         <div className="grid grid-cols-2 gap-2">
           {shapes.map((s) => (
             <button key={s.name} title={s.hint} className={`flex flex-col items-center gap-1.5 rounded-lg border border-laguna bg-surface px-2 py-3 text-center lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => add({ ...s.el, id: uid() } as El)}>
@@ -950,69 +964,69 @@ export default function CanvasEditor() {
             </button>
           ))}
           {kinds(false).map((k) => (
-            <button key={k} title={SHAPES[k].hint} className={tile} onClick={() => addShape(k)}>
+            <button key={k} title={tr(SHAPES[k].hint)} className={tile} onClick={() => addShape(k)}>
               <ShapeIcon kind={k} className="size-7 text-mare" />
-              <span className="text-[13px] font-semibold">{SHAPES[k].label}</span>
-              <span className="text-xs leading-tight text-ink/70">{SHAPES[k].hint}</span>
+              <span className="text-[13px] font-semibold">{tr(SHAPES[k].label)}</span>
+              <span className="text-xs leading-tight text-ink/70">{tr(SHAPES[k].hint)}</span>
             </button>
           ))}
         </div>
       </>
     ) },
-    { id: "objects", label: "Oggetti", hint: "Icone di caffè, vino, posate e altro", icon: SHAPES.utensils.d, body: (
+    { id: "objects", label: tr("Oggetti"), hint: tr("Icone di caffè, vino, posate e altro"), icon: SHAPES.utensils.d, body: (
       <>
-        <p className="text-sm text-ink/70">Icone semplici: cambia colore e misura come vuoi.</p>
+        <p className="text-sm text-ink/70">{tr("Icone semplici: cambia colore e misura come vuoi.")}</p>
         <div className="grid grid-cols-2 gap-2">
           {kinds(true).map((k) => (
-            <button key={k} title={SHAPES[k].hint} className={tile} onClick={() => addShape(k)}>
+            <button key={k} title={tr(SHAPES[k].hint)} className={tile} onClick={() => addShape(k)}>
               <ShapeIcon kind={k} className="size-7 text-mare" />
-              <span className="text-[13px] font-semibold">{SHAPES[k].label}</span>
-              <span className="text-xs leading-tight text-ink/70">{SHAPES[k].hint}</span>
+              <span className="text-[13px] font-semibold">{tr(SHAPES[k].label)}</span>
+              <span className="text-xs leading-tight text-ink/70">{tr(SHAPES[k].hint)}</span>
             </button>
           ))}
         </div>
       </>
     ) },
-    { id: "images", label: "Immagini", hint: "Foto e loghi", icon: ICONS.image, body: (
+    { id: "images", label: tr("Immagini"), hint: tr("Foto e loghi"), icon: ICONS.image, body: (
       <>
-        <p className="text-sm text-ink/70">Carica una foto o un logo, oppure cercane una sul web. Le immagini grandi vengono ridotte per entrare nel salvataggio.</p>
+        <p className="text-sm text-ink/70">{tr("Carica una foto o un logo, oppure cercane una sul web. Le immagini grandi vengono ridotte per entrare nel salvataggio.")}</p>
         <label className={`${primary} relative w-full cursor-pointer focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink`}>
           <Icon d={ICONS.image} className="size-[18px]" />
-          Carica un&apos;immagine
+          {tr("Carica un'immagine")}
           <input type="file" accept="image/*" className="sr-only" onChange={(e) => { addImage(e.target.files?.[0]); e.target.value = ""; }} />
         </label>
         <hr className="border-laguna/50" />
-        <h3 className="text-[13px] font-semibold">Cerca sul web</h3>
-        <ImageSearch onPick={addImage} />
+        <h3 className="text-[13px] font-semibold">{tr("Cerca sul web")}</h3>
+        <ImageSearch onPick={addImage} tr={tr} lang={lang} />
       </>
     ) },
-    { id: "pages", label: "Pagine", hint: "Aggiungi, duplica e ordina le pagine", icon: ICONS.pages, body: (
+    { id: "pages", label: tr("Pagine"), hint: tr("Aggiungi, duplica e ordina le pagine"), icon: ICONS.pages, body: (
       <>
-          <p className="text-sm font-semibold">Pagina {page + 1} di {hist.pages.length}</p>
+          <p className="text-sm font-semibold">{tr("Pagina")} {page + 1} {tr("di")} {hist.pages.length}</p>
           <div className="flex flex-wrap gap-1">
-            <button className={iconBtn} aria-label="Nuova pagina" title="Nuova pagina" onClick={addPage}><Icon d={ICONS.plus} /></button>
-            <button className={iconBtn} aria-label="Duplica pagina" title="Duplica pagina" onClick={duplicatePage}><Icon d={ICONS.copy} /></button>
-            <button className={iconBtn} aria-label="Sposta indietro" title="Sposta indietro" disabled={page === 0} onClick={() => movePage(-1)}><Icon d={ICONS.left} /></button>
-            <button className={iconBtn} aria-label="Sposta avanti" title="Sposta avanti" disabled={page === hist.pages.length - 1} onClick={() => movePage(1)}><Icon d={ICONS.right} /></button>
-            <button className={iconBtn} aria-label="Elimina pagina" title="Elimina pagina" disabled={hist.pages.length < 2} onClick={deletePage}><Icon d={ICONS.trash} /></button>
+            <button className={iconBtn} aria-label={tr("Nuova pagina")} title={tr("Nuova pagina")} onClick={addPage}><Icon d={ICONS.plus} /></button>
+            <button className={iconBtn} aria-label={tr("Duplica pagina")} title={tr("Duplica pagina")} onClick={duplicatePage}><Icon d={ICONS.copy} /></button>
+            <button className={iconBtn} aria-label={tr("Sposta indietro")} title={tr("Sposta indietro")} disabled={page === 0} onClick={() => movePage(-1)}><Icon d={ICONS.left} /></button>
+            <button className={iconBtn} aria-label={tr("Sposta avanti")} title={tr("Sposta avanti")} disabled={page === hist.pages.length - 1} onClick={() => movePage(1)}><Icon d={ICONS.right} /></button>
+            <button className={iconBtn} aria-label={tr("Elimina pagina")} title={tr("Elimina pagina")} disabled={hist.pages.length < 2} onClick={deletePage}><Icon d={ICONS.trash} /></button>
           </div>
       </>
     ) },
-    { id: "sheet", label: "Foglio", hint: "Carta, copie e numeri di tavolo", icon: ICONS.sheet, body: (
+    { id: "sheet", label: tr("Foglio"), hint: tr("Carta, copie e numeri di tavolo"), icon: ICONS.sheet, body: (
       <>
           <fieldset>
-          <legend className="mb-1.5 text-sm font-semibold">Colore della carta</legend>
+          <legend className="mb-1.5 text-sm font-semibold">{tr("Colore della carta")}</legend>
           <div className="flex flex-wrap items-center gap-2">
           {PALETTE.map((c) => (
-          <button key={c.hex} type="button" title={c.name} aria-label={`Carta ${c.name}`} aria-pressed={bg.toLowerCase() === c.hex.toLowerCase()}
+          <button key={c.hex} type="button" title={tr(c.name)} aria-label={`${tr("Carta")} ${tr(c.name)}`} aria-pressed={bg.toLowerCase() === c.hex.toLowerCase()}
           className={`size-7 rounded-full ring-1 ring-laguna ring-offset-2 ring-offset-surface aria-pressed:ring-2 aria-pressed:ring-mare ${focus}`}
           style={{ background: c.hex }} onClick={() => setBg(c.hex)} />
           ))}
-          <input type="color" aria-label="Altro colore della carta" className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={bg} onChange={(e) => setBg(e.target.value)} />
+          <input type="color" aria-label={tr("Altro colore della carta")} className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={bg} onChange={(e) => setBg(e.target.value)} />
           </div>
           </fieldset>
           <fieldset>
-            <legend className="mb-1.5 text-sm font-semibold">Carta</legend>
+            <legend className="mb-1.5 text-sm font-semibold">{tr("Carta")}</legend>
             <div className="flex flex-wrap gap-2">
               {(Object.keys(PAPERS) as Paper[]).map((p) => (
                 <label key={p} className={pillOpt(paper === p)}>
@@ -1025,93 +1039,93 @@ export default function CanvasEditor() {
             </div>
           </fieldset>
           <fieldset>
-            <legend className="mb-1.5 text-sm font-semibold">Copie per foglio</legend>
+            <legend className="mb-1.5 text-sm font-semibold">{tr("Copie per foglio")}</legend>
             <div className="flex flex-wrap gap-2">
               {COPIES.map((n) => {
                 const sh = sheetFor(paper, n);
                 return (
                   <label key={n} className={`${pillOpt(copies === n)} ${sh ? "" : "pointer-events-none opacity-40"}`}>
                     <input type="radio" name="copies" className="sr-only" disabled={!sh} checked={copies === n} onChange={() => setCopies(n)} />
-                    {n === 1 ? "1 copia" : `${n} copie`}
+                    {n === 1 ? tr("1 copia") : `${n} ${tr("copie")}`}
                   </label>
                 );
               })}
             </div>
             <p className="mt-2 text-sm text-ink/65">
-              Foglio: {sheet.name} {sheet.landscape ? "orizzontale" : "verticale"} ({sheet.w} × {sheet.h} mm)
+              {tr("Foglio:")} {sheet.name} {tr(sheet.landscape ? "orizzontale" : "verticale")} ({sheet.w} × {sheet.h} mm)
             </p>
           </fieldset>
           {hasTable && (
             <fieldset className="space-y-2">
-              <legend className="mb-1.5 text-sm font-semibold">Numeri di tavolo</legend>
+              <legend className="mb-1.5 text-sm font-semibold">{tr("Numeri di tavolo")}</legend>
               {COPY_NAMES[copies].map((where, c) => (
                 <label key={c} className="flex items-center justify-between gap-2 text-sm">
-                  {where}
+                  {tr(where)}
                   <input
-                    className={`${input} w-24 text-center`} maxLength={4} inputMode="numeric" placeholder="a penna"
+                    className={`${input} w-24 text-center`} maxLength={4} inputMode="numeric" placeholder={tr("a penna")}
                     value={tables[c] ?? ""}
                     onChange={(e) => setTables((t) => Object.assign([...t], { [c]: e.target.value }))}
                   />
                 </label>
               ))}
-              <p className="text-sm text-ink/65">Lascia vuoto per scriverlo a penna. In pantalla il numero è solo un segnaposto.</p>
+              <p className="text-sm text-ink/65">{tr("Lascia vuoto per scriverlo a penna. In pantalla il numero è solo un segnaposto.")}</p>
             </fieldset>
           )}
       </>
     ) },
-    { id: "layers", label: "Livelli", hint: "Ordine, visibilità e blocco degli elementi", icon: ICONS.layers, body: (
+    { id: "layers", label: tr("Livelli"), hint: tr("Ordine, visibilità e blocco degli elementi"), icon: ICONS.layers, body: (
       <>
           {sels.length === 0 && <p className="text-sm text-ink/70 lg:hidden">{hint}</p>}
           <ul className="-mx-2 space-y-0.5">
             {[...els].reverse().map((e) => (
               <li key={e.id} className={`flex items-center gap-0.5 rounded-lg px-2 py-0.5 ${sels.includes(e.id) ? "bg-laguna/40" : ""}`}>
                 <button className={`min-w-0 flex-1 truncate py-1.5 text-left text-sm ${focus} ${e.visible ? "" : "text-ink/40 line-through"}`} onClick={(ev) => pick(e.id, ev.shiftKey || ev.ctrlKey || ev.metaKey)}>
-                  {label(e)}
-                  {e.group && <span className="ml-1 text-xs text-ink/45">gruppo</span>}
+                  {label(e, tr)}
+                  {e.group && <span className="ml-1 text-xs text-ink/45">{tr("gruppo")}</span>}
                 </button>
-                <button title="Porta su" aria-label="Porta su" className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => move(e.id, 1)}><Icon d={ICONS.up} className="size-4" /></button>
-                <button title="Porta giù" aria-label="Porta giù" className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => move(e.id, -1)}><Icon d={ICONS.down} className="size-4" /></button>
-                <button title="Mostra o nascondi" aria-label="Mostra o nascondi" aria-pressed={!e.visible} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { visible: !e.visible })}><Icon d={e.visible ? ICONS.eye : ICONS.eyeOff} className="size-4" /></button>
-                <button title="Blocca o sblocca" aria-label="Blocca o sblocca" aria-pressed={e.locked} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { locked: !e.locked })}><Icon d={e.locked ? ICONS.lock : ICONS.unlock} className="size-4" /></button>
+                <button title={tr("Porta su")} aria-label={tr("Porta su")} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => move(e.id, 1)}><Icon d={ICONS.up} className="size-4" /></button>
+                <button title={tr("Porta giù")} aria-label={tr("Porta giù")} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => move(e.id, -1)}><Icon d={ICONS.down} className="size-4" /></button>
+                <button title={tr("Mostra o nascondi")} aria-label={tr("Mostra o nascondi")} aria-pressed={!e.visible} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { visible: !e.visible })}><Icon d={e.visible ? ICONS.eye : ICONS.eyeOff} className="size-4" /></button>
+                <button title={tr("Blocca o sblocca")} aria-label={tr("Blocca o sblocca")} aria-pressed={e.locked} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { locked: !e.locked })}><Icon d={e.locked ? ICONS.lock : ICONS.unlock} className="size-4" /></button>
               </li>
             ))}
           </ul>
       </>
     ) },
-    { id: "archive", label: "File", hint: "Importa, esporta e salva i design", icon: ICONS.archive, body: (
+    { id: "archive", label: tr("File"), hint: tr("Importa, esporta e salva i design"), icon: ICONS.archive, body: (
       <>
           <button className={`${primary} w-full`} disabled={busy} onClick={importMenu}>
             <Icon d={ICONS.edit} className="size-[18px]" />
-            Importa il menù attuale
+            {tr("Importa il menù attuale")}
           </button>
           {importMsg && <p role="status" className="text-sm text-ink/65">{importMsg}</p>}
           <div className="flex flex-wrap gap-2">
             <button className={secondary} disabled={busy} onClick={exportPdf}><Icon d={ICONS.download} className="size-4" />PDF</button>
             <button className={secondary} disabled={busy} onClick={exportPng}><Icon d={ICONS.download} className="size-4" />PNG</button>
-            <button className={secondary} disabled={busy} onClick={print}><Icon d={ICONS.print} className="size-4" />Stampa</button>
-            <button className={secondary} onClick={() => { if (confirm("Cancellare tutto e ricominciare?")) { setPages(() => [starter()]); goPage(0); } }}><Icon d={ICONS.reset} className="size-4" />Nuovo</button>
+            <button className={secondary} disabled={busy} onClick={print}><Icon d={ICONS.print} className="size-4" />{tr("Stampa")}</button>
+            <button className={secondary} onClick={() => { if (confirm(tr("Cancellare tutto e ricominciare?"))) { setPages(() => [starter()]); goPage(0); } }}><Icon d={ICONS.reset} className="size-4" />{tr("Nuovo")}</button>
           </div>
           {exportError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">{exportError}</p>}
-          {saveError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">Non c&apos;è spazio per salvare: ci sono troppe immagini. Il lavoro non verrà ripristinato se ricarichi.</p>}
+          {saveError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">{tr("Non c'è spazio per salvare: ci sono troppe immagini. Il lavoro non verrà ripristinato se ricarichi.")}</p>}
         <hr className="border-laguna/50" />
           <div className="flex gap-2">
             <input
-              aria-label="Nome del design" className={input} placeholder="Nome del design" value={designName}
+              aria-label={tr("Nome del design")} className={input} placeholder={tr("Nome del design")} value={designName}
               onChange={(e) => setDesignName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveDesign()}
             />
-            <button className={secondary} onClick={saveDesign}><Icon d={ICONS.save} className="size-4" />Salva</button>
+            <button className={secondary} onClick={saveDesign}><Icon d={ICONS.save} className="size-4" />{tr("Salva")}</button>
           </div>
           {archiveMsg && <p role="status" className="text-sm text-ink/65">{archiveMsg}</p>}
           <ul className="space-y-2">
             {saved.map((d) => (
               <li key={d.id} className="flex items-center gap-2 rounded-lg bg-surface px-3 py-2 ring-1 ring-laguna/60">
-                <button className={`min-w-0 flex-1 text-left ${focus}`} onClick={() => openDesign(d)} title={`Apri «${d.name}»`}>
+                <button className={`min-w-0 flex-1 text-left ${focus}`} onClick={() => openDesign(d)} title={`${tr("Apri")} «${d.name}»`}>
                   <p className="truncate text-sm font-semibold">{d.name}</p>
                   <p className="text-xs text-ink/55">
-                    {d.doc.paper} · {d.doc.pages.length} {d.doc.pages.length === 1 ? "pagina" : "pagine"} · {new Date(d.savedAt).toLocaleDateString("it-IT", { day: "numeric", month: "short" })}
+                    {d.doc.paper} · {d.doc.pages.length} {tr(d.doc.pages.length === 1 ? "pagina" : "pagine")} · {new Date(d.savedAt).toLocaleDateString(lang === "es" ? "es-ES" : "it-IT", { day: "numeric", month: "short" })}
                   </p>
                 </button>
-                <button aria-label={`Elimina ${d.name}`} title="Elimina" className={iconBtn} onClick={() => removeDesign(d)}><Icon d={ICONS.trash} className="size-4" /></button>
+                <button aria-label={`${tr("Elimina")} ${d.name}`} title={tr("Elimina")} className={iconBtn} onClick={() => removeDesign(d)}><Icon d={ICONS.trash} className="size-4" /></button>
               </li>
             ))}
           </ul>
@@ -1128,39 +1142,47 @@ export default function CanvasEditor() {
     <div className="flex h-dvh flex-col bg-surface text-ink print:hidden">
       <header className="shrink-0 border-b border-laguna/60 bg-surface pt-[env(safe-area-inset-top)]">
         <div className="flex h-12 items-center gap-2 px-3 md:gap-3 md:px-4">
-          <Tip label="Torna al menù" hint="Esci dall'editor libero. Le modifiche sono già salvate.">
+          <Tip label={tr("Torna al menù")} hint={tr("Esci dall'editor libero. Le modifiche sono già salvate.")}>
             <Link href="/" className={`inline-flex h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold hover:bg-laguna/30 md:h-9 ${focus}`}>
               <Icon d={ICONS.left} className="size-[18px]" />
-              Menù
+              {tr("Menù")}
             </Link>
           </Tip>
           <Link href="/" aria-label="Menudo" className={`hidden rounded-md sm:block ${focus}`}>
             <Brand />
           </Link>
           <p className="min-w-0 flex-1 truncate text-xs text-ink/70" aria-live="polite">
-            Editor libero · Le modifiche si salvano da sole
+            {tr("Editor libero · Le modifiche si salvano da sole")}
           </p>
-          <Tip label="Annulla" hint="Ctrl+Z">
-            <button className={iconBtn} aria-label="Annulla" disabled={!hist.past.length} onClick={undo}>
+          <Tip label={tr("Annulla")} hint="Ctrl+Z">
+            <button className={iconBtn} aria-label={tr("Annulla")} disabled={!hist.past.length} onClick={undo}>
               <Icon d={ICONS.undo} className="size-[18px]" />
             </button>
           </Tip>
-          <Tip label="Ripeti" hint="Ctrl+Maiusc+Z">
-            <button className={iconBtn} aria-label="Ripeti" disabled={!hist.future.length} onClick={redo}>
+          <Tip label={tr("Ripeti")} hint={tr("Ctrl+Maiusc+Z")}>
+            <button className={iconBtn} aria-label={tr("Ripeti")} disabled={!hist.future.length} onClick={redo}>
               <Icon d={ICONS.redo} className="size-[18px]" />
             </button>
           </Tip>
-          <Tip label={dark ? "Tema chiaro" : "Tema scuro"} hint="Cambia l'aspetto dell'editor">
-            <button className={iconBtn} aria-label={dark ? "Tema chiaro" : "Tema scuro"} onClick={toggleTheme}>
+          <div role="group" aria-label={tr("Lingua")} className="flex shrink-0 rounded-lg bg-laguna/25 p-0.5">
+            {(["it", "es"] as const).map((l) => (
+              <button key={l} aria-pressed={lang === l} title={l === "it" ? "Italiano" : "Español"} onClick={() => changeLang(l)}
+                className={`h-10 min-w-9 rounded-md px-2 text-xs font-semibold md:h-8 ${focus} ${lang === l ? "bg-surface shadow-sm" : "text-ink/70 hover:text-ink"}`}>
+                {l.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <Tip label={dark ? tr("Tema chiaro") : tr("Tema scuro")} hint={tr("Cambia l'aspetto dell'editor")}>
+            <button className={iconBtn} aria-label={dark ? tr("Tema chiaro") : tr("Tema scuro")} onClick={toggleTheme}>
               <Icon d={dark ? ICONS.sun : ICONS.moon} className="size-[18px]" />
             </button>
           </Tip>
           <button
             className={`hidden h-9 shrink-0 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white lift hover:brightness-110 disabled:opacity-50 md:inline-flex ${focus}`}
-            title="Stampa" disabled={busy} onClick={print}
+            title={tr("Stampa")} disabled={busy} onClick={print}
           >
             <Icon d={ICONS.print} className="size-[18px]" />
-            Stampa
+            {tr("Stampa")}
           </button>
         </div>
       </header>
@@ -1168,7 +1190,7 @@ export default function CanvasEditor() {
       <div className="flex min-h-0 flex-1">
       {/* Escritorio: carril de iconos y una sección cada vez, como en Canva */}
       <div className="hidden md:flex">
-        <nav aria-label="Sezioni" className="flex w-16 shrink-0 flex-col items-center gap-1 border-r border-laguna/60 bg-surface py-2">
+        <nav aria-label={tr("Sezioni")} className="flex w-16 shrink-0 flex-col items-center gap-1 border-r border-laguna/60 bg-surface py-2">
           {sections.map((s) => (
             <Tip key={s.id} side="right" label={s.label} hint={s.hint}>
               <button
@@ -1187,7 +1209,7 @@ export default function CanvasEditor() {
         </aside>
       </div>
       {/* Móvil: pestaña «Strumenti» con todas las secciones apiladas */}
-      <aside aria-label="Strumenti" className={`${tab === "tools" ? "block" : "hidden"} w-full shrink-0 overflow-y-auto bg-surface pb-24 md:hidden`}>
+      <aside aria-label={tr("Strumenti")} className={`${tab === "tools" ? "block" : "hidden"} w-full shrink-0 overflow-y-auto bg-surface pb-24 md:hidden`}>
         {sections.map((s) => (
           <Fragment key={s.id}>
             <Group title={s.label} icon={s.icon} open={s.id === "text"}><form className="space-y-3" onSubmit={(e) => e.preventDefault()}>{s.body}</form></Group>
@@ -1200,14 +1222,14 @@ export default function CanvasEditor() {
         {/* sticky dentro de la zona que se desplaza (no fixed): las bolas quedan dentro de su caja, como en el editor principal */}
         <div className="pointer-events-none sticky top-1/2 z-20 -mb-5 h-0">
           <div role="group" aria-label={`Zoom ${pct}%`} className="pointer-events-auto absolute right-0 flex -translate-y-1/2 flex-col gap-2">
-            <button className={ball} aria-label="Ingrandisci" title={`Ingrandisci · ${pct}%`} disabled={mul >= maxMul} onClick={() => zoomBy(1.25)}><Icon d={ICONS.zoomIn} /></button>
-            <button className={`${ball} text-xs font-semibold tabular-nums`} aria-label="Adatta alla larghezza" title="Adatta alla larghezza" onClick={() => setMul(1)}>{pct}%</button>
-            <button className={ball} aria-label="Riduci" title={`Riduci · ${pct}%`} disabled={mul <= 0.5} onClick={() => zoomBy(1 / 1.25)}><Icon d={ICONS.zoomOut} /></button>
+            <button className={ball} aria-label={tr("Ingrandisci")} title={`${tr("Ingrandisci")} · ${pct}%`} disabled={mul >= maxMul} onClick={() => zoomBy(1.25)}><Icon d={ICONS.zoomIn} /></button>
+            <button className={`${ball} text-xs font-semibold tabular-nums`} aria-label={tr("Adatta alla pagina")} title={tr("Adatta alla pagina")} onClick={() => setMul(1)}>{pct}%</button>
+            <button className={ball} aria-label={tr("Riduci")} title={`${tr("Riduci")} · ${pct}%`} disabled={mul <= 0.5} onClick={() => zoomBy(1 / 1.25)}><Icon d={ICONS.zoomOut} /></button>
           </div>
         </div>
         {hist.pages.length > 1 && (
           <div className="pointer-events-none sticky top-3 z-20 -mb-9 h-0">
-            <div role="tablist" aria-label="Pagine" className="pointer-events-auto absolute left-0 flex max-w-[60%] flex-wrap gap-1.5">
+            <div role="tablist" aria-label={tr("Pagine")} className="pointer-events-auto absolute left-0 flex max-w-[60%] flex-wrap gap-1.5">
               {hist.pages.map((_, i) => (
                 <button key={i} role="tab" aria-selected={i === page} className={`grid size-9 place-items-center rounded-full text-sm font-semibold shadow-[0_8px_24px_-8px_rgb(14_26_43/0.45)] ring-1 ring-laguna/60 lift ${focus} ${i === page ? "bg-brand text-white" : "bg-surface"}`} onClick={() => goPage(i)}>{i + 1}</button>
               ))}
@@ -1300,7 +1322,7 @@ export default function CanvasEditor() {
           </Stage>
           {editEl && (
             <textarea
-              aria-label="Testo" autoFocus rows={1} value={editEl.text}
+              aria-label={tr("Testo")} autoFocus rows={1} value={editEl.text}
               onFocus={(e) => {
                 const t = e.currentTarget;
                 if (freshText.current === editEl.id) t.select();
@@ -1325,7 +1347,7 @@ export default function CanvasEditor() {
         </div>
         </div>
       </main>
-      <aside aria-label="Proprietà" className="hidden w-[280px] shrink-0 overflow-y-auto border-l border-laguna/60 bg-surface lg:block">
+      <aside aria-label={tr("Proprietà")} className="hidden w-[280px] shrink-0 overflow-y-auto border-l border-laguna/60 bg-surface lg:block">
         {properties}
         {sels.length === 0 && <p className="p-4 text-sm text-ink/70">{hint}</p>}
       </aside>
@@ -1334,14 +1356,14 @@ export default function CanvasEditor() {
       {/* Móvil: acciones de la selección y barra de pestañas, en la zona del pulgar */}
       {tab === "canvas" && sels.length > 0 && (
         <div className="fixed inset-x-2 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] flex flex-wrap justify-center gap-2 rounded-2xl bg-surface/95 p-2 shadow-lg ring-1 ring-laguna/60 backdrop-blur md:hidden">
-          <button className={secondary} onClick={duplicateSel}><Icon d={ICONS.copy} className="size-4" />Duplica</button>
-          {sels.length > 1 && <button className={secondary} onClick={group}><Icon d={ICONS.group} className="size-4" />Raggruppa</button>}
-          {selEls.some((x) => x.group) && <button className={secondary} onClick={ungroup}><Icon d={ICONS.ungroup} className="size-4" />Separa</button>}
-          <button className={secondary} onClick={removeSel}><Icon d={ICONS.trash} className="size-4" />Elimina</button>
+          <button className={secondary} onClick={duplicateSel}><Icon d={ICONS.copy} className="size-4" />{tr("Duplica")}</button>
+          {sels.length > 1 && <button className={secondary} onClick={group}><Icon d={ICONS.group} className="size-4" />{tr("Raggruppa")}</button>}
+          {selEls.some((x) => x.group) && <button className={secondary} onClick={ungroup}><Icon d={ICONS.ungroup} className="size-4" />{tr("Separa")}</button>}
+          <button className={secondary} onClick={removeSel}><Icon d={ICONS.trash} className="size-4" />{tr("Elimina")}</button>
         </div>
       )}
-      <nav aria-label="Sezioni" className="fixed inset-x-0 bottom-0 grid grid-cols-5 border-t border-laguna/60 bg-surface/95 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden">
-        {([["canvas", "Carta", ICONS.canvas], ["tools", "Strumenti", ICONS.tools]] as const).map(([id, t, icon]) => (
+      <nav aria-label={tr("Sezioni")} className="fixed inset-x-0 bottom-0 grid grid-cols-5 border-t border-laguna/60 bg-surface/95 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden">
+        {([["canvas", tr("Carta", "tab"), ICONS.canvas], ["tools", tr("Strumenti"), ICONS.tools]] as const).map(([id, t, icon]) => (
           <button key={id} aria-current={tab === id ? "page" : undefined} className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs ${focus} ${tab === id ? "font-semibold" : "text-ink/65"}`} onClick={() => setTab(id)}>
             <span className={`grid h-7 w-12 place-items-center rounded-full transition-colors ${tab === id ? "bg-laguna/50" : ""}`}><Icon d={icon} /></span>
             {t}
@@ -1349,15 +1371,15 @@ export default function CanvasEditor() {
         ))}
         <button className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs text-ink/65 disabled:opacity-40 ${focus}`} disabled={!hist.past.length} onClick={undo}>
           <span className="grid h-7 w-12 place-items-center rounded-full"><Icon d={ICONS.undo} /></span>
-          Annulla
+          {tr("Annulla")}
         </button>
         <button aria-pressed={multi} className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs ${focus} ${multi ? "font-semibold" : "text-ink/65"}`} onClick={() => setMulti((v) => !v)}>
           <span className={`grid h-7 w-12 place-items-center rounded-full transition-colors ${multi ? "bg-laguna/50" : ""}`}><Icon d={ICONS.select} /></span>
-          Multi
+          {tr("Multi")}
         </button>
         <button className={`flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs font-semibold disabled:opacity-50 ${focus}`} disabled={busy} onClick={print}>
           <span className="grid h-7 w-12 place-items-center rounded-full bg-brand text-white"><Icon d={ICONS.print} /></span>
-          Stampa
+          {tr("Stampa")}
         </button>
       </nav>
     </div>

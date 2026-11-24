@@ -100,7 +100,7 @@ async function loadFonts() {
   );
 }
 
-async function contentPage(m: Menu, paper: Paper): Promise<El[]> {
+async function contentPage(m: Menu, paper: Paper, tableLabel: string): Promise<El[]> {
   await loadFonts();
   const logo = m.logo ? await logoSize(m.logo) : { w: 0, h: 0 };
 
@@ -127,7 +127,7 @@ async function contentPage(m: Menu, paper: Paper): Promise<El[]> {
   if (m.tableBox) {
     const by = top + 2;
     out.push({ ...base(W - 10 - 32, by, 32, 13), type: "rect", fill: "#ffffff", radius: 1, stroke: INK, strokeW: 0.5 });
-    const label = "Tavolo n.:";
+    const label = tableLabel;
     const o: T = { bold: true, size: 4.6, lh: 1.5 };
     const lw = measure(label, o).w;
     text(label, W - 10 - 32 - 3 - lw, by + (13 - 4.6 * 1.5) / 2, lw + 0.5, o);
@@ -287,8 +287,8 @@ async function coverPage(m: Menu, paper: Paper): Promise<El[]> {
 }
 
 /** Páginas de la carta: copertina (si está activada) y página del menú. */
-export async function menuToPages(m: Menu, paper: Paper): Promise<El[][]> {
-  const content = await contentPage(m, paper);
+export async function menuToPages(m: Menu, paper: Paper, tableLabel = "Tavolo n.:"): Promise<El[][]> {
+  const content = await contentPage(m, paper, tableLabel);
   const pages = m.coverOn ? [await coverPage(m, paper), content] : [content];
   // El color de tinta de la carta sustituye al de la paleta en textos, líneas y bordes
   return m.ink && m.ink.toLowerCase() !== INK.toLowerCase()

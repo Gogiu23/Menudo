@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { Tr } from "./i18n";
 import { focus, input, primary } from "./ui";
 
 /* Busca PNG transparentes en Pixabay (vía /api/images, la misma ruta del editor principal) y entrega el elegido como archivo.
@@ -13,7 +14,7 @@ const MSG = {
   nokey: "La ricerca di immagini non è attiva: manca la chiave PIXABAY_KEY nel server.",
 };
 
-export function ImageSearch({ onPick }: { onPick: (f: File) => void }) {
+export function ImageSearch({ onPick, tr, lang }: { onPick: (f: File) => void; tr: Tr; lang: string }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
   const [status, setStatus] = useState<keyof typeof MSG | "">("");
@@ -23,7 +24,7 @@ export function ImageSearch({ onPick }: { onPick: (f: File) => void }) {
     if (!q.trim()) return;
     setStatus("searching");
     try {
-      const r = await fetch(`/api/images?lang=it&q=${encodeURIComponent(q)}`);
+      const r = await fetch(`/api/images?lang=${lang}&q=${encodeURIComponent(q)}`);
       const data = await r.json();
       if (!r.ok) return setStatus(data.error === "nokey" ? "nokey" : "searchError");
       setHits(data);
@@ -50,18 +51,18 @@ export function ImageSearch({ onPick }: { onPick: (f: File) => void }) {
     <div role="search" className="space-y-3">
       <div className="flex gap-2">
         <input
-          className={input} type="search" aria-label="Cerca immagini" placeholder="Es. pizza" value={q}
+          className={input} type="search" aria-label={tr("Cerca immagini")} placeholder={tr("Es. pizza")} value={q}
           onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }}
         />
-        <button type="button" className={`${primary} px-3`} disabled={status === "searching"} onClick={search}>Cerca</button>
+        <button type="button" className={`${primary} px-3`} disabled={status === "searching"} onClick={search}>{tr("Cerca")}</button>
       </div>
-      <p className="text-sm text-ink/70" aria-live="polite">{status && MSG[status]}</p>
+      <p className="text-sm text-ink/70" aria-live="polite">{status && tr(MSG[status])}</p>
       {hits.length > 0 && (
         <>
           <div className="grid grid-cols-3 gap-2">
             {hits.map((h) => (
               <button
-                key={h.id} type="button" aria-label="Aggiungi immagine" disabled={adding !== null} onClick={() => pick(h)}
+                key={h.id} type="button" aria-label={tr("Aggiungi immagine")} disabled={adding !== null} onClick={() => pick(h)}
                 className={`aspect-square rounded-lg bg-[repeating-conic-gradient(#e5eef0_0_25%,#fff_0_50%)] bg-[length:16px_16px] p-1 ring-1 ring-laguna transition hover:ring-2 hover:ring-mare disabled:opacity-40 ${focus}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- miniatura de Pixabay, no hay nada que optimizar */}
@@ -70,7 +71,7 @@ export function ImageSearch({ onPick }: { onPick: (f: File) => void }) {
             ))}
           </div>
           {/* Pixabay exige indicar el origen junto a los resultados */}
-          <a href="https://pixabay.com/" target="_blank" rel="noreferrer" className="text-sm text-ink/70 underline underline-offset-2">Immagini da Pixabay</a>
+          <a href="https://pixabay.com/" target="_blank" rel="noreferrer" className="text-sm text-ink/70 underline underline-offset-2">{tr("Immagini da Pixabay")}</a>
         </>
       )}
     </div>
