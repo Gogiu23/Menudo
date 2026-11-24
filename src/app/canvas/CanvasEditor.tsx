@@ -78,7 +78,8 @@ function Num({ label, value, min, onChange }: { label: string; value: number; mi
   );
 }
 
-/* Fase 3: guardado automático en localStorage y deshacer/rehacer */
+/* Fase 4: exportar a PNG y PDF a resolución de impresión, e imprimir.
+   Fase 3: guardado automático en localStorage y deshacer/rehacer */
 const STORAGE_KEY = "menudo:canvas:v1";
 const MAX_HISTORY = 100;
 type History = { past: El[][]; els: El[]; future: El[][] };
@@ -107,6 +108,10 @@ function shrink(src: string, maxPx: number, png: boolean): Promise<{ src: string
     i.src = src;
   });
 }
+
+const DPI = 300;
+const MAX_PIXELS = 16_000_000; // por encima, iOS Safari y otros navegadores móviles se quedan sin memoria de canvas
+const MM_PER_INCH = 25.4;
 
 const btn = "rounded-lg border border-ink/20 bg-white px-3 py-1.5 text-sm hover:bg-laguna/30 disabled:opacity-40";
 
@@ -146,6 +151,10 @@ export default function CanvasEditor() {
   const wrap = useRef<HTMLDivElement>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const layerRef = useRef<Konva.Layer>(null);
+  const stageRef = useRef<Konva.Stage>(null);
+  const [busy, setBusy] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const [printSrc, setPrintSrc] = useState("");
   const { w, h } = PAPERS[paper];
 
   // Las fuentes web se descargan al usarse en el DOM: se piden aquí y se repinta el lienzo al llegar
@@ -243,6 +252,62 @@ export default function CanvasEditor() {
     r.readAsDataURL(file);
   };
 
+  // Dibuja la hoja entera a ~300 ppp (menos si superaría el límite de píxeles) sin las maniglie
+  const render = () => {
+    const stage = stageRef.current!;
+    const tr = trRef.current!;
+    const targetW = (w / MM_PER_INCH) * DPI;
+    const targetH = (h / MM_PER_INCH) * DPI;
+    const k = Math.min(1, Math.sqrt(MAX_PIXELS / (targetW * targetH)));
+    tr.visible(false);
+    try {
+      return { url: stage.toDataURL({ pixelRatio: (targetW * k) / (w * zoom), mimeType: "image/png" }), dpi: Math.round(DPI * k) };
+    } finally {
+      tr.visible(true);
+    }
+  };
+  const download = (href: string, name: string) => {
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = name;
+    a.click();
+  };
+  const run = async (job: () => Promise<void>) => {
+    setBusy(true);
+    setExportError("");
+    try {
+      await job();
+    } catch {
+      setExportError("Non sono riuscito a creare il file. Prova con una carta più piccola o meno immagini.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const exportPng = () => run(async () => download(render().url, `menu-${paper}.png`));
+  const exportPdf = () =>
+    run(async () => {
+      const { PDFDocument } = await import("pdf-lib");
+      const png = await fetch(render().url).then((r) => r.arrayBuffer());
+      const doc = await PDFDocument.create();
+      const pt = (mm: number) => (mm / MM_PER_INCH) * 72;
+      const page = doc.addPage([pt(w), pt(h)]);
+      page.drawImage(await doc.embedPng(png), { x: 0, y: 0, width: pt(w), height: pt(h) });
+      const bytes = await doc.save();
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
+      download(url, `menu-${paper}.pdf`);
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    });
+  const print = () =>
+    run(async () => {
+      const { url } = render();
+      const im = new window.Image();
+      im.src = url;
+      await im.decode();
+      setPrintSrc(url);
+      await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+      window.print();
+    });
+
   // Al terminar de transformar, la escala pasa a width/height para no acumularla
   const onTransformEnd = (e: Konva.KonvaEventObject<Event>, el: El) => {
     const n = e.target;
@@ -255,7 +320,9 @@ export default function CanvasEditor() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-laguna/35 text-ink md:flex-row">
+    <>
+    <style>{`@page { size: ${paper} portrait; margin: 0; }`}</style>
+    <div className="flex min-h-screen flex-col bg-laguna/35 text-ink md:flex-row print:hidden">
       <aside className="flex shrink-0 flex-col gap-4 md:sticky md:top-0 md:h-screen md:overflow-y-auto border-b border-laguna/60 bg-white p-4 md:w-72 md:border-r md:border-b-0">
         <h1 className="font-display text-lg font-semibold">Editor libero (prova)</h1>
 
@@ -264,6 +331,12 @@ export default function CanvasEditor() {
           <button className={btn} disabled={!hist.future.length} onClick={redo} title="Ctrl+Maiusc+Z">↷ Ripeti</button>
           <button className={btn} onClick={() => { if (confirm("Cancellare tutto e ricominciare?")) { setEls(starter()); setSel(null); } }}>Nuovo</button>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className={`${btn} bg-mare font-semibold hover:bg-mare`} disabled={busy} onClick={print}>Stampa</button>
+          <button className={btn} disabled={busy} onClick={exportPdf}>PDF</button>
+          <button className={btn} disabled={busy} onClick={exportPng}>PNG</button>
+        </div>
+        {exportError && <p role="alert" className="rounded-lg bg-limone/60 p-2 text-sm">{exportError}</p>}
         {saveError && <p role="alert" className="rounded-lg bg-limone/60 p-2 text-sm">Non c&apos;è spazio per salvare: ci sono troppe immagini. Il lavoro non verrà ripristinato se ricarichi.</p>}
 
         <fieldset className="flex flex-wrap gap-2">
@@ -362,6 +435,7 @@ export default function CanvasEditor() {
       <main ref={wrap} className="flex flex-1 justify-center overflow-auto p-4">
         <div className="h-fit shadow-[0_18px_40px_-18px_rgb(23_48_51/0.45)]">
           <Stage
+            ref={stageRef}
             width={w * zoom}
             height={h * zoom}
             scaleX={zoom}
@@ -402,5 +476,9 @@ export default function CanvasEditor() {
         </div>
       </main>
     </div>
+    {/* Solo al imprimir: la hoja renderizada a alta resolución, a tamaño real */}
+    {/* eslint-disable-next-line @next/next/no-img-element -- data URL local, no hay nada que optimizar */}
+    <div className="hidden print:block">{printSrc && <img src={printSrc} alt="" style={{ width: `${w}mm`, height: `${h}mm`, display: "block" }} />}</div>
+    </>
   );
 }
