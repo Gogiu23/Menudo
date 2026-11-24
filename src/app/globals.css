@@ -43,8 +43,12 @@ body {
 /* Mesa de trabajo: cuadrícula de puntos bajo la hoja, como en un programa de maquetación */
 @utility canvas {
   background-color: var(--canvas);
-  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
-  background-size: 16px 16px;
+  /* arriba, el foco de luz del cursor (--px/--py/--po los pone useGlow en la raíz); debajo, la cuadrícula de puntos */
+  background-image:
+    radial-gradient(calc(var(--po, 0) * 380px) circle at var(--px, -999px) var(--py, -999px), color-mix(in oklab, var(--color-mare) 16%, transparent), transparent 70%),
+    radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: auto, 16px 16px;
+  background-attachment: fixed, scroll;
 }
 
 /* Azul de la marca: de oscuro a claro (botones, sección abierta, icono de la app) */
@@ -131,6 +135,21 @@ input[type="checkbox"],
 input[type="radio"],
 input[type="range"] {
   cursor: var(--cur-hand);
+}
+
+/* Foco de luz del cursor sobre los fondos: un solo punto anclado a la ventana (fixed), así se ve continuo por paneles, cabecera y mesa.
+   --po (0–1) se anima en la raíz con .glow-root y lo heredan las superficies .glow-bg; el foco crece de 0 a 380 px con él */
+@property --po {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@utility glow-root {
+  transition: --po 250ms ease-out;
+}
+@utility glow-bg {
+  background-image: radial-gradient(calc(var(--po, 0) * 380px) circle at var(--px, -999px) var(--py, -999px), color-mix(in oklab, var(--color-mare) 16%, transparent), transparent 70%);
+  background-attachment: fixed;
 }
 
 /* Brillo que sigue al ratón (useGlow, canvas/glow.ts): el borde y el fondo se iluminan hacia el cursor, en el azul de la interfaz */
