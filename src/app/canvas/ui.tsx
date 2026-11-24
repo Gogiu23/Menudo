@@ -198,7 +198,7 @@ export function Num({ label, value, min, step = 1, onChange }: { label: string; 
   return (
     <label className="flex items-center justify-between gap-3 text-[13px] font-semibold">
       {label}
-      <span className="flex shrink-0 items-center rounded-lg border border-transparent bg-laguna/20 p-0.5 transition-[background-color,box-shadow,border-color] focus-within:border-mare focus-within:bg-surface focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-mare)_22%,transparent)] hover:bg-laguna/30">
+      <span className="glow flex shrink-0 items-center rounded-lg border border-transparent bg-laguna/20 p-0.5 transition-[background-color,box-shadow,border-color] focus-within:border-mare focus-within:bg-surface focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-mare)_22%,transparent)] hover:bg-laguna/30">
         <button type="button" tabIndex={-1} aria-hidden className={btn} onClick={() => bump(-step)}>−</button>
         <input
           type="number" step="any" min={min}

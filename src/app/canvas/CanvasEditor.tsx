@@ -777,6 +777,18 @@ export default function CanvasEditor() {
 
   // Tras mover o transformar, guarda todos los elementos seleccionados y pasa la escala a width/height
   // para no acumularla. Es idempotente: si Konva avisa varias veces (una por nodo) no añade pasos de historial.
+  // Texto en vivo: al arrastrar un tirador no se estira, se re-ajusta al instante. Tiradores de los lados: cambia el ancho y el texto
+  // salta de línea; arriba/abajo: cambia el cuerpo de la letra; esquinas: ancho y cuerpo a la vez (se amplía o reduce entero)
+  const textLive = (e: Konva.KonvaEventObject<Event>) => {
+    const n = e.target as Konva.Text;
+    const a = trRef.current?.getActiveAnchor() ?? "";
+    const next = a.startsWith("middle")
+      ? { width: Math.max(5, n.width() * n.scaleX()) }
+      : a === "top-center" || a === "bottom-center"
+        ? { fontSize: Math.max(2, n.fontSize() * n.scaleY()) }
+        : { width: Math.max(5, n.width() * n.scaleX()), fontSize: Math.max(2, n.fontSize() * n.scaleX()) };
+    n.setAttrs({ ...next, scaleX: 1, scaleY: 1 });
+  };
   const commit = () => {
     const layer = layerRef.current!;
     const upd = new Map<string, Partial<El>>();
@@ -788,10 +800,13 @@ export default function CanvasEditor() {
       n.scaleX(1);
       n.scaleY(1);
       const u: Partial<El> = { x: n.x(), y: n.y(), rotation: n.rotation() };
-      if (sx !== 1 || sy !== 1) {
+      if (el.type === "text") {
+        // ya re-ajustado en vivo por textLive: ancho y cuerpo salen del propio nodo
+        (u as Partial<typeof el>).fontSize = Math.max(2, (n as Konva.Text).fontSize());
+        u.width = Math.max(1, n.width());
+      } else if (sx !== 1 || sy !== 1) {
         u.width = Math.max(1, n.width() * sx);
-        if (el.type === "text") (u as Partial<typeof el>).fontSize = Math.max(2, el.fontSize * sy);
-        else if (el.type !== "line") u.height = Math.max(0.1, n.height() * sy);
+        if (el.type !== "line") u.height = Math.max(0.1, n.height() * sy);
       }
       upd.set(el.id, u);
     }
@@ -944,7 +959,7 @@ export default function CanvasEditor() {
     const size = SHAPES[kind].stroke ? 30 : 40;
     add({ id: uid(), type: "shape", kind, ...shapeBase, width: size, height: size, fill: SHAPES[kind].stroke ? PALETTE[0].hex : PALETTE[2].hex });
   };
-  const tile = `flex flex-col items-center gap-1.5 rounded-lg border border-laguna bg-surface px-2 py-3 text-center glow lift hover:border-mare hover:bg-laguna/15 ${focus}`;
+  const tile = `flex flex-col items-center gap-1.5 rounded-lg bg-laguna/20 px-2 py-3 text-center glow lift hover:bg-laguna/35 ${focus}`;
   const shapes = [
     { name: tr("Rettangolo"), hint: tr("Un riquadro pieno, utile come sfondo"), icon: ICONS.rect, el: { type: "rect", ...shapeBase, width: 60, height: 30, fill: PALETTE[2].hex, radius: 0 } as const },
     { name: tr("Cerchio"), hint: tr("Un cerchio pieno, anche per le icone"), icon: ICONS.circle, el: { type: "rect", ...shapeBase, width: 40, height: 40, fill: PALETTE[2].hex, radius: 20 } as const },
@@ -970,7 +985,7 @@ export default function CanvasEditor() {
         <p className="text-sm text-ink/70">{tr("Tocca una forma per aggiungerla alla carta.")}</p>
         <div className="grid grid-cols-2 gap-2">
           {shapes.map((s) => (
-            <button key={s.name} title={s.hint} className={`flex flex-col items-center gap-1.5 rounded-lg border border-laguna bg-surface px-2 py-3 text-center glow lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => add({ ...s.el, id: uid() } as El)}>
+            <button key={s.name} title={s.hint} className={`flex flex-col items-center gap-1.5 rounded-lg bg-laguna/20 px-2 py-3 text-center glow lift hover:bg-laguna/35 ${focus}`} onClick={() => add({ ...s.el, id: uid() } as El)}>
               <Icon d={s.icon} className="size-7 text-mare" />
               <span className="text-[13px] font-semibold">{s.name}</span>
               <span className="text-xs leading-tight text-ink/70">{s.hint}</span>
@@ -1320,7 +1335,7 @@ export default function CanvasEditor() {
                 };
                 if (el.type === "text")
                   return (
-                    <Text key={el.id} {...props} visible={el.visible && editing !== el.id} onDblClick={() => setEditing(el.id)} onDblTap={() => setEditing(el.id)} name={el.table ? "table-number" : undefined} height={undefined} text={el.text} fontSize={el.fontSize} {...fillGrad(el.fill, el.grad, el.width, el.fontSize * (el.lineHeight ?? 1.2) * Math.max(1, el.text.split("\n").length))} fontFamily={fontFamily(el.fontFamily)} align={el.align}
+                    <Text key={el.id} {...props} onTransform={textLive} visible={el.visible && editing !== el.id} onDblClick={() => setEditing(el.id)} onDblTap={() => setEditing(el.id)} name={el.table ? "table-number" : undefined} height={undefined} text={el.text} fontSize={el.fontSize} {...fillGrad(el.fill, el.grad, el.width, el.fontSize * (el.lineHeight ?? 1.2) * Math.max(1, el.text.split("\n").length))} fontFamily={fontFamily(el.fontFamily)} align={el.align}
                       fontStyle={fontStyleOf(el)} lineHeight={el.lineHeight ?? 1.2} />
                   );
                 if (el.type === "rect") return <Rect key={el.id} {...props} {...fillGrad(el.fill, el.grad, el.width, el.height)} cornerRadius={el.radius} stroke={el.stroke} strokeWidth={el.strokeW} />;
