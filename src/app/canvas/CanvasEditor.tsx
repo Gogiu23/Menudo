@@ -207,6 +207,7 @@ export default function CanvasEditor() {
       ),
     );
   };
+  const [editing, setEditing] = useState<string | null>(null); // texto que se está escribiendo directamente sobre la hoja
   const [panel, setPanel] = useState("text"); // sección abierta junto al carril de iconos (escritorio)
   const [tab, setTab] = useState<"canvas" | "tools">("canvas"); // solo en móvil; en escritorio se ven las dos
   const [multi, setMulti] = useState(false); // modo táctil: tocar suma elementos a la selección
@@ -320,12 +321,12 @@ export default function CanvasEditor() {
   useEffect(() => {
     const nodes = sels.flatMap((id) => {
       const el = els.find((x) => x.id === id);
-      const n = el && !el.locked && el.visible ? layerRef.current?.findOne("#" + id) : undefined;
+      const n = el && !el.locked && el.visible && id !== editing ? layerRef.current?.findOne("#" + id) : undefined;
       return n ? [n] : [];
     });
     trRef.current?.nodes(nodes);
     trRef.current?.getLayer()?.batchDraw();
-  }, [sels, els]);
+  }, [sels, els, editing]);
 
   // Guarda sola, un momento después del último cambio
   useEffect(() => {
@@ -827,7 +828,7 @@ export default function CanvasEditor() {
       <>
         <p className="text-sm text-ink/70">Scegli uno stile, poi scrivi direttamente sulla carta.</p>
         {textPresets.map((p) => (
-          <button key={p.name} className={`flex w-full flex-col items-start gap-0.5 rounded-lg border border-laguna bg-surface px-3 py-3 text-left lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => add(newText(p.o))}>
+          <button key={p.name} className={`flex w-full flex-col items-start gap-0.5 rounded-lg border border-laguna bg-surface px-3 py-3 text-left lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => { const t = newText(p.o); add(t); setEditing(t.id); }}>
             <span className={p.cls}>{p.name}</span>
             <span className="text-xs text-ink/70">{p.hint}</span>
           </button>
@@ -981,6 +982,7 @@ export default function CanvasEditor() {
     ) },
   ];
   const active = sections.find((s) => s.id === panel) ?? sections[0];
+  const editEl = els.find((x): x is Extract<El, { type: "text" }> => x.id === editing && x.type === "text");
 
   return (
     <>
@@ -1077,7 +1079,7 @@ export default function CanvasEditor() {
         )}
         {/* m-auto centra la hoja cuando cabe y deja desplazarse cuando es mayor que el área (justify-center la cortaría) */}
         <div className="flex min-h-full py-4 md:py-6">
-        <div className="m-auto h-fit shrink-0 shadow-[0_18px_40px_-18px_rgb(14_26_43/0.45)]">
+        <div className="relative m-auto h-fit shrink-0 shadow-[0_18px_40px_-18px_rgb(14_26_43/0.45)]">
           <Stage
             ref={stageRef}
             width={w * zoom}
@@ -1143,7 +1145,7 @@ export default function CanvasEditor() {
                 };
                 if (el.type === "text")
                   return (
-                    <Text key={el.id} {...props} name={el.table ? "table-number" : undefined} height={undefined} text={el.text} fontSize={el.fontSize} fill={el.fill} fontFamily={fontFamily(el.fontFamily)} align={el.align}
+                    <Text key={el.id} {...props} visible={el.visible && editing !== el.id} onDblClick={() => setEditing(el.id)} onDblTap={() => setEditing(el.id)} name={el.table ? "table-number" : undefined} height={undefined} text={el.text} fontSize={el.fontSize} fill={el.fill} fontFamily={fontFamily(el.fontFamily)} align={el.align}
                       fontStyle={fontStyleOf(el)} lineHeight={el.lineHeight ?? 1.2} />
                   );
                 if (el.type === "rect") return <Rect key={el.id} {...props} fill={el.fill} cornerRadius={el.radius} stroke={el.stroke} strokeWidth={el.strokeW} />;
@@ -1158,6 +1160,25 @@ export default function CanvasEditor() {
               <Transformer ref={trRef} borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" anchorSize={coarse ? 26 : 10} anchorCornerRadius={coarse ? 13 : 0} rotateAnchorOffset={coarse ? 40 : 50} rotateEnabled keepRatio={false} boundBoxFunc={(o, n) => (n.width < 5 || n.height < 5 ? o : n)} />
             </Layer>
           </Stage>
+          {editEl && (
+            <textarea
+              aria-label="Testo" autoFocus rows={1} value={editEl.text}
+              onFocus={(e) => e.currentTarget.select()}
+              ref={(t) => { if (t) { t.style.height = "auto"; t.style.height = `${t.scrollHeight}px`; } }}
+              onChange={(e) => patch(editEl.id, { text: e.target.value })}
+              onBlur={() => {
+                if (!editEl.text.trim()) { setEls((a) => a.filter((x) => x.id !== editEl.id)); setSels([]); } // un testo vuoto non resta sulla carta
+                setEditing(null);
+              }}
+              onKeyDown={(e) => { if (e.key === "Escape" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) { e.preventDefault(); e.currentTarget.blur(); } }}
+              style={{
+                left: editEl.x * zoom, top: editEl.y * zoom, width: editEl.width * zoom, fontSize: editEl.fontSize * zoom, lineHeight: editEl.lineHeight ?? 1.2,
+                fontFamily: fontFamily(editEl.fontFamily), fontWeight: editEl.bold ? 700 : 400, fontStyle: editEl.italic ? "italic" : "normal",
+                textAlign: editEl.align, color: editEl.fill, opacity: editEl.opacity, transform: `rotate(${editEl.rotation}deg)`, transformOrigin: "0 0",
+              }}
+              className="absolute z-10 m-0 block resize-none overflow-hidden border-0 bg-transparent p-0 outline-2 outline-offset-2 outline-mare"
+            />
+          )}
         </div>
         </div>
       </main>

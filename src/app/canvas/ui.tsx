@@ -92,6 +92,16 @@ export function Group({ title, icon, open, children }: { title: string; icon: st
   );
 }
 
+// Bloque con título dentro del panel de propiedades: separa Azioni, Posizione, Testo, Colore y Aspetto
+export function Block({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3 border-b border-laguna/50 px-4 py-4">
+      <h3 className="text-[13px] font-semibold">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
 export function Num({ label, value, min, onChange }: { label: string; value: number; min?: number; onChange: (v: number) => void }) {
   return (
     <label className="flex items-center justify-between gap-2 text-xs font-semibold md:text-[13px]">
