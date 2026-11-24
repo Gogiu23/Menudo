@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
+import Link from "next/link";
 import { formatPrice } from "./price";
 import { LangCtx, T, useT, type Dict, type Lang } from "./i18n";
 
@@ -955,6 +956,7 @@ const ICONS = {
   edit: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
   eye: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
   archive: "M3 4h18v4H3zM5 8v12h14V8M10 12h4",
+  canvas: "M3 4h18v16H3zM3 9h18M9 9v11",
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5",
   share: "M12 3v12M8 7l4-4 4 4M7 11H5v10h14V11h-2",
   close: "M6 6l12 12M18 6L6 18",
@@ -2216,6 +2218,9 @@ export default function Editor() {
               ))}
             </nav>
 
+            <Link href="/canvas" className={iconBtn} aria-label={t.freeEditor} title={t.freeEditor}>
+              <Icon d={ICONS.canvas} className="size-[18px]" />
+            </Link>
             <button className={iconBtn} aria-label={dark ? t.lightTheme : t.darkTheme} title={dark ? t.lightTheme : t.darkTheme} onClick={toggleTheme}>
               <Icon d={dark ? ICONS.sun : ICONS.moon} className="size-[18px]" />
             </button>
