@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
   // Sin caché en disco de Turbopack: sirvió CSS/JS de versiones anteriores (en local y en Vercel).
   // El proyecto compila en <1 s, así que no se pierde nada.
   experimental: {
+    agentUpgrade: "security",
     turbopackFileSystemCacheForDev: false,
     turbopackFileSystemCacheForBuild: false,
   },
