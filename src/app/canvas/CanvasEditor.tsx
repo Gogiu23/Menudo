@@ -15,6 +15,8 @@ import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
 import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, Range, secondary, ShapeIcon, Switch } from "./ui";
 import { Tip } from "./Tip";
+import { buildTemplate } from "./templateBuild";
+import { defaultSpec, parseSpec } from "./templateSpec";
 import { useGlow } from "./glow";
 import type { Lang } from "../i18n";
 import { LANG_KEY, loadLang, makeTr, type Tr } from "./i18n";
@@ -168,6 +170,39 @@ export default function CanvasEditor() {
   useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
+  // Plantilla con IA: se pide al servidor una especificación y se coloca como página nueva; si la IA no responde, plantilla estándar
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiUseMenu, setAiUseMenu] = useState(true);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMsg, setAiMsg] = useState("");
+  const createTemplate = async () => {
+    const q = aiPrompt.trim();
+    if (q.length < 3) return setAiMsg(tr("Scrivi almeno qualche parola."));
+    setAiBusy(true);
+    setAiMsg("");
+    const menu = readSavedMenu();
+    const fallback = () => defaultSpec(q, menu?.name?.trim() || tr("Menù"), menu?.subtitle?.trim() || "");
+    let spec = fallback();
+    let note = "";
+    try {
+      const r = await fetch("/api/template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: q, lang, context: aiUseMenu && menu ? { name: menu.name, sections: menu.sections.map((x) => x.title) } : undefined }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.spec) spec = parseSpec(d.spec);
+      else note = tr(d.error === "nokey" ? "L'IA non è attiva su questo server: ho usato un modello standard." : d.error === "limit" ? "Hai raggiunto il limite di richieste: ho usato un modello standard. Riprova più tardi." : "L'IA non è disponibile ora: ho usato un modello standard.");
+    } catch {
+      note = tr("L'IA non è disponibile ora: ho usato un modello standard.");
+    }
+    const at = hist.pages.length;
+    setPages((p) => [...p, buildTemplate(spec, paper, menu, lang)]);
+    goPage(at);
+    setTab("canvas");
+    setAiMsg(note || tr("Modello aggiunto come nuova pagina."));
+    setAiBusy(false);
+  };
   const rootRef = useRef<HTMLDivElement>(null);
   useGlow(rootRef); // brillo que sigue al ratón en los elementos .glow
   const [paper, setPaper] = useState<Paper>(init.paper);
@@ -335,12 +370,12 @@ export default function CanvasEditor() {
     // Escritorio: cabe la hoja entera (ancho y alto); móvil: solo el ancho, la hoja se recorre hacia abajo
     const ro = new ResizeObserver(([e]) => {
       const byW = (e.contentRect.width - 32) / w;
-      const byH = matchMedia("(min-width: 768px)").matches ? (e.contentRect.height - 48) / h : Infinity;
+      const byH = matchMedia("(min-width: 768px)").matches ? (e.contentRect.height - 72 - (hist.pages.length > 1 ? 68 : 0)) / h : Infinity;
       setFit(Math.max(0.3, Math.min(byW, byH)));
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [w, h]);
+  }, [w, h, hist.pages.length]);
   useEffect(() => {
     try {
       localStorage.setItem(ZOOM_KEY, String(mul));
@@ -1028,6 +1063,25 @@ export default function CanvasEditor() {
         <ImageSearch onPick={addImage} tr={tr} lang={lang} />
       </>
     ) },
+    { id: "ai", label: tr("IA"), hint: tr("Crea un modello con l'intelligenza artificiale"), icon: ICONS.sparkles, body: (
+      <>
+        <p className="text-sm text-ink/70">{tr("Descrivi il tuo locale e lo stile che vuoi: creo un modello come nuova pagina.")}</p>
+        <div>
+          <textarea
+            className={`${input} h-28 resize-none`} maxLength={500} aria-label={tr("Descrizione del modello")} placeholder={tr("Es. pizzeria elegante, toni caldi")}
+            value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)}
+          />
+          <p className="mt-1 text-right text-xs text-ink/60 tabular-nums">{aiPrompt.length}/500</p>
+        </div>
+        <Switch checked={aiUseMenu} onChange={setAiUseMenu}>{tr("Usa il nome e le sezioni del mio menù")}</Switch>
+        <button type="button" className={`${primary} w-full`} disabled={aiBusy} onClick={() => createTemplate()}>
+          <Icon d={ICONS.sparkles} className="size-[18px]" />
+          {aiBusy ? tr("Sto creando…") : tr("Crea modello")}
+        </button>
+        {aiMsg && <p role="status" className="text-sm text-ink/70">{aiMsg}</p>}
+        <p className="text-xs text-ink/60">{tr("Senza un menù importato uso piatti di esempio.")}</p>
+      </>
+    ) },
     { id: "pages", label: tr("Pagine"), hint: tr("Aggiungi, duplica e ordina le pagine"), icon: ICONS.pages, body: (
       <>
           <p className="text-sm font-semibold">{tr("Pagina")} {page + 1} {tr("di")} {hist.pages.length}</p>
@@ -1216,7 +1270,7 @@ export default function CanvasEditor() {
           <div className="my-auto flex flex-col items-center gap-1">
           {sections.map((s, i) => (
             <Fragment key={s.id}>
-              {i === 4 && <hr className="my-2 w-9 border-laguna/60" />}
+              {i === 5 && <hr className="my-2 w-9 border-laguna/60" />}
               <Tip side="right" label={s.label} hint={s.hint}>
                 <button
                   aria-label={s.label} aria-pressed={panel === s.id} onClick={() => setPanel(s.id)}
@@ -1259,16 +1313,14 @@ export default function CanvasEditor() {
           </div>
         </div>
         {hist.pages.length > 1 && (
-          <div className="pointer-events-none sticky top-3 z-20 -mb-9 h-0">
-            <div role="tablist" aria-label={tr("Pagine")} className="pointer-events-auto absolute left-0 flex max-w-[60%] flex-wrap gap-1.5">
+                      <div role="tablist" aria-label={tr("Pagine")} className="mt-5 flex flex-wrap justify-center gap-1.5 pt-3">
               {hist.pages.map((_, i) => (
                 <button key={i} role="tab" aria-selected={i === page} className={`grid size-9 place-items-center rounded-full text-sm font-semibold shadow-[0_8px_24px_-8px_rgb(14_26_43/0.45)] ring-1 ring-laguna/60 lift ${focus} ${i === page ? "bg-brand text-white" : "bg-surface"}`} onClick={() => goPage(i)}>{i + 1}</button>
               ))}
             </div>
-          </div>
         )}
         {/* m-auto centra la hoja cuando cabe y deja desplazarse cuando es mayor que el área (justify-center la cortaría) */}
-        <div className="flex min-h-full py-4 md:py-6">
+        <div className={`flex py-4 md:py-6 ${hist.pages.length > 1 ? "min-h-[calc(100%-3rem)]" : "min-h-full"}`}>
         <div className="relative m-auto h-fit shrink-0 shadow-[0_18px_40px_-18px_rgb(14_26_43/0.45)]">
           <Stage
             ref={stageRef}

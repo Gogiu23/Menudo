@@ -217,6 +217,20 @@ const ES: Record<string, string> = {
   "Angolo": "Ángulo",
   "Tipo di colore": "Tipo de color",
   "Non sono riuscito ad aggiungere l'immagine.": "No he podido añadir la imagen.",
+  "IA": "IA",
+  "Crea un modello con l'intelligenza artificiale": "Crea una plantilla con inteligencia artificial",
+  "Descrivi il tuo locale e lo stile che vuoi: creo un modello come nuova pagina.": "Describe tu local y el estilo que quieres: creo una plantilla como página nueva.",
+  "Descrizione del modello": "Descripción de la plantilla",
+  "Es. pizzeria elegante, toni caldi": "Ej. pizzería elegante, tonos cálidos",
+  "Usa il nome e le sezioni del mio menù": "Usar el nombre y las secciones de mi menú",
+  "Crea modello": "Crear plantilla",
+  "Sto creando…": "Creando…",
+  "Modello aggiunto come nuova pagina.": "Plantilla añadida como página nueva.",
+  "L'IA non è disponibile ora: ho usato un modello standard.": "La IA no está disponible ahora: he usado una plantilla estándar.",
+  "Hai raggiunto il limite di richieste: ho usato un modello standard. Riprova più tardi.": "Has llegado al límite de peticiones: he usado una plantilla estándar. Inténtalo más tarde.",
+  "L'IA non è attiva su questo server: ho usato un modello standard.": "La IA no está activa en este servidor: he usado una plantilla estándar.",
+  "Scrivi almeno qualche parola.": "Escribe al menos unas palabras.",
+  "Senza un menù importato uso piatti di esempio.": "Sin un menú importado uso platos de ejemplo.",
 };
 
 export type Tr = (s: string, ctx?: string) => string;

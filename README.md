@@ -20,6 +20,23 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Plantilla con IA (editor libre)
+
+La sección «IA» de `/canvas` genera una plantilla desde una petición. La llamada va por `POST /api/template`, que usa cualquier API
+compatible con OpenAI. Sin estas variables, la sección avisa y aplica una plantilla estándar (el editor no depende de la IA).
+
+| Variable | Qué es |
+| --- | --- |
+| `AI_BASE_URL` | URL base del proveedor. Gemini: `https://generativelanguage.googleapis.com/v1beta/openai` |
+| `AI_MODEL` | Nombre del modelo (se puede listar con `GET {AI_BASE_URL}/models`) |
+| `AI_API_KEY` | Clave del proveedor. Gemini gratis: <https://aistudio.google.com/apikey> |
+| `AI_DAILY_LIMIT` | Opcional: tope diario de peticiones por instancia (por defecto 300) |
+
+Ponlas en `.env.local` (y en Vercel → Settings → Environment Variables). La clave solo se lee en el servidor. Para producción con tráfico
+real, cambia solo estas variables a un proveedor de pago (por ejemplo Vercel AI Gateway) y ponle un **tope de gasto** a la clave: es
+la protección real contra abuso; los límites de la ruta (por IP y diario) viven en memoria de cada instancia.
+Diseño: `docs/superpowers/specs/2026-11-24-plantilla-ia-design.md`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
