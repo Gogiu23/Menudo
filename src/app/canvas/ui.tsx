@@ -9,8 +9,8 @@ export const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 foc
 export const input = `w-full rounded-lg border border-laguna bg-surface px-3 py-2.5 text-base placeholder:text-ink/40 md:py-2 md:text-[0.95em] focus:border-mare focus:outline-2 focus:outline-offset-0 focus:outline-mare/40`;
 export const primary = `inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 font-semibold text-white lift hover:brightness-110 ${focus}`;
 // relative: contiene el input sr-only (absolute) del botón de subir imagen
-export const secondary = `relative inline-flex cursor-pointer items-center gap-2 rounded-lg border border-mare bg-surface px-3 py-2 text-sm font-semibold lift hover:bg-laguna/25 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink disabled:pointer-events-none disabled:opacity-40`;
-export const iconBtn = `grid size-11 shrink-0 place-items-center rounded-lg text-ink/70 lift hover:bg-laguna/30 hover:text-ink disabled:pointer-events-none disabled:opacity-25 md:size-9 ${focus}`;
+export const secondary = `relative inline-flex cursor-pointer items-center gap-2 rounded-lg border border-mare bg-surface px-3 py-2 text-sm font-semibold glow lift hover:bg-laguna/25 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink disabled:pointer-events-none disabled:opacity-40`;
+export const iconBtn = `grid size-11 shrink-0 place-items-center rounded-lg text-ink/70 glow lift hover:bg-laguna/30 hover:text-ink disabled:pointer-events-none disabled:opacity-25 md:size-9 ${focus}`;
 // Opciones excluyentes (papel, copias): pastilla gris azulada, y con el degradado de la marca cuando está elegida
 export const chip = `inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-laguna/30 px-3 py-1.5 text-sm font-semibold lift hover:bg-laguna/45 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink`;
 export const chipOn = `inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white lift hover:brightness-110 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink`;
@@ -92,14 +92,14 @@ export function Brand() {
 export function Group({ title, icon, open, children }: { title: string; icon: string; open?: boolean; children: React.ReactNode }) {
   return (
     <details className="group border-b border-laguna/50" open={open}>
-      <summary className={`flex min-h-11 cursor-pointer list-none items-center gap-3 px-4 py-2.5 transition-colors hover:bg-laguna/15 [&::-webkit-details-marker]:hidden ${focus}`}>
+      <summary className={`flex min-h-11 cursor-pointer list-none items-center gap-3 px-5 py-3 transition-colors hover:bg-laguna/15 [&::-webkit-details-marker]:hidden ${focus}`}>
         <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-laguna/25 text-mare transition-colors group-open:bg-brand group-open:text-white">
           <Icon d={icon} className="size-4" />
         </span>
         <h2 className="flex-1 text-[13px] leading-tight font-semibold">{title}</h2>
         <Icon d={ICONS.down} className="size-4 shrink-0 text-ink/50 transition-transform group-open:rotate-180" />
       </summary>
-      <div className="space-y-3 px-4 pb-4">{children}</div>
+      <div className="space-y-4 px-5 pb-5">{children}</div>
     </details>
   );
 }
@@ -107,8 +107,8 @@ export function Group({ title, icon, open, children }: { title: string; icon: st
 // Bloque con título dentro del panel de propiedades: separa Azioni, Posizione, Testo, Colore y Aspetto
 export function Block({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-3 border-b border-laguna/50 px-4 py-4">
-      <h3 className="text-[13px] font-semibold">{title}</h3>
+    <section className="space-y-4 border-b border-laguna/50 px-5 py-5">
+      <h3 className="pb-1 text-sm font-semibold">{title}</h3>
       {children}
     </section>
   );

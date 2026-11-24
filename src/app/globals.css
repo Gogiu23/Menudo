@@ -133,6 +133,34 @@ input[type="range"] {
   cursor: var(--cur-hand);
 }
 
+/* Brillo que sigue al ratón (useGlow, canvas/glow.ts): el borde y el fondo se iluminan hacia el cursor, en el azul de la interfaz */
+@utility glow {
+  position: relative;
+  isolation: isolate;
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: var(--go, 0);
+    transition: opacity 200ms ease-out;
+  }
+  &::before {
+    padding: 1.5px;
+    background: radial-gradient(150px circle at var(--gx, -999px) var(--gy, -999px), var(--color-mare), #56c2ff 40%, transparent 75%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+  &::after {
+    z-index: -1;
+    background: radial-gradient(200px circle at var(--gx, -999px) var(--gy, -999px), color-mix(in oklab, var(--color-mare) 16%, transparent), transparent 70%);
+  }
+}
+
 /* Relieve al pasar el ratón: el botón sube un píxel y proyecta sombra; al pulsarlo, se hunde */
 @utility lift {
   transition:

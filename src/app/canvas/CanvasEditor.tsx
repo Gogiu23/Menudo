@@ -15,6 +15,7 @@ import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
 import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, secondary, ShapeIcon } from "./ui";
 import { Tip } from "./Tip";
+import { useGlow } from "./glow";
 import type { Lang } from "../i18n";
 import { LANG_KEY, loadLang, makeTr, type Tr } from "./i18n";
 import { ImageSearch } from "./ImageSearch";
@@ -167,6 +168,8 @@ export default function CanvasEditor() {
   useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useGlow(rootRef); // brillo que sigue al ratón en los elementos .glow
   const [paper, setPaper] = useState<Paper>(init.paper);
   const [wanted, setCopies] = useState<Copies>(init.copies);
   const [tables, setTables] = useState<string[]>(init.tables); // número de mesa de cada copia
@@ -835,8 +838,8 @@ export default function CanvasEditor() {
   // Panel «Elemento»: columna derecha en escritorio y pestaña «Strumenti» en móvil (mismo JSX en los dos sitios)
   const properties = sels.length > 0 && (
     <div>
-      <div className="border-b border-laguna/50 px-4 py-3">
-        <h2 className="font-display text-[15px] font-semibold">{cur ? label(cur, tr) : `${sels.length} ${tr("elementi")}`}</h2>
+      <div className="border-b border-laguna/50 px-5 py-4">
+        <h2 className="font-display text-[17px] font-semibold">{cur ? label(cur, tr) : `${sels.length} ${tr("elementi")}`}</h2>
         <p className="text-xs text-ink/70">{cur ? tr("Elemento selezionato") : tr("Selezione multipla")}</p>
       </div>
       <Block title={tr("Azioni")}>
@@ -856,7 +859,7 @@ export default function CanvasEditor() {
       </Block>
       {cur && (
         <Block title={tr("Posizione e misure")}>
-          <div className="space-y-2">
+          <div className="space-y-3">
             <Num label="X (mm)" value={cur.x} onChange={(v) => patch(cur.id, { x: v })} />
             <Num label="Y (mm)" value={cur.y} onChange={(v) => patch(cur.id, { y: v })} />
             <Num label={tr("Larghezza (mm)")} value={cur.width} min={1} onChange={(v) => patch(cur.id, { width: v })} />
@@ -895,7 +898,7 @@ export default function CanvasEditor() {
               );
             })}
           </div>
-          <div className="space-y-2">
+          <div className="space-y-3">
             <Num label={tr("Dimensione (mm)")} value={cur.fontSize} min={2} onChange={(v) => patch(cur.id, { fontSize: v })} />
             <Num label={tr("Interlinea")} value={cur.lineHeight ?? 1.2} min={0.5} onChange={(v) => patch(cur.id, { lineHeight: v })} />
           </div>
@@ -947,7 +950,7 @@ export default function CanvasEditor() {
     const size = SHAPES[kind].stroke ? 30 : 40;
     add({ id: uid(), type: "shape", kind, ...shapeBase, width: size, height: size, fill: SHAPES[kind].stroke ? PALETTE[0].hex : PALETTE[2].hex });
   };
-  const tile = `flex flex-col items-center gap-1.5 rounded-lg border border-laguna bg-surface px-2 py-3 text-center lift hover:border-mare hover:bg-laguna/15 ${focus}`;
+  const tile = `flex flex-col items-center gap-1.5 rounded-lg border border-laguna bg-surface px-2 py-3 text-center glow lift hover:border-mare hover:bg-laguna/15 ${focus}`;
   const shapes = [
     { name: tr("Rettangolo"), hint: tr("Un riquadro pieno, utile come sfondo"), icon: ICONS.rect, el: { type: "rect", ...shapeBase, width: 60, height: 30, fill: PALETTE[2].hex, radius: 0 } as const },
     { name: tr("Cerchio"), hint: tr("Un cerchio pieno, anche per le icone"), icon: ICONS.circle, el: { type: "rect", ...shapeBase, width: 40, height: 40, fill: PALETTE[2].hex, radius: 20 } as const },
@@ -961,7 +964,7 @@ export default function CanvasEditor() {
       <>
         <p className="text-sm text-ink/70">{tr("Scegli uno stile, poi scrivi direttamente sulla carta.")}</p>
         {textPresets.map((p) => (
-          <button key={p.name} className={`flex w-full flex-col items-start gap-0.5 rounded-lg border border-laguna bg-surface px-3 py-3 text-left lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => { const t = newText({ ...p.o, text: tr("Testo"), width: Math.min(p.o.width ?? 100, w - 40) }); add(t); freshText.current = t.id; setTab("canvas"); setEditing(t.id); }}>
+          <button key={p.name} className={`flex w-full flex-col items-start gap-0.5 rounded-lg border border-laguna bg-surface px-3 py-3 text-left glow lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => { const t = newText({ ...p.o, text: tr("Testo"), width: Math.min(p.o.width ?? 100, w - 40) }); add(t); freshText.current = t.id; setTab("canvas"); setEditing(t.id); }}>
             <span className={p.cls}>{p.name}</span>
             <span className="text-xs text-ink/70">{p.hint}</span>
           </button>
@@ -973,7 +976,7 @@ export default function CanvasEditor() {
         <p className="text-sm text-ink/70">{tr("Tocca una forma per aggiungerla alla carta.")}</p>
         <div className="grid grid-cols-2 gap-2">
           {shapes.map((s) => (
-            <button key={s.name} title={s.hint} className={`flex flex-col items-center gap-1.5 rounded-lg border border-laguna bg-surface px-2 py-3 text-center lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => add({ ...s.el, id: uid() } as El)}>
+            <button key={s.name} title={s.hint} className={`flex flex-col items-center gap-1.5 rounded-lg border border-laguna bg-surface px-2 py-3 text-center glow lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => add({ ...s.el, id: uid() } as El)}>
               <Icon d={s.icon} className="size-7 text-mare" />
               <span className="text-[13px] font-semibold">{s.name}</span>
               <span className="text-xs leading-tight text-ink/70">{s.hint}</span>
@@ -1066,7 +1069,7 @@ export default function CanvasEditor() {
             </p>
           </fieldset>
           {hasTable && (
-            <fieldset className="space-y-2">
+            <fieldset className="space-y-3">
               <legend className="mb-1.5 text-sm font-semibold">{tr("Numeri di tavolo")}</legend>
               {COPY_NAMES[copies].map((where, c) => (
                 <label key={c} className="flex items-center justify-between gap-2 text-sm">
@@ -1086,9 +1089,9 @@ export default function CanvasEditor() {
     { id: "layers", label: tr("Livelli"), hint: tr("Ordine, visibilità e blocco degli elementi"), icon: ICONS.layers, body: (
       <>
           {sels.length === 0 && <p className="text-sm text-ink/70 lg:hidden">{hint}</p>}
-          <ul className="-mx-2 space-y-0.5">
+          <ul className="-mx-2 space-y-1.5">
             {[...els].reverse().map((e) => (
-              <li key={e.id} className={`flex items-center gap-0.5 rounded-lg px-2 py-0.5 ${sels.includes(e.id) ? "bg-laguna/40" : ""}`}>
+              <li key={e.id} className={`glow flex items-center gap-0.5 rounded-lg px-2 py-0.5 ${sels.includes(e.id) ? "bg-laguna/40" : ""}`}>
                 <button className={`min-w-0 flex-1 truncate py-1.5 text-left text-sm ${focus} ${e.visible ? "" : "text-ink/40 line-through"}`} onClick={(ev) => pick(e.id, ev.shiftKey || ev.ctrlKey || ev.metaKey)}>
                   {label(e, tr)}
                   {e.group && <span className="ml-1 text-xs text-ink/45">{tr("gruppo")}</span>}
@@ -1128,7 +1131,7 @@ export default function CanvasEditor() {
           {archiveMsg && <p role="status" className="text-sm text-ink/65">{archiveMsg}</p>}
           <ul className="space-y-2">
             {saved.map((d) => (
-              <li key={d.id} className="flex items-center gap-2 rounded-lg bg-surface px-3 py-2 ring-1 ring-laguna/60">
+              <li key={d.id} className="glow flex items-center gap-2 rounded-lg bg-surface px-3 py-2 ring-1 ring-laguna/60">
                 <button className={`min-w-0 flex-1 text-left ${focus}`} onClick={() => openDesign(d)} title={`${tr("Apri")} «${d.name}»`}>
                   <p className="truncate text-sm font-semibold">{d.name}</p>
                   <p className="text-xs text-ink/55">
@@ -1149,7 +1152,7 @@ export default function CanvasEditor() {
     <>
     {/* Medidas explícitas: los nombres A2 y A1 no son tamaños de página válidos en CSS */}
     <style>{`@page { size: ${sheet.w}mm ${sheet.h}mm; margin: 0; }`}</style>
-    <div className="flex h-dvh flex-col bg-surface text-ink print:hidden">
+    <div ref={rootRef} className="flex h-dvh flex-col bg-surface text-ink print:hidden">
       <header className="shrink-0 border-b border-laguna/60 bg-surface pt-[env(safe-area-inset-top)]">
         <div className="flex h-12 items-center gap-2 px-3 md:gap-3 md:px-4">
           <Tip label={tr("Torna al menù")} hint={tr("Esci dall'editor libero. Le modifiche sono già salvate.")}>
@@ -1200,21 +1203,28 @@ export default function CanvasEditor() {
       <div className="flex min-h-0 flex-1">
       {/* Escritorio: carril de iconos y una sección cada vez, como en Canva */}
       <div className="hidden md:flex">
-        <nav aria-label={tr("Sezioni")} className="flex w-16 shrink-0 flex-col items-center gap-1 border-r border-laguna/60 bg-surface py-2">
-          {sections.map((s) => (
-            <Tip key={s.id} side="right" label={s.label} hint={s.hint}>
-              <button
-                aria-label={s.label} aria-pressed={panel === s.id} onClick={() => setPanel(s.id)}
-                className={`grid size-11 place-items-center rounded-lg transition-colors ${focus} ${panel === s.id ? "bg-brand text-white" : "text-ink/70 hover:bg-laguna/30 hover:text-ink"}`}
-              >
-                <Icon d={s.icon} className="size-[22px]" />
-              </button>
-            </Tip>
+        <nav aria-label={tr("Sezioni")} className="flex w-[76px] shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-laguna/60 bg-surface py-4">
+          {sections.map((s, i) => (
+            <Fragment key={s.id}>
+              {i === 4 && <hr className="my-2 w-9 border-laguna/60" />}
+              <Tip side="right" label={s.label} hint={s.hint}>
+                <button
+                  aria-label={s.label} aria-pressed={panel === s.id} onClick={() => setPanel(s.id)}
+                  className={`glow flex h-14 w-16 flex-col items-center justify-center gap-1 rounded-lg transition-colors ${focus} ${panel === s.id ? "bg-brand text-white" : "text-ink/70 hover:bg-laguna/30 hover:text-ink"}`}
+                >
+                  <Icon d={s.icon} className="size-5" />
+                  <span className="max-w-full truncate px-0.5 text-[10px] leading-none font-semibold">{s.label}</span>
+                </button>
+              </Tip>
+            </Fragment>
           ))}
         </nav>
-        <aside aria-label={active.label} className="w-[240px] shrink-0 overflow-y-auto border-r border-laguna/60 bg-surface">
-          <h2 className="px-4 pt-4 pb-3 font-display text-[15px] font-semibold">{active.label}</h2>
-          <form className="space-y-3 px-4 pb-4" onSubmit={(e) => e.preventDefault()}>{active.body}</form>
+        <aside aria-label={active.label} className="w-[248px] shrink-0 overflow-y-auto border-r border-laguna/60 bg-surface lg:w-[264px]">
+          <div className="border-b border-laguna/50 px-5 pt-5 pb-4">
+            <h2 className="font-display text-[17px] font-semibold">{active.label}</h2>
+            <p className="mt-1 text-xs leading-snug text-ink/70">{active.hint}</p>
+          </div>
+          <form className="space-y-5 px-5 py-5" onSubmit={(e) => e.preventDefault()}>{active.body}</form>
           <div className="border-t border-laguna/50 lg:hidden">{properties}</div>
         </aside>
       </div>
@@ -1222,7 +1232,7 @@ export default function CanvasEditor() {
       <aside aria-label={tr("Strumenti")} className={`${tab === "tools" ? "block" : "hidden"} w-full shrink-0 overflow-y-auto bg-surface pb-24 md:hidden`}>
         {sections.map((s) => (
           <Fragment key={s.id}>
-            <Group title={s.label} icon={s.icon} open={s.id === "text"}><form className="space-y-3" onSubmit={(e) => e.preventDefault()}>{s.body}</form></Group>
+            <Group title={s.label} icon={s.icon} open={s.id === "text"}><form className="space-y-5" onSubmit={(e) => e.preventDefault()}>{s.body}</form></Group>
             {s.id === "images" && properties}
           </Fragment>
         ))}
