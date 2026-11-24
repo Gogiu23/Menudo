@@ -2,12 +2,11 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import Link from "next/link";
 import { formatPrice } from "./price";
 
 type Item = { name: string; desc: string; price: string };
 type Section = { title: string; items: Item[] };
-export type Menu = {
+type Menu = {
   name: string;
   subtitle: string;
   logo: string;
@@ -33,7 +32,6 @@ export type Menu = {
   web: string;
 };
 type Layout = "1" | "2" | "4";
-type Paper = "A2" | "A3" | "A4" | "A5";
 
 const INK = "#173033";
 const PALETTE = [
@@ -79,30 +77,12 @@ const EMPTY: Menu = {
   web: "",
 };
 
-// Tipos de papel (ISO 216), medidas en mm en vertical. La carta se diseña en A4 y se escala
-const PAPERS: Record<Paper, { w: number; h: number }> = {
-  A2: { w: 420, h: 594 },
-  A3: { w: 297, h: 420 },
-  A4: { w: 210, h: 297 },
-  A5: { w: 148, h: 210 },
+// Hoja A4 en mm y tamaño de cada hueco según cuántas copias caben
+const SHEETS: Record<Layout, { w: number; h: number; cols: number; scale: number; orient: string; label: string }> = {
+  "1": { w: 210, h: 297, cols: 1, scale: 1, orient: "portrait", label: "A4" },
+  "2": { w: 297, h: 210, cols: 2, scale: 148.5 / 210, orient: "landscape", label: "2 per foglio" },
+  "4": { w: 210, h: 297, cols: 2, scale: 0.5, orient: "portrait", label: "4 per foglio" },
 };
-const paperLabel = (p: Paper) => `${p} (${PAPERS[p].w} × ${PAPERS[p].h} mm)`;
-
-// Disposición de las copias en la hoja (cols y orientación no dependen del papel)
-const SHEET_LAYOUTS: Record<Layout, { cols: number; orient: "portrait" | "landscape"; label: string }> = {
-  "1": { cols: 1, orient: "portrait", label: "1 per foglio" },
-  "2": { cols: 2, orient: "landscape", label: "2 per foglio" },
-  "4": { cols: 2, orient: "portrait", label: "4 per foglio" },
-};
-
-// Tamaño de la hoja en mm y escala de cada hueco según el papel y cuántas copias caben
-function sheetOf(layout: Layout, paper: Paper) {
-  const { w, h } = PAPERS[paper];
-  const l = SHEET_LAYOUTS[layout];
-  const land = l.orient === "landscape";
-  const slotW = layout === "1" ? w : layout === "2" ? h / 2 : w / 2;
-  return { ...l, w: land ? h : w, h: land ? w : h, scale: slotW / 210 };
-}
 
 // Posición de cada copia en la hoja, en el mismo orden en que las pinta Sheet
 const COPY_NAMES: Record<Layout, string[]> = {
@@ -322,8 +302,8 @@ function ContentPage({ m, table = "" }: { m: Menu; table?: string }) {
   );
 }
 
-function Sheet({ layout, paper, page }: { layout: Layout; paper: Paper; page: (copy: number) => React.ReactNode }) {
-  const s = sheetOf(layout, paper);
+function Sheet({ layout, page }: { layout: Layout; page: (copy: number) => React.ReactNode }) {
+  const s = SHEETS[layout];
   return (
     <div
       className="grid overflow-hidden bg-white"
@@ -341,10 +321,10 @@ function Sheet({ layout, paper, page }: { layout: Layout; paper: Paper; page: (c
 }
 
 // Escala la hoja para que quepa en el ancho disponible (móvil incluido)
-function Preview({ layout, paper, children }: { layout: Layout; paper: Paper; children: React.ReactNode }) {
+function Preview({ layout, children }: { layout: Layout; children: React.ReactNode }) {
   const [zoom, setZoom] = useState(0.6);
   const ref = useRef<HTMLDivElement>(null);
-  const sheetPx = sheetOf(layout, paper).w * 3.7795; // mm → px CSS
+  const sheetPx = SHEETS[layout].w * 3.7795; // mm → px CSS
   useEffect(() => {
     const el = ref.current!;
     const ro = new ResizeObserver(([e]) => setZoom(Math.min(0.75, e.contentRect.width / sheetPx)));
@@ -530,27 +510,12 @@ function ImagePicker(props: { label: string; value: string; maxPx: number; type:
 }
 
 // Selector de formato con un dibujo de cómo queda la hoja
-function LayoutPicker({ value, onChange, paper, onPaper }: { value: Layout; onChange: (l: Layout) => void; paper: Paper; onPaper: (p: Paper) => void }) {
+function LayoutPicker({ value, onChange }: { value: Layout; onChange: (l: Layout) => void }) {
   return (
-    <>
-    <fieldset className="flex flex-wrap justify-center gap-2">
-      <legend className="sr-only">Tipo di carta</legend>
-      {(Object.keys(PAPERS) as Paper[]).map((p) => (
-        <label
-          key={p}
-          className={`cursor-pointer rounded-xl px-3 py-2 text-sm transition-colors focus-within:outline-2 focus-within:outline-ink ${
-            paper === p ? "bg-white font-semibold shadow-sm ring-2 ring-mare" : "hover:bg-white/60"
-          }`}
-        >
-          <input type="radio" name="paper" className="sr-only" checked={paper === p} onChange={() => onPaper(p)} />
-          {paperLabel(p)}
-        </label>
-      ))}
-    </fieldset>
     <fieldset className="relative flex justify-center gap-2">
       <legend className="sr-only">Formato di stampa</legend>
-      {(Object.keys(SHEET_LAYOUTS) as Layout[]).map((l) => {
-        const s = sheetOf(l, "A4");
+      {(Object.keys(SHEETS) as Layout[]).map((l) => {
+        const s = SHEETS[l];
         const on = value === l;
         return (
           <label
@@ -575,7 +540,6 @@ function LayoutPicker({ value, onChange, paper, onPaper }: { value: Layout; onCh
         );
       })}
     </fieldset>
-    </>
   );
 }
 
@@ -665,7 +629,6 @@ export default function Editor() {
   const [m, setM] = useState<Menu>(load);
   const [currentId, setCurrentId] = useState(loadCurrentId);
   const [layout, setLayout] = useState<Layout>("1");
-  const [paper, setPaper] = useState<Paper>("A4");
   const [saveError, setSaveError] = useState(false);
   const [tab, setTab] = useState<"edit" | "preview" | "archive">("edit");
   const [saved, setSaved] = useState<Saved[]>([]);
@@ -782,7 +745,7 @@ export default function Editor() {
 
   return (
     <>
-      <style>{`@page { size: ${paper} ${SHEET_LAYOUTS[layout].orient}; margin: 0; }`}</style>
+      <style>{`@page { size: A4 ${SHEETS[layout].orient}; margin: 0; }`}</style>
 
       <div className="flex min-h-dvh flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:h-dvh md:pb-0 print:hidden">
         <header className="shrink-0 bg-white pt-[env(safe-area-inset-top)]">
@@ -816,10 +779,6 @@ export default function Editor() {
                 </button>
               ))}
             </nav>
-
-            <Link href="/canvas" className={`shrink-0 rounded-lg px-3 py-2 text-sm text-ink/70 underline decoration-laguna underline-offset-4 hover:bg-laguna/20 ${focus}`}>
-              Editor libero
-            </Link>
 
             <div className="hidden md:block">
               <button className={primary} onClick={() => window.print()}>
@@ -1064,7 +1023,7 @@ export default function Editor() {
                 <fieldset className="space-y-3">
                   <legend className="mb-1 text-sm font-semibold">Numero del tavolo</legend>
                   <p className="text-sm text-ink/65">
-                    Una casella per ogni copia del foglio ({paper}). Lasciala vuota per scriverlo a penna.
+                    Una casella per ogni copia del foglio ({SHEETS[layout].label}). Lasciala vuota per scriverlo a penna.
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     {COPY_NAMES[layout].map((where, c) => (
@@ -1138,11 +1097,11 @@ export default function Editor() {
             </aside>
 
             <main data-scroll="preview" className={`${tab === "preview" ? "flex" : "hidden"} flex-1 flex-col gap-6 bg-laguna/35 px-4 py-5 md:flex md:overflow-auto md:px-8`}>
-              <LayoutPicker value={layout} onChange={setLayout} paper={paper} onPaper={setPaper} />
+              <LayoutPicker value={layout} onChange={setLayout} />
               {overflow && <OverflowWarning />}
               {pages.map((p, i) => (
-                <Preview key={i} layout={layout} paper={paper}>
-                  <Sheet layout={layout} paper={paper} page={p} />
+                <Preview key={i} layout={layout}>
+                  <Sheet layout={layout} page={p} />
                 </Preview>
               ))}
             </main>
@@ -1185,7 +1144,7 @@ export default function Editor() {
       <div className="hidden [print-color-adjust:exact] print:block">
         {pages.map((p, i) => (
           <div key={i} className="break-after-page">
-            <Sheet layout={layout} paper={paper} page={p} />
+            <Sheet layout={layout} page={p} />
           </div>
         ))}
       </div>
