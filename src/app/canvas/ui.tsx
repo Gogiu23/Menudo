@@ -2,6 +2,8 @@
    se vea igual que el resto de la página. Se duplican aquí, y no se importan del editor, para no arrastrar todo su
    código a esta ruta ni tocar un archivo que cambia a menudo: si cambia el estilo del editor, cambia aquí también. */
 
+import { SHAPES, type ShapeKind } from "./model";
+
 export const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink";
 export const input = `w-full rounded-lg border border-laguna bg-surface px-3 py-2.5 text-base placeholder:text-ink/40 md:py-2 md:text-[0.95em] focus:border-mare focus:outline-2 focus:outline-offset-0 focus:outline-mare/40`;
 export const primary = `inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 font-semibold text-white lift hover:brightness-110 ${focus}`;
@@ -57,6 +59,15 @@ export const ICONS = {
   group: "M4 4h7v7H4zM13 13h7v7h-7zM11 7.500h2.500a1.500 1.500 0 0 1 1.500 1.500v4",
   ungroup: "M4 4h7v7H4zM13 13h7v7h-7z",
 };
+
+export function ShapeIcon({ kind, className = "size-7" }: { kind: ShapeKind; className?: string }) {
+  const sh = SHAPES[kind];
+  return (
+    <svg viewBox={`0 0 ${sh.vb} ${sh.vb}`} aria-hidden className={className} fill={sh.stroke ? "none" : "currentColor"} fillRule="evenodd" stroke={sh.stroke ? "currentColor" : "none"} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d={sh.d} />
+    </svg>
+  );
+}
 
 export function Icon({ d, className = "size-5" }: { d: string; className?: string }) {
   return (

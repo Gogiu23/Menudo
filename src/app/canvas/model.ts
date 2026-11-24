@@ -21,6 +21,11 @@ export const PALETTE = [
 export const FONTS = [
   { label: "Titillium", key: "sans", cssVar: "--font-titillium", fallback: "system-ui, sans-serif" },
   { label: "Bodoni", key: "display", cssVar: "--font-bodoni", fallback: "Georgia, serif" },
+  { label: "Playfair", key: "playfair", cssVar: "--font-playfair", fallback: "Georgia, serif" },
+  { label: "Lora", key: "lora", cssVar: "--font-lora", fallback: "Georgia, serif" },
+  { label: "Montserrat", key: "montserrat", cssVar: "--font-montserrat", fallback: "system-ui, sans-serif" },
+  { label: "Great Vibes", key: "greatvibes", cssVar: "--font-greatvibes", fallback: "cursive" },
+  { label: "Dancing Script", key: "dancing", cssVar: "--font-dancing", fallback: "cursive" },
 ] as const;
 export type FontKey = (typeof FONTS)[number]["key"];
 
@@ -51,7 +56,27 @@ export type ImageEl = Base & { type: "image"; src: string };
 export type TilesEl = Base & { type: "tiles"; fill: string; k: number };
 // Línea horizontal de `width` mm; `fill` es su color. Con dash sale punteada (guías de precio)
 export type LineEl = Base & { type: "line"; fill: string; thickness: number; dash: boolean };
-export type El = TextEl | RectEl | ImageEl | TilesEl | LineEl;
+// Formas y objetos vectoriales. Las rellenas usan una caja de 100×100; los objetos (stroke) son iconos de línea en una de 24×24.
+// El color del elemento (`fill`) es el relleno o el trazo.
+export type ShapeKind = "triangle" | "diamond" | "hexagon" | "star" | "heart" | "arrow" | "bubble" | "cross" | "ring" | "coffee" | "wine" | "utensils" | "leaf" | "flame";
+export const SHAPES: Record<ShapeKind, { label: string; hint: string; d: string; vb: number; stroke: boolean }> = {
+  triangle: { label: "Triangolo", hint: "Punta verso l'alto", vb: 100, stroke: false, d: "M50 8 L94 88 H6 Z" },
+  diamond: { label: "Rombo", hint: "Per separatori e decorazioni", vb: 100, stroke: false, d: "M50 4 L96 50 L50 96 L4 50 Z" },
+  hexagon: { label: "Esagono", hint: "Per etichette e prezzi", vb: 100, stroke: false, d: "M27 8 H73 L97 50 L73 92 H27 L3 50 Z" },
+  star: { label: "Stella", hint: "Per i piatti consigliati", vb: 100, stroke: false, d: "M50 5 L61.8 36.8 L95.6 38.2 L69 59.2 L78.2 91.8 L50 73 L21.8 91.8 L31 59.2 L4.4 38.2 L38.2 36.8 Z" },
+  heart: { label: "Cuore", hint: "I preferiti della casa", vb: 100, stroke: false, d: "M50 90 C10 58 4 36 4 26 C4 12 15 4 27 4 C37 4 45 9 50 18 C55 9 63 4 73 4 C85 4 96 12 96 26 C96 36 90 58 50 90 Z" },
+  arrow: { label: "Freccia", hint: "Indica una sezione", vb: 100, stroke: false, d: "M4 38 H58 V14 L96 50 L58 86 V62 H4 Z" },
+  bubble: { label: "Nuvoletta", hint: "Per note e avvisi", vb: 100, stroke: false, d: "M12 8 H88 A8 8 0 0 1 96 16 V62 A8 8 0 0 1 88 70 H44 L22 92 V70 H12 A8 8 0 0 1 4 62 V16 A8 8 0 0 1 12 8 Z" },
+  cross: { label: "Croce", hint: "Un segno più", vb: 100, stroke: false, d: "M36 4 H64 V36 H96 V64 H64 V96 H36 V64 H4 V36 H36 Z" },
+  ring: { label: "Anello", hint: "Un cerchio vuoto", vb: 100, stroke: false, d: "M50 4 A46 46 0 1 1 49.99 4 Z M50 26 A24 24 0 1 0 50.01 26 Z" },
+  coffee: { label: "Caffè", hint: "Tazza fumante", vb: 24, stroke: true, d: "M10 2v2 M14 2v2 M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1 M6 2v2" },
+  wine: { label: "Vino", hint: "Calice", vb: 24, stroke: true, d: "M8 22h8 M7 10h10 M12 15v7 M12 15a5 5 0 0 0 5-5c0-2-.5-4-2-8H9c-1.5 4-2 6-2 8a5 5 0 0 0 5 5Z" },
+  utensils: { label: "Posate", hint: "Forchetta e coltello", vb: 24, stroke: true, d: "M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2 M7 2v20 M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" },
+  leaf: { label: "Foglia", hint: "Piatti vegetariani", vb: 24, stroke: true, d: "M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" },
+  flame: { label: "Piccante", hint: "Fiamma", vb: 24, stroke: true, d: "M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" },
+};
+export type ShapeEl = Base & { type: "shape"; kind: ShapeKind; fill: string };
+export type El = TextEl | RectEl | ImageEl | TilesEl | LineEl | ShapeEl;
 
 export const uid = () => Math.random().toString(36).slice(2, 9);
 export const common = { rotation: 0, opacity: 1, visible: true, locked: false };

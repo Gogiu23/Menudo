@@ -3,21 +3,22 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { flushSync } from "react-dom";
-import { Image as KImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
+import { Image as KImage, Layer, Line, Rect, Shape as KShape, Stage, Text, Transformer } from "react-konva";
 import type Konva from "konva";
 
 /* Fase 1: lienzo con papel A2–A5, elementos básicos y transformador.
    Fase 2: panel de propiedades completo y panel de capas (orden, ocultar, bloquear, duplicar).
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
-import { common, Copies, COPIES, COPY_NAMES, El, FONTS, FontKey, fontFamily, fontStyleOf, newText, PALETTE, PAPERS, Paper, sheetFor, tilePattern, tileScale, uid } from "./model";
+import { common, Copies, COPIES, COPY_NAMES, El, FONTS, fontFamily, fontStyleOf, newText, PALETTE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, tilePattern, tileScale, uid } from "./model";
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
-import { Block, Brand, chip, chipOn, focus, Group, Icon, ICONS, iconBtn, input, Num, primary, secondary } from "./ui";
+import { Block, Brand, chip, chipOn, focus, Group, Icon, ICONS, iconBtn, input, Num, primary, secondary, ShapeIcon } from "./ui";
 import { Tip } from "./Tip";
+import { ImageSearch } from "./ImageSearch";
 
 const label = (e: El) =>
-  e.type === "text" ? e.text.split("\n")[0].slice(0, 24) || "Testo" : { rect: "Rettangolo", image: "Immagine", tiles: "Maioliche", line: "Linea" }[e.type];
+  e.type === "text" ? e.text.split("\n")[0].slice(0, 24) || "Testo" : e.type === "shape" ? SHAPES[e.kind].label : { rect: "Rettangolo", image: "Immagine", tiles: "Maioliche", line: "Linea" }[e.type];
 
 function useImage(src: string) {
   const [img, setImg] = useState<HTMLImageElement>();
@@ -34,6 +35,40 @@ function ImageNode({ el, ...rest }: { el: Extract<El, { type: "image" }> } & Kon
   return <KImage image={img} {...rest} />;
 }
 
+// Forma vectorial: se dibuja con Path2D escalado a width/height, así el transformador la redimensiona como a cualquier otro elemento
+function ShapeNode({ el, ...rest }: { el: Extract<El, { type: "shape" }> } & Konva.NodeConfig) {
+  const d = SHAPES[el.kind];
+  return (
+    <KShape
+      {...rest}
+      fill={el.fill}
+      sceneFunc={(ctx, shape) => {
+        const c = (ctx as unknown as { _context: CanvasRenderingContext2D })._context;
+        c.save();
+        c.scale(shape.width() / d.vb, shape.height() / d.vb);
+        const path = new Path2D(d.d);
+        if (d.stroke) {
+          c.strokeStyle = el.fill;
+          c.lineWidth = 1.7;
+          c.lineCap = "round";
+          c.lineJoin = "round";
+          c.stroke(path);
+        } else {
+          c.fillStyle = el.fill;
+          c.fill(path, "evenodd");
+        }
+        c.restore();
+      }}
+      hitFunc={(ctx, shape) => {
+        ctx.beginPath();
+        ctx.rect(0, 0, shape.width(), shape.height());
+        ctx.closePath();
+        ctx.fillStrokeShape(shape);
+      }}
+    />
+  );
+}
+
 function TilesNode({ el, ...rest }: { el: Extract<El, { type: "tiles" }> } & Konva.NodeConfig) {
   const sc = tileScale(el.k);
   return <Rect {...rest} fillPatternImage={tilePattern(el.fill) as unknown as HTMLImageElement} fillPatternScale={{ x: sc, y: sc }} fillPatternRepeat="repeat" />;
@@ -48,22 +83,33 @@ function TilesNode({ el, ...rest }: { el: Extract<El, { type: "tiles" }> } & Kon
    Fase 4: exportar a PNG y PDF a resolución de impresión, e imprimir.
    Fase 3: guardado automático en localStorage y deshacer/rehacer */
 const STORAGE_KEY = "menudo:canvas:v1";
+const ZOOM_KEY = "menudo:canvas:zoom"; // último zoom del usuario: se conserva al cambiar de hoja y entre visitas
+const readZoom = () => {
+  try {
+    const v = Number(localStorage.getItem(ZOOM_KEY));
+    return v >= 0.5 && v <= 4 ? v : 1;
+  } catch {
+    return 1;
+  }
+};
+const okBg = (v: unknown) => (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v : "#ffffff");
 const MAX_HISTORY = 100;
 const THEME_KEY = "menudo:theme"; // el mismo que el editor principal
 type History = { past: El[][][]; pages: El[][]; future: El[][][] }; // cada paso del historial guarda todas las páginas
 const starter = (): El[] => [newText({ y: 20, width: 170, height: 20, text: "Menù", fontSize: 14, fontFamily: "display" })];
 
-function load(): { paper: Paper; copies: Copies; pages: El[][]; tables: string[] } {
+function load(): { paper: Paper; copies: Copies; pages: El[][]; tables: string[]; bg: string } {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
     const copies = COPIES.includes(raw?.copies) ? raw.copies : 1;
+    const bg = okBg(raw?.bg);
     const tables: string[] = Array.isArray(raw?.tables) ? raw.tables.map((x: unknown) => (x == null ? "" : String(x))) : [];
     if (raw && raw.paper in PAPERS) {
-      if (Array.isArray(raw.pages) && raw.pages.length && raw.pages.every(Array.isArray)) return { paper: raw.paper, copies, pages: raw.pages, tables };
-      if (Array.isArray(raw.els)) return { paper: raw.paper, copies, pages: [raw.els], tables }; // formato de las fases 3-10: una sola página
+      if (Array.isArray(raw.pages) && raw.pages.length && raw.pages.every(Array.isArray)) return { paper: raw.paper, copies, pages: raw.pages, tables, bg };
+      if (Array.isArray(raw.els)) return { paper: raw.paper, copies, pages: [raw.els], tables, bg }; // formato de las fases 3-10: una sola página
     }
   } catch {}
-  return { paper: "A4", copies: 1, pages: [starter()], tables: [] };
+  return { paper: "A4", copies: 1, pages: [starter()], tables: [], bg: "#ffffff" };
 }
 
 // Reduce la foto: las del móvil pesan varios MB y no caben en localStorage
@@ -91,6 +137,7 @@ export default function CanvasEditor() {
   const [paper, setPaper] = useState<Paper>(init.paper);
   const [wanted, setCopies] = useState<Copies>(init.copies);
   const [tables, setTables] = useState<string[]>(init.tables); // número de mesa de cada copia
+  const [bg, setBg] = useState(init.bg); // color de la hoja
   // Si el papel elegido no admite esas copias (p. ej. 4 × A3), se vuelve a 1
   const copies: Copies = sheetFor(paper, wanted) ? wanted : 1;
   const sheet = sheetFor(paper, copies)!;
@@ -220,7 +267,7 @@ export default function CanvasEditor() {
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const marqueeFrom = useRef<{ x: number; y: number; add: boolean } | null>(null);
   const [fit, setFit] = useState(2); // px por mm que hacen caber la hoja en el ancho
-  const [mul, setMul] = useState(1); // zoom del usuario sobre ese ajuste
+  const [mul, setMul] = useState(readZoom); // zoom del usuario sobre ese ajuste (se recuerda)
   const maxMul = Math.min(4, Math.max(1, 5000 / (PAPERS[paper].w * fit))); // la hoja no pasa de ~5000 px de ancho: más pesa y no aporta
   const zoom = fit * Math.min(mul, maxMul);
   const mulRef = useRef({ mul: 1, max: 1, zoom: 1 });
@@ -248,10 +295,20 @@ export default function CanvasEditor() {
   // Ajusta el zoom para que la hoja quepa en el ancho disponible
   useEffect(() => {
     const el = wrap.current!;
-    const ro = new ResizeObserver(([e]) => setFit(Math.max(0.3, (e.contentRect.width - 32) / w)));
+    // Escritorio: cabe la hoja entera (ancho y alto); móvil: solo el ancho, la hoja se recorre hacia abajo
+    const ro = new ResizeObserver(([e]) => {
+      const byW = (e.contentRect.width - 32) / w;
+      const byH = matchMedia("(min-width: 768px)").matches ? (e.contentRect.height - 48) / h : Infinity;
+      setFit(Math.max(0.3, Math.min(byW, byH)));
+    });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [w]);
+  }, [w, h]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(ZOOM_KEY, String(mul));
+    } catch {}
+  }, [mul]);
 
   // Ctrl+rueda (también el pellizco del trackpad) y pellizco táctil con dos dedos
   useEffect(() => {
@@ -336,14 +393,14 @@ export default function CanvasEditor() {
   useEffect(() => {
     const t = setTimeout(() => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, copies, pages: hist.pages, tables }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, copies, pages: hist.pages, tables, bg }));
         setSaveError(false);
       } catch {
         setSaveError(true); // normalmente: demasiadas imágenes para el límite del navegador
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [paper, copies, hist.pages, tables]);
+  }, [paper, copies, hist.pages, tables, bg]);
 
   // `merge`: ediciones desde el panel (escribir, deslizadores) que deben deshacerse de una vez
   const patch = (id: string, p: Partial<El>, merge = true) =>
@@ -598,7 +655,7 @@ export default function CanvasEditor() {
     try {
       const same = saved.find((d) => d.name.toLowerCase() === name.toLowerCase());
       if (same && !confirm(`Esiste già «${same.name}». Sostituirlo?`)) return;
-      await designs.save({ id: same?.id ?? uid(), name, savedAt: Date.now(), doc: { paper, copies, pages: hist.pages, tables } });
+      await designs.save({ id: same?.id ?? uid(), name, savedAt: Date.now(), doc: { paper, copies, pages: hist.pages, tables, bg } });
       setDesignName("");
       setArchiveMsg(`Salvato «${name}».`);
       await refreshSaved();
@@ -611,9 +668,9 @@ export default function CanvasEditor() {
     setPaper(d.doc.paper);
     setCopies(COPIES.includes(d.doc.copies) ? d.doc.copies : 1);
     setTables(d.doc.tables ?? []);
+    setBg(okBg(d.doc.bg));
     setPages(() => d.doc.pages);
     goPage(0);
-    setMul(1);
     setArchiveMsg(`Aperto «${d.name}».`);
   };
   const removeDesign = async (d: Design) => {
@@ -779,9 +836,15 @@ export default function CanvasEditor() {
             Modifica testo
           </button>
           <p className="text-xs text-ink/70">Oppure doppio clic sul testo, sulla carta.</p>
-          <select className={input} aria-label="Carattere" value={cur.fontFamily} onChange={(e) => patch(cur.id, { fontFamily: e.target.value as FontKey })}>
-            {FONTS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-          </select>
+          <div role="radiogroup" aria-label="Carattere" className="max-h-52 space-y-0.5 overflow-y-auto rounded-lg border border-laguna p-1">
+            {FONTS.map((f) => (
+              <button key={f.key} type="button" role="radio" aria-checked={cur.fontFamily === f.key}
+                className={`flex w-full items-center rounded-md px-3 py-1.5 text-left text-lg hover:bg-laguna/30 ${focus} ${cur.fontFamily === f.key ? "bg-laguna/40 font-semibold" : ""}`}
+                style={{ fontFamily: `var(${f.cssVar}), ${f.fallback}` }} onClick={() => patch(cur.id, { fontFamily: f.key })}>
+                {f.label}
+              </button>
+            ))}
+          </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <Tip label="Grassetto"><button aria-pressed={cur.bold} className={`${iconBtn} font-bold ${cur.bold ? "bg-laguna/40 text-ink" : ""}`} aria-label="Grassetto" onClick={() => patch(cur.id, { bold: !cur.bold })}>B</button></Tip>
             <Tip label="Corsivo"><button aria-pressed={cur.italic} className={`${iconBtn} italic ${cur.italic ? "bg-laguna/40 text-ink" : ""}`} aria-label="Corsivo" onClick={() => patch(cur.id, { italic: !cur.italic })}>I</button></Tip>
@@ -849,6 +912,12 @@ export default function CanvasEditor() {
     { name: "Corpo", hint: "Per piatti, ingredienti e prezzi", cls: "text-sm", o: { fontSize: 6, width: 170 } },
   ];
   const shapeBase = { x: 20, y: 60, ...common };
+  const kinds = (stroke: boolean) => (Object.keys(SHAPES) as ShapeKind[]).filter((k) => SHAPES[k].stroke === stroke);
+  const addShape = (kind: ShapeKind) => {
+    const size = SHAPES[kind].stroke ? 30 : 40;
+    add({ id: uid(), type: "shape", kind, ...shapeBase, width: size, height: size, fill: SHAPES[kind].stroke ? PALETTE[0].hex : PALETTE[2].hex });
+  };
+  const tile = `flex flex-col items-center gap-1.5 rounded-lg border border-laguna bg-surface px-2 py-3 text-center lift hover:border-mare hover:bg-laguna/15 ${focus}`;
   const shapes = [
     { name: "Rettangolo", hint: "Un riquadro pieno, utile come sfondo", icon: ICONS.rect, el: { type: "rect", ...shapeBase, width: 60, height: 30, fill: PALETTE[2].hex, radius: 0 } as const },
     { name: "Cerchio", hint: "Un cerchio pieno, anche per le icone", icon: ICONS.circle, el: { type: "rect", ...shapeBase, width: 40, height: 40, fill: PALETTE[2].hex, radius: 20 } as const },
@@ -880,17 +949,41 @@ export default function CanvasEditor() {
               <span className="text-xs leading-tight text-ink/70">{s.hint}</span>
             </button>
           ))}
+          {kinds(false).map((k) => (
+            <button key={k} title={SHAPES[k].hint} className={tile} onClick={() => addShape(k)}>
+              <ShapeIcon kind={k} className="size-7 text-mare" />
+              <span className="text-[13px] font-semibold">{SHAPES[k].label}</span>
+              <span className="text-xs leading-tight text-ink/70">{SHAPES[k].hint}</span>
+            </button>
+          ))}
+        </div>
+      </>
+    ) },
+    { id: "objects", label: "Oggetti", hint: "Icone di caffè, vino, posate e altro", icon: SHAPES.utensils.d, body: (
+      <>
+        <p className="text-sm text-ink/70">Icone semplici: cambia colore e misura come vuoi.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {kinds(true).map((k) => (
+            <button key={k} title={SHAPES[k].hint} className={tile} onClick={() => addShape(k)}>
+              <ShapeIcon kind={k} className="size-7 text-mare" />
+              <span className="text-[13px] font-semibold">{SHAPES[k].label}</span>
+              <span className="text-xs leading-tight text-ink/70">{SHAPES[k].hint}</span>
+            </button>
+          ))}
         </div>
       </>
     ) },
     { id: "images", label: "Immagini", hint: "Foto e loghi", icon: ICONS.image, body: (
       <>
-        <p className="text-sm text-ink/70">Aggiungi una foto o un logo. Le immagini grandi vengono ridotte per entrare nel salvataggio.</p>
+        <p className="text-sm text-ink/70">Carica una foto o un logo, oppure cercane una sul web. Le immagini grandi vengono ridotte per entrare nel salvataggio.</p>
         <label className={`${primary} relative w-full cursor-pointer focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink`}>
           <Icon d={ICONS.image} className="size-[18px]" />
           Carica un&apos;immagine
           <input type="file" accept="image/*" className="sr-only" onChange={(e) => { addImage(e.target.files?.[0]); e.target.value = ""; }} />
         </label>
+        <hr className="border-laguna/50" />
+        <h3 className="text-[13px] font-semibold">Cerca sul web</h3>
+        <ImageSearch onPick={addImage} />
       </>
     ) },
     { id: "pages", label: "Pagine", hint: "Aggiungi, duplica e ordina le pagine", icon: ICONS.pages, body: (
@@ -908,13 +1001,23 @@ export default function CanvasEditor() {
     { id: "sheet", label: "Foglio", hint: "Carta, copie e numeri di tavolo", icon: ICONS.sheet, body: (
       <>
           <fieldset>
+          <legend className="mb-1.5 text-sm font-semibold">Colore della carta</legend>
+          <div className="flex flex-wrap items-center gap-2">
+          {PALETTE.map((c) => (
+          <button key={c.hex} type="button" title={c.name} aria-label={`Carta ${c.name}`} aria-pressed={bg.toLowerCase() === c.hex.toLowerCase()}
+          className={`size-7 rounded-full ring-1 ring-laguna ring-offset-2 ring-offset-surface aria-pressed:ring-2 aria-pressed:ring-mare ${focus}`}
+          style={{ background: c.hex }} onClick={() => setBg(c.hex)} />
+          ))}
+          <input type="color" aria-label="Altro colore della carta" className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={bg} onChange={(e) => setBg(e.target.value)} />
+          </div>
+          </fieldset>
+          <fieldset>
             <legend className="mb-1.5 text-sm font-semibold">Carta</legend>
             <div className="flex flex-wrap gap-2">
               {(Object.keys(PAPERS) as Paper[]).map((p) => (
                 <label key={p} className={pillOpt(paper === p)}>
                   <input type="radio" name="paper" className="sr-only" checked={paper === p} onChange={() => {
                     setPaper(p);
-                    setMul(1);
                   }} />
                   {p} <span className="font-normal opacity-80">({PAPERS[p].w} × {PAPERS[p].h} mm)</span>
                 </label>
@@ -1139,7 +1242,7 @@ export default function CanvasEditor() {
             onTouchStart={(e) => (emptyHit(e) && !multi ? setSels([]) : undefined)}
           >
             <Layer ref={layerRef}>
-              <Rect name="paper" width={w} height={h} fill="#fff" />
+              <Rect name="paper" width={w} height={h} fill={bg} />
               {els.map((el) => {
                 const props = {
                   id: el.id,
@@ -1186,6 +1289,7 @@ export default function CanvasEditor() {
                 if (el.type === "tiles") return <TilesNode key={el.id} el={el} {...props} />;
                 if (el.type === "line")
                   return <Line key={el.id} {...props} points={[0, 0, el.width, 0]} stroke={el.fill} strokeWidth={el.thickness} lineCap="round" dash={el.dash ? [0.01, el.thickness * 2] : undefined} hitStrokeWidth={4} />;
+                if (el.type === "shape") return <ShapeNode key={el.id} el={el} {...props} />;
                 return <ImageNode key={el.id} el={el} {...props} />;
               })}
               {guides.v.map((x) => <Line key={"v" + x} points={[x, 0, x, h]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
