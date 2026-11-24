@@ -726,6 +726,85 @@ export default function CanvasEditor() {
   const pct = Math.round(Math.min(mul, maxMul) * 100);
   const hasTable = hist.pages.some((pg) => pg.some((e) => e.type === "text" && e.table));
 
+  // Panel «Elemento»: columna derecha en escritorio y pestaña «Strumenti» en móvil (mismo JSX en los dos sitios)
+  const properties = sels.length > 0 && (
+          <Group title={sels.length === 1 ? "Elemento" : `${sels.length} elementi`} icon={ICONS.design} open>
+            <div className="flex flex-wrap gap-1.5">
+              {([["l", "Sx", "a sinistra"], ["c", "Ct", "al centro"], ["r", "Dx", "a destra"], ["t", "Alto", "in alto"], ["m", "Mezzo", "al centro in verticale"], ["b", "Basso", "in basso"]] as const).map(([m, t, d]) => (
+                <button key={m} title={`Allinea ${d}`} aria-label={`Allinea ${d}`} className={small} onClick={() => align(m)}>{t}</button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {sels.length > 1 && <button className={secondary} onClick={group} title="Ctrl+G"><Icon d={ICONS.group} className="size-4" />Raggruppa</button>}
+              {selEls.some((x) => x.group) && <button className={secondary} onClick={ungroup} title="Ctrl+Maiusc+G"><Icon d={ICONS.ungroup} className="size-4" />Separa</button>}
+              <button className={secondary} onClick={duplicateSel} title="Ctrl+D"><Icon d={ICONS.copy} className="size-4" />Duplica</button>
+              <button className={secondary} onClick={removeSel}><Icon d={ICONS.trash} className="size-4" />Elimina</button>
+            </div>
+            {cur && (
+              <div className="space-y-3">
+                {cur.type === "text" && (
+                  <>
+                    <textarea className={input} rows={3} value={cur.text} onChange={(e) => patch(cur.id, { text: e.target.value })} />
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" className="size-4 accent-mare" checked={!!cur.table} onChange={(e) => patch(cur.id, { table: e.target.checked })} />
+                      Numero di tavolo (diverso per ogni copia)
+                    </label>
+                    <select className={input} aria-label="Carattere" value={cur.fontFamily} onChange={(e) => patch(cur.id, { fontFamily: e.target.value as FontKey })}>
+                      {FONTS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+                    </select>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button aria-pressed={cur.bold} className={`${iconBtn} font-bold ${cur.bold ? "bg-laguna/40 text-ink" : ""}`} aria-label="Grassetto" onClick={() => patch(cur.id, { bold: !cur.bold })}>B</button>
+                      <button aria-pressed={cur.italic} className={`${iconBtn} italic ${cur.italic ? "bg-laguna/40 text-ink" : ""}`} aria-label="Corsivo" onClick={() => patch(cur.id, { italic: !cur.italic })}>I</button>
+                      {(["left", "center", "right"] as const).map((al) => (
+                        <button key={al} aria-pressed={cur.align === al} className={`${iconBtn} ${cur.align === al ? "bg-laguna/40 text-ink" : ""}`} aria-label={`Allinea testo ${al === "left" ? "a sinistra" : al === "center" ? "al centro" : "a destra"}`} onClick={() => patch(cur.id, { align: al })}>
+                          <Icon d={al === "left" ? ICONS.alignLeft : al === "center" ? ICONS.alignCenter : ICONS.alignRight} className="size-[18px]" />
+                        </button>
+                      ))}
+                    </div>
+                    <Num label="Dimensione (mm)" value={cur.fontSize} min={2} onChange={(v) => patch(cur.id, { fontSize: v })} />
+                    <Num label="Interlinea" value={cur.lineHeight ?? 1.2} min={0.5} onChange={(v) => patch(cur.id, { lineHeight: v })} />
+                  </>
+                )}
+                {cur.type === "tiles" && <Num label="Dimensione maiolica" value={cur.k} min={0.1} onChange={(v) => patch(cur.id, { k: v })} />}
+                {cur.type === "line" && (
+                  <>
+                    <Num label="Spessore (mm)" value={cur.thickness} min={0.1} onChange={(v) => patch(cur.id, { thickness: v })} />
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" className="size-4 accent-mare" checked={cur.dash} onChange={(e) => patch(cur.id, { dash: e.target.checked })} />
+                      Punteggiata
+                    </label>
+                  </>
+                )}
+                {cur.type === "rect" && <Num label="Angoli (mm)" value={cur.radius} min={0} onChange={(v) => patch(cur.id, { radius: v })} />}
+                {cur.type !== "image" && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="mr-1 text-sm font-semibold">Colore</span>
+                    {PALETTE.map((c) => (
+                      <button key={c.hex} title={c.name} aria-label={c.name} aria-pressed={cur.fill.toLowerCase() === c.hex.toLowerCase()}
+                        className={`size-7 rounded-full ring-1 ring-laguna ring-offset-2 ring-offset-surface aria-pressed:ring-2 aria-pressed:ring-mare ${focus}`}
+                        style={{ background: c.hex }} onClick={() => patch(cur.id, { fill: c.hex })} />
+                    ))}
+                    <input type="color" aria-label="Altro colore" className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={cur.fill} onChange={(e) => patch(cur.id, { fill: e.target.value })} />
+                  </div>
+                )}
+                <label className="flex items-center gap-2 text-sm font-semibold">
+                  Opacità
+                  <input type="range" className="flex-1 accent-mare" min={0} max={1} step={0.05} value={cur.opacity} onChange={(e) => patch(cur.id, { opacity: Number(e.target.value) })} />
+                  <span className="w-10 text-right font-normal tabular-nums">{Math.round(cur.opacity * 100)}%</span>
+                </label>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                  <Num label="X" value={cur.x} onChange={(v) => patch(cur.id, { x: v })} />
+                  <Num label="Y" value={cur.y} onChange={(v) => patch(cur.id, { y: v })} />
+                  <Num label="L" value={cur.width} min={1} onChange={(v) => patch(cur.id, { width: v })} />
+                  {cur.type !== "text" && <Num label="A" value={cur.height} min={1} onChange={(v) => patch(cur.id, { height: v })} />}
+                  <Num label="Rot°" value={cur.rotation} onChange={(v) => patch(cur.id, { rotation: v })} />
+                </div>
+              </div>
+            )}
+          </Group>
+  );
+  const hint = "Seleziona un elemento per modificarlo, oppure trascina sulla carta per selezionarne di più (Maiusc per aggiungere). Frecce per spostare (Maiusc = 5 mm).";
+
   return (
     <>
     {/* Medidas explícitas: los nombres A2 y A1 no son tamaños de página válidos en CSS */}
@@ -758,7 +837,7 @@ export default function CanvasEditor() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-      <aside aria-label="Strumenti" className={`${tab === "tools" ? "block" : "hidden"} w-full shrink-0 overflow-y-auto bg-surface pb-24 md:block md:w-[320px] md:border-r md:border-laguna/60 md:pb-0`}>
+      <aside aria-label="Strumenti" className={`${tab === "tools" ? "block" : "hidden"} w-full shrink-0 overflow-y-auto bg-surface pb-24 md:block md:w-[280px] md:border-r md:border-laguna/60 md:pb-0`}>
         <Group title="Documento" icon={ICONS.edit} open>
           <button className={`${primary} w-full`} disabled={busy} onClick={importMenu}>
             <Icon d={ICONS.edit} className="size-[18px]" />
@@ -848,85 +927,10 @@ export default function CanvasEditor() {
           </div>
         </Group>
 
-        {sels.length > 0 && (
-          <Group title={sels.length === 1 ? "Elemento" : `${sels.length} elementi`} icon={ICONS.design} open>
-            <div className="flex flex-wrap gap-1.5">
-              {([["l", "Sx", "a sinistra"], ["c", "Ct", "al centro"], ["r", "Dx", "a destra"], ["t", "Alto", "in alto"], ["m", "Mezzo", "al centro in verticale"], ["b", "Basso", "in basso"]] as const).map(([m, t, d]) => (
-                <button key={m} title={`Allinea ${d}`} aria-label={`Allinea ${d}`} className={small} onClick={() => align(m)}>{t}</button>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {sels.length > 1 && <button className={secondary} onClick={group} title="Ctrl+G"><Icon d={ICONS.group} className="size-4" />Raggruppa</button>}
-              {selEls.some((x) => x.group) && <button className={secondary} onClick={ungroup} title="Ctrl+Maiusc+G"><Icon d={ICONS.ungroup} className="size-4" />Separa</button>}
-              <button className={secondary} onClick={duplicateSel} title="Ctrl+D"><Icon d={ICONS.copy} className="size-4" />Duplica</button>
-              <button className={secondary} onClick={removeSel}><Icon d={ICONS.trash} className="size-4" />Elimina</button>
-            </div>
-            {cur && (
-              <div className="space-y-3">
-                {cur.type === "text" && (
-                  <>
-                    <textarea className={input} rows={3} value={cur.text} onChange={(e) => patch(cur.id, { text: e.target.value })} />
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" className="size-4 accent-mare" checked={!!cur.table} onChange={(e) => patch(cur.id, { table: e.target.checked })} />
-                      Numero di tavolo (diverso per ogni copia)
-                    </label>
-                    <select className={input} aria-label="Carattere" value={cur.fontFamily} onChange={(e) => patch(cur.id, { fontFamily: e.target.value as FontKey })}>
-                      {FONTS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-                    </select>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <button aria-pressed={cur.bold} className={`${iconBtn} font-bold ${cur.bold ? "bg-laguna/40 text-ink" : ""}`} aria-label="Grassetto" onClick={() => patch(cur.id, { bold: !cur.bold })}>B</button>
-                      <button aria-pressed={cur.italic} className={`${iconBtn} italic ${cur.italic ? "bg-laguna/40 text-ink" : ""}`} aria-label="Corsivo" onClick={() => patch(cur.id, { italic: !cur.italic })}>I</button>
-                      {(["left", "center", "right"] as const).map((al) => (
-                        <button key={al} aria-pressed={cur.align === al} className={`${iconBtn} ${cur.align === al ? "bg-laguna/40 text-ink" : ""}`} aria-label={`Allinea testo ${al === "left" ? "a sinistra" : al === "center" ? "al centro" : "a destra"}`} onClick={() => patch(cur.id, { align: al })}>
-                          <Icon d={al === "left" ? ICONS.alignLeft : al === "center" ? ICONS.alignCenter : ICONS.alignRight} className="size-[18px]" />
-                        </button>
-                      ))}
-                    </div>
-                    <Num label="Dimensione (mm)" value={cur.fontSize} min={2} onChange={(v) => patch(cur.id, { fontSize: v })} />
-                    <Num label="Interlinea" value={cur.lineHeight ?? 1.2} min={0.5} onChange={(v) => patch(cur.id, { lineHeight: v })} />
-                  </>
-                )}
-                {cur.type === "tiles" && <Num label="Dimensione maiolica" value={cur.k} min={0.1} onChange={(v) => patch(cur.id, { k: v })} />}
-                {cur.type === "line" && (
-                  <>
-                    <Num label="Spessore (mm)" value={cur.thickness} min={0.1} onChange={(v) => patch(cur.id, { thickness: v })} />
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" className="size-4 accent-mare" checked={cur.dash} onChange={(e) => patch(cur.id, { dash: e.target.checked })} />
-                      Punteggiata
-                    </label>
-                  </>
-                )}
-                {cur.type === "rect" && <Num label="Angoli (mm)" value={cur.radius} min={0} onChange={(v) => patch(cur.id, { radius: v })} />}
-                {cur.type !== "image" && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="mr-1 text-sm font-semibold">Colore</span>
-                    {PALETTE.map((c) => (
-                      <button key={c.hex} title={c.name} aria-label={c.name} aria-pressed={cur.fill.toLowerCase() === c.hex.toLowerCase()}
-                        className={`size-7 rounded-full ring-1 ring-laguna ring-offset-2 ring-offset-surface aria-pressed:ring-2 aria-pressed:ring-mare ${focus}`}
-                        style={{ background: c.hex }} onClick={() => patch(cur.id, { fill: c.hex })} />
-                    ))}
-                    <input type="color" aria-label="Altro colore" className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={cur.fill} onChange={(e) => patch(cur.id, { fill: e.target.value })} />
-                  </div>
-                )}
-                <label className="flex items-center gap-2 text-sm font-semibold">
-                  Opacità
-                  <input type="range" className="flex-1 accent-mare" min={0} max={1} step={0.05} value={cur.opacity} onChange={(e) => patch(cur.id, { opacity: Number(e.target.value) })} />
-                  <span className="w-10 text-right font-normal tabular-nums">{Math.round(cur.opacity * 100)}%</span>
-                </label>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                  <Num label="X" value={cur.x} onChange={(v) => patch(cur.id, { x: v })} />
-                  <Num label="Y" value={cur.y} onChange={(v) => patch(cur.id, { y: v })} />
-                  <Num label="L" value={cur.width} min={1} onChange={(v) => patch(cur.id, { width: v })} />
-                  {cur.type !== "text" && <Num label="A" value={cur.height} min={1} onChange={(v) => patch(cur.id, { height: v })} />}
-                  <Num label="Rot°" value={cur.rotation} onChange={(v) => patch(cur.id, { rotation: v })} />
-                </div>
-              </div>
-            )}
-          </Group>
-        )}
+        <div className="md:hidden">{properties}</div>
 
         <Group title="Livelli" icon={ICONS.layers}>
-          {sels.length === 0 && <p className="text-sm text-ink/65">Seleziona un elemento per modificarlo, oppure trascina sulla carta per selezionarne di più (Maiusc per aggiungere). Frecce per spostare (Maiusc = 5 mm).</p>}
+          {sels.length === 0 && <p className="text-sm text-ink/65 md:hidden">Seleziona un elemento per modificarlo, oppure trascina sulla carta per selezionarne di più (Maiusc per aggiungere). Frecce per spostare (Maiusc = 5 mm).</p>}
           <ul className="-mx-2 space-y-0.5">
             {[...els].reverse().map((e) => (
               <li key={e.id} className={`flex items-center gap-0.5 rounded-lg px-2 py-0.5 ${sels.includes(e.id) ? "bg-laguna/40" : ""}`}>
@@ -1072,6 +1076,10 @@ export default function CanvasEditor() {
         </div>
         </div>
       </main>
+      <aside aria-label="Proprietà" className="hidden w-[280px] shrink-0 overflow-y-auto border-l border-laguna/60 bg-surface md:block">
+        {properties}
+        {sels.length === 0 && <p className="p-4 text-sm text-ink/70">{hint}</p>}
+      </aside>
       </div>
 
       {/* Móvil: acciones de la selección y barra de pestañas, en la zona del pulgar */}
