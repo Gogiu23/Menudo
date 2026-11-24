@@ -928,10 +928,10 @@ export default function CanvasEditor() {
           </div>
         </Group>
 
-        <div className="md:hidden">{properties}</div>
+        <div className="lg:hidden">{properties}</div>
 
         <Group title="Livelli" icon={ICONS.layers}>
-          {sels.length === 0 && <p className="text-sm text-ink/65 md:hidden">Seleziona un elemento per modificarlo, oppure trascina sulla carta per selezionarne di più (Maiusc per aggiungere). Frecce per spostare (Maiusc = 5 mm).</p>}
+          {sels.length === 0 && <p className="text-sm text-ink/65 lg:hidden">Seleziona un elemento per modificarlo, oppure trascina sulla carta per selezionarne di più (Maiusc per aggiungere). Frecce per spostare (Maiusc = 5 mm).</p>}
           <ul className="-mx-2 space-y-0.5">
             {[...els].reverse().map((e) => (
               <li key={e.id} className={`flex items-center gap-0.5 rounded-lg px-2 py-0.5 ${sels.includes(e.id) ? "bg-laguna/40" : ""}`}>
@@ -1077,7 +1077,7 @@ export default function CanvasEditor() {
         </div>
         </div>
       </main>
-      <aside aria-label="Proprietà" className="hidden w-[280px] shrink-0 overflow-y-auto border-l border-laguna/60 bg-surface md:block">
+      <aside aria-label="Proprietà" className="hidden w-[280px] shrink-0 overflow-y-auto border-l border-laguna/60 bg-surface lg:block">
         {properties}
         {sels.length === 0 && <p className="p-4 text-sm text-ink/70">{hint}</p>}
       </aside>
