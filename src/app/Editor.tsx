@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import Link from "next/link";
 import { formatPrice } from "./price";
 
 type Item = { name: string; desc: string; price: string };
@@ -815,6 +816,10 @@ export default function Editor() {
                 </button>
               ))}
             </nav>
+
+            <Link href="/canvas" className={`shrink-0 rounded-lg px-3 py-2 text-sm text-ink/70 underline decoration-laguna underline-offset-4 hover:bg-laguna/20 ${focus}`}>
+              Editor libero
+            </Link>
 
             <div className="hidden md:block">
               <button className={primary} onClick={() => window.print()}>

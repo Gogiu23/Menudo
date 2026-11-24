@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Image as KImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
 import type Konva from "konva";
 
@@ -590,7 +591,10 @@ export default function CanvasEditor() {
     <style>{`@page { size: ${sheet.name} ${sheet.landscape ? "landscape" : "portrait"}; margin: 0; }`}</style>
     <div className="flex min-h-screen flex-col bg-laguna/35 text-ink md:flex-row print:hidden">
       <aside className={`${tab === "tools" ? "flex" : "hidden"} md:flex shrink-0 flex-col gap-4 pb-24 md:pb-4 md:sticky md:top-0 md:h-screen md:overflow-y-auto border-b border-laguna/60 bg-white p-4 md:w-72 md:border-r md:border-b-0`}>
-        <h1 className="font-display text-lg font-semibold">Editor libero (prova)</h1>
+        <div className="flex items-baseline justify-between gap-2">
+          <h1 className="font-display text-lg font-semibold">Editor libero (prova)</h1>
+          <Link href="/" className="shrink-0 text-sm underline decoration-laguna underline-offset-4">← Menudo</Link>
+        </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <button className={btn} disabled={!hist.past.length} onClick={undo} title="Ctrl+Z">↶ Annulla</button>
