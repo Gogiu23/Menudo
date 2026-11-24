@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Image as KImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
 import type Konva from "konva";
@@ -188,7 +188,9 @@ export default function CanvasEditor() {
   const [mul, setMul] = useState(1); // zoom del usuario sobre ese ajuste
   const maxMul = Math.min(4, Math.max(1, 5000 / (PAPERS[paper].w * fit))); // la hoja no pasa de ~5000 px de ancho: más pesa y no aporta
   const zoom = fit * Math.min(mul, maxMul);
-  const mulRef = useRef({ mul: 1, max: 1 });
+  const mulRef = useRef({ mul: 1, max: 1, zoom: 1 });
+  // Punto de la hoja (en mm) que debe quedarse bajo el dedo/cursor mientras cambia el zoom
+  const anchor = useRef<{ cx: number; cy: number; ux: number; uy: number } | null>(null);
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
   const wrap = useRef<HTMLDivElement>(null);
   const trRef = useRef<Konva.Transformer>(null);
@@ -215,16 +217,24 @@ export default function CanvasEditor() {
 
   // Ctrl+rueda (también el pellizco del trackpad) y pellizco táctil con dos dedos
   useEffect(() => {
-    mulRef.current = { mul, max: maxMul };
+    mulRef.current = { mul, max: maxMul, zoom };
   });
   useEffect(() => {
     const el = wrap.current!;
     const clamp = (v: number) => Math.min(mulRef.current.max, Math.max(0.5, v));
     let pinch: { d: number; m: number } | null = null;
     const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    // Antes de cambiar el zoom se anota qué punto de la hoja hay bajo (cx, cy); si ya hay uno pendiente se conserva
+    const hold = (cx: number, cy: number) => {
+      if (anchor.current || !stageRef.current) return;
+      const r = stageRef.current.container().getBoundingClientRect();
+      const z = mulRef.current.zoom;
+      anchor.current = { cx, cy, ux: (cx - r.left) / z, uy: (cy - r.top) / z };
+    };
     const wheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
       e.preventDefault();
+      hold(e.clientX, e.clientY);
       setMul((m) => clamp(m * Math.exp(-e.deltaY * 0.004)));
     };
     const start = (e: TouchEvent) => {
@@ -233,6 +243,7 @@ export default function CanvasEditor() {
     const move = (e: TouchEvent) => {
       if (!pinch || e.touches.length !== 2) return;
       e.preventDefault();
+      hold((e.touches[0].clientX + e.touches[1].clientX) / 2, (e.touches[0].clientY + e.touches[1].clientY) / 2);
       setMul(clamp((pinch.m * dist(e.touches)) / pinch.d));
     };
     el.addEventListener("wheel", wheel, { passive: false });
@@ -244,6 +255,33 @@ export default function CanvasEditor() {
       el.removeEventListener("touchmove", move);
     };
   }, []);
+
+  // Tras el cambio de zoom, se desplaza el área para que el punto anotado siga bajo el cursor
+  useLayoutEffect(() => {
+    const a = anchor.current;
+    anchor.current = null;
+    if (!a || !stageRef.current || !wrap.current) return;
+    const r = stageRef.current.container().getBoundingClientRect();
+    // El área puede desplazarse por sí misma (horizontal) o con la ventana (vertical): lo que no absorbe una, lo hace la otra
+    const dx = r.left + a.ux * zoom - a.cx;
+    const dy = r.top + a.uy * zoom - a.cy;
+    const m = wrap.current;
+    const x0 = m.scrollLeft;
+    const y0 = m.scrollTop;
+    m.scrollLeft += dx;
+    m.scrollTop += dy;
+    window.scrollBy(dx - (m.scrollLeft - x0), dy - (m.scrollTop - y0));
+  }, [zoom]);
+
+  // Botones +/−: el zoom se centra en el centro de la vista
+  const zoomBy = (f: number) => {
+    const m = wrap.current!.getBoundingClientRect();
+    const r = stageRef.current!.container().getBoundingClientRect();
+    const cx = m.left + m.width / 2;
+    const cy = m.top + m.height / 2;
+    anchor.current = { cx, cy, ux: (cx - r.left) / zoom, uy: (cy - r.top) / zoom };
+    setMul((v) => Math.min(maxMul, Math.max(0.5, v * f)));
+  };
 
   // El transformador sigue a los elementos seleccionados (los bloqueados quedan fuera)
   useEffect(() => {
@@ -765,11 +803,11 @@ export default function CanvasEditor() {
 
       <main ref={wrap} className={`${tab === "canvas" ? "flex" : "hidden"} md:flex flex-1 overflow-auto p-4 pb-40 md:pb-4`}>
         <div className="fixed top-3 right-3 z-10 flex items-center gap-0.5 rounded-full bg-white/95 p-1 text-sm shadow-md ring-1 ring-ink/10 md:right-5">
-          <button aria-label="Riduci" className="size-8 rounded-full hover:bg-laguna/30" onClick={() => setMul((m) => Math.max(0.5, m / 1.25))}>−</button>
+          <button aria-label="Riduci" className="size-8 rounded-full hover:bg-laguna/30" onClick={() => zoomBy(1 / 1.25)}>−</button>
           <button title="Adatta alla larghezza" className="min-w-14 rounded-full px-1 py-1 text-xs tabular-nums hover:bg-laguna/30" onClick={() => setMul(1)}>
             {Math.round(Math.min(mul, maxMul) * 100)}%
           </button>
-          <button aria-label="Ingrandisci" className="size-8 rounded-full hover:bg-laguna/30" onClick={() => setMul((m) => Math.min(maxMul, m * 1.25))}>+</button>
+          <button aria-label="Ingrandisci" className="size-8 rounded-full hover:bg-laguna/30" onClick={() => zoomBy(1.25)}>+</button>
         </div>
         {hist.pages.length > 1 && (
           <div role="tablist" aria-label="Pagine" className="fixed top-3 left-3 z-10 flex max-w-[55vw] flex-wrap gap-1 md:left-[19.5rem]">
