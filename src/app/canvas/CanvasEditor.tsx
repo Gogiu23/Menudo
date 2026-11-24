@@ -14,6 +14,7 @@ import { common, Copies, COPIES, COPY_NAMES, El, FONTS, FontKey, fontFamily, fon
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
 import { Brand, chip, chipOn, focus, Group, Icon, ICONS, iconBtn, input, Num, primary, secondary } from "./ui";
+import { Tip } from "./Tip";
 
 const label = (e: El) =>
   e.type === "text" ? e.text.split("\n")[0].slice(0, 24) || "Testo" : { rect: "Rettangolo", image: "Immagine", tiles: "Maioliche", line: "Linea" }[e.type];
@@ -812,21 +813,33 @@ export default function CanvasEditor() {
     <div className="flex h-dvh flex-col bg-surface text-ink print:hidden">
       <header className="shrink-0 border-b border-laguna/60 bg-surface pt-[env(safe-area-inset-top)]">
         <div className="flex h-12 items-center gap-2 px-3 md:gap-3 md:px-4">
-          <Link href="/" aria-label="Menudo" className={`rounded-md ${focus}`}>
+          <Tip label="Torna al menù" hint="Esci dall'editor libero. Le modifiche sono già salvate.">
+            <Link href="/" className={`inline-flex h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold hover:bg-laguna/30 md:h-9 ${focus}`}>
+              <Icon d={ICONS.left} className="size-[18px]" />
+              Menù
+            </Link>
+          </Tip>
+          <Link href="/" aria-label="Menudo" className={`hidden rounded-md sm:block ${focus}`}>
             <Brand />
           </Link>
-          <p className="min-w-0 flex-1 truncate text-xs text-ink/60" aria-live="polite">
+          <p className="min-w-0 flex-1 truncate text-xs text-ink/70" aria-live="polite">
             Editor libero · Le modifiche si salvano da sole
           </p>
-          <button className={iconBtn} aria-label="Annulla" title="Annulla (Ctrl+Z)" disabled={!hist.past.length} onClick={undo}>
-            <Icon d={ICONS.undo} className="size-[18px]" />
-          </button>
-          <button className={iconBtn} aria-label="Ripeti" title="Ripeti (Ctrl+Maiusc+Z)" disabled={!hist.future.length} onClick={redo}>
-            <Icon d={ICONS.redo} className="size-[18px]" />
-          </button>
-          <button className={iconBtn} aria-label={dark ? "Tema chiaro" : "Tema scuro"} title={dark ? "Tema chiaro" : "Tema scuro"} onClick={toggleTheme}>
-            <Icon d={dark ? ICONS.sun : ICONS.moon} className="size-[18px]" />
-          </button>
+          <Tip label="Annulla" hint="Ctrl+Z">
+            <button className={iconBtn} aria-label="Annulla" disabled={!hist.past.length} onClick={undo}>
+              <Icon d={ICONS.undo} className="size-[18px]" />
+            </button>
+          </Tip>
+          <Tip label="Ripeti" hint="Ctrl+Maiusc+Z">
+            <button className={iconBtn} aria-label="Ripeti" disabled={!hist.future.length} onClick={redo}>
+              <Icon d={ICONS.redo} className="size-[18px]" />
+            </button>
+          </Tip>
+          <Tip label={dark ? "Tema chiaro" : "Tema scuro"} hint="Cambia l'aspetto dell'editor">
+            <button className={iconBtn} aria-label={dark ? "Tema chiaro" : "Tema scuro"} onClick={toggleTheme}>
+              <Icon d={dark ? ICONS.sun : ICONS.moon} className="size-[18px]" />
+            </button>
+          </Tip>
           <button
             className={`hidden h-9 shrink-0 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white lift hover:brightness-110 disabled:opacity-50 md:inline-flex ${focus}`}
             title="Stampa" disabled={busy} onClick={print}
