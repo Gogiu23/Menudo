@@ -10,6 +10,7 @@ import type Konva from "konva";
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
 import { common, Copies, COPIES, COPY_NAMES, El, FONTS, FontKey, fontFamily, fontStyleOf, newText, PALETTE, PAPERS, Paper, sheetFor, tilePattern, tileScale, uid } from "./model";
+import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
 
 const label = (e: El) =>
@@ -44,7 +45,8 @@ function Num({ label, value, min, onChange }: { label: string; value: number; mi
   );
 }
 
-/* Fase 14: números de mesa distintos en cada copia del folio.
+/* Fase 15: archivo de diseños con nombre (IndexedDB): guardar, abrir y borrar.
+   Fase 14: números de mesa distintos en cada copia del folio.
    Fase 11: varias páginas (copertina incluida al importar), exportadas en un solo PDF.
    Fase 10: zoom (botones, Ctrl+rueda, pellizco) sobre el ajuste al ancho.
    Fase 9: uso en móvil (pestañas Carta/Strumenti, barra inferior, modo selección múltiple táctil, maniglie grandes).
@@ -203,6 +205,9 @@ export default function CanvasEditor() {
   const [exportError, setExportError] = useState("");
   const [printSrcs, setPrintSrcs] = useState<string[]>([]);
   const [importMsg, setImportMsg] = useState("");
+  const [saved, setSaved] = useState<Design[]>([]);
+  const [designName, setDesignName] = useState("");
+  const [archiveMsg, setArchiveMsg] = useState("");
   const { w, h } = PAPERS[paper];
 
   // Las fuentes web se descargan al usarse en el DOM: se piden aquí y se repinta el lienzo al llegar
@@ -547,6 +552,40 @@ export default function CanvasEditor() {
     setGuides({ v: bx ? [bx.t] : [], h: by ? [by.t] : [] });
   };
 
+  // Archivo de diseños
+  useEffect(() => {
+    designs.list().then(setSaved, () => setArchiveMsg("L'archivio non è disponibile su questo browser."));
+  }, []);
+  const refreshSaved = () => designs.list().then(setSaved);
+  const saveDesign = async () => {
+    const name = designName.trim() || "Senza nome";
+    try {
+      const same = saved.find((d) => d.name.toLowerCase() === name.toLowerCase());
+      if (same && !confirm(`Esiste già «${same.name}». Sostituirlo?`)) return;
+      await designs.save({ id: same?.id ?? uid(), name, savedAt: Date.now(), doc: { paper, copies, pages: hist.pages, tables } });
+      setDesignName("");
+      setArchiveMsg(`Salvato «${name}».`);
+      await refreshSaved();
+    } catch {
+      setArchiveMsg("Non sono riuscito a salvare: forse manca spazio sul dispositivo.");
+    }
+  };
+  const openDesign = (d: Design) => {
+    if (!confirm(`Aprire «${d.name}»? Il lavoro attuale non salvato andrà perso.`)) return;
+    setPaper(d.doc.paper);
+    setCopies(COPIES.includes(d.doc.copies) ? d.doc.copies : 1);
+    setTables(d.doc.tables ?? []);
+    setPages(() => d.doc.pages);
+    goPage(0);
+    setMul(1);
+    setArchiveMsg(`Aperto «${d.name}».`);
+  };
+  const removeDesign = async (d: Design) => {
+    if (!confirm(`Eliminare «${d.name}» dall'archivio?`)) return;
+    await designs.remove(d.id).catch(() => setArchiveMsg("Non sono riuscito a eliminarlo."));
+    await refreshSaved();
+  };
+
   // Rehace el lienzo a partir de la carta del editor principal; Annulla lo deshace
   const importMenu = () =>
     run(async () => {
@@ -688,6 +727,30 @@ export default function CanvasEditor() {
             <button className={`${btn} px-2 py-1 text-xs`} disabled={hist.pages.length < 2} onClick={deletePage}>Elimina</button>
           </div>
         </div>
+
+        <fieldset className="flex flex-col gap-1.5 text-sm">
+          <legend className="mb-1 font-medium">Archivio</legend>
+          <div className="flex gap-1.5">
+            <input
+              aria-label="Nome del design" className="min-w-0 flex-1 rounded-lg border border-ink/20 p-1.5" placeholder="Nome del design" value={designName}
+              onChange={(e) => setDesignName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveDesign()}
+            />
+            <button className={btn} onClick={saveDesign}>Salva</button>
+          </div>
+          {archiveMsg && <p role="status" className="text-xs text-ink/65">{archiveMsg}</p>}
+          {saved.map((d) => (
+            <div key={d.id} className="flex items-center gap-1.5 rounded-lg bg-white px-2 py-1 ring-1 ring-ink/10">
+              <div className="min-w-0 flex-1">
+                <p className="truncate">{d.name}</p>
+                <p className="text-xs text-ink/55">
+                  {d.doc.paper} · {d.doc.pages.length} {d.doc.pages.length === 1 ? "pagina" : "pagine"} · {new Date(d.savedAt).toLocaleDateString("it-IT", { day: "numeric", month: "short" })}
+                </p>
+              </div>
+              <button className={`${btn} px-2 py-1 text-xs`} onClick={() => openDesign(d)}>Apri</button>
+              <button aria-label={`Elimina ${d.name}`} className="px-1.5 text-ink/60 hover:bg-laguna/30" onClick={() => removeDesign(d)}>✕</button>
+            </div>
+          ))}
+        </fieldset>
 
         <div className="flex flex-col gap-1">
           <button className={btn} disabled={busy} onClick={importMenu}>Importa il menù attuale</button>
