@@ -828,10 +828,11 @@ export default function CanvasEditor() {
             <Icon d={dark ? ICONS.sun : ICONS.moon} className="size-[18px]" />
           </button>
           <button
-            className={`hidden size-9 shrink-0 place-items-center rounded-lg bg-brand text-white lift hover:brightness-110 disabled:opacity-50 md:grid ${focus}`}
-            aria-label="Stampa" title="Stampa" disabled={busy} onClick={print}
+            className={`hidden h-9 shrink-0 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white lift hover:brightness-110 disabled:opacity-50 md:inline-flex ${focus}`}
+            title="Stampa" disabled={busy} onClick={print}
           >
             <Icon d={ICONS.print} className="size-[18px]" />
+            Stampa
           </button>
         </div>
       </header>

@@ -2298,12 +2298,12 @@ export default function Editor() {
               <Icon d={ICONS.logout} className="size-[18px]" />
             </button>
             <button
-              className={`hidden size-9 shrink-0 place-items-center rounded-lg bg-brand text-white lift hover:brightness-110 md:grid ${focus}`}
-              aria-label={t.print}
+              className={`hidden h-9 shrink-0 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white lift hover:brightness-110 md:inline-flex ${focus}`}
               title={t.print}
               onClick={() => window.print()}
             >
               <Icon d={ICONS.print} className="size-[18px]" />
+              {t.print}
             </button>
           </div>
           {(saveError || archiveError) && (
