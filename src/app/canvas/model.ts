@@ -42,6 +42,8 @@ export type TextEl = Base & {
   italic: boolean;
   align: "left" | "center" | "right";
   lineHeight?: number;
+  // Número de mesa: al exportar, su texto se sustituye por el de cada copia (o queda vacío); en pantalla es solo un aviso
+  table?: boolean;
 };
 export type RectEl = Base & { type: "rect"; fill: string; radius: number; stroke?: string; strokeW?: number };
 export type ImageEl = Base & { type: "image"; src: string };
@@ -117,3 +119,10 @@ export function sheetFor(paper: Paper, copies: Copies) {
   const { w, h } = PAPERS[name];
   return { name, landscape, w: landscape ? h : w, h: landscape ? w : h, cols: copies === 1 ? 1 : 2, rows: copies === 4 ? 2 : 1 };
 }
+
+// Posición de cada copia en el folio, en el orden en que se rellenan (como en el editor principal)
+export const COPY_NAMES: Record<Copies, string[]> = {
+  1: ["Tavolo"],
+  2: ["A sinistra", "A destra"],
+  4: ["In alto a sinistra", "In alto a destra", "In basso a sinistra", "In basso a destra"],
+};

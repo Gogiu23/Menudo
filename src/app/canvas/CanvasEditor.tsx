@@ -9,7 +9,7 @@ import type Konva from "konva";
    Fase 2: panel de propiedades completo y panel de capas (orden, ocultar, bloquear, duplicar).
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
-import { common, Copies, COPIES, El, FONTS, FontKey, fontFamily, fontStyleOf, newText, PALETTE, PAPERS, Paper, sheetFor, tilePattern, tileScale, uid } from "./model";
+import { common, Copies, COPIES, COPY_NAMES, El, FONTS, FontKey, fontFamily, fontStyleOf, newText, PALETTE, PAPERS, Paper, sheetFor, tilePattern, tileScale, uid } from "./model";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
 
 const label = (e: El) =>
@@ -44,7 +44,8 @@ function Num({ label, value, min, onChange }: { label: string; value: number; mi
   );
 }
 
-/* Fase 11: varias páginas (copertina incluida al importar), exportadas en un solo PDF.
+/* Fase 14: números de mesa distintos en cada copia del folio.
+   Fase 11: varias páginas (copertina incluida al importar), exportadas en un solo PDF.
    Fase 10: zoom (botones, Ctrl+rueda, pellizco) sobre el ajuste al ancho.
    Fase 9: uso en móvil (pestañas Carta/Strumenti, barra inferior, modo selección múltiple táctil, maniglie grandes).
    Fase 6: guías de alineación con imán (Alt las desactiva) y texto con altura automática.
@@ -55,16 +56,17 @@ const MAX_HISTORY = 100;
 type History = { past: El[][][]; pages: El[][]; future: El[][][] }; // cada paso del historial guarda todas las páginas
 const starter = (): El[] => [newText({ y: 20, width: 170, height: 20, text: "Menù", fontSize: 14, fontFamily: "display" })];
 
-function load(): { paper: Paper; copies: Copies; pages: El[][] } {
+function load(): { paper: Paper; copies: Copies; pages: El[][]; tables: string[] } {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
     const copies = COPIES.includes(raw?.copies) ? raw.copies : 1;
+    const tables: string[] = Array.isArray(raw?.tables) ? raw.tables.map((x: unknown) => (x == null ? "" : String(x))) : [];
     if (raw && raw.paper in PAPERS) {
-      if (Array.isArray(raw.pages) && raw.pages.length && raw.pages.every(Array.isArray)) return { paper: raw.paper, copies, pages: raw.pages };
-      if (Array.isArray(raw.els)) return { paper: raw.paper, copies, pages: [raw.els] }; // formato de las fases 3-10: una sola página
+      if (Array.isArray(raw.pages) && raw.pages.length && raw.pages.every(Array.isArray)) return { paper: raw.paper, copies, pages: raw.pages, tables };
+      if (Array.isArray(raw.els)) return { paper: raw.paper, copies, pages: [raw.els], tables }; // formato de las fases 3-10: una sola página
     }
   } catch {}
-  return { paper: "A4", copies: 1, pages: [starter()] };
+  return { paper: "A4", copies: 1, pages: [starter()], tables: [] };
 }
 
 // Reduce la foto: las del móvil pesan varios MB y no caben en localStorage
@@ -93,6 +95,7 @@ export default function CanvasEditor() {
   const [init] = useState(load);
   const [paper, setPaper] = useState<Paper>(init.paper);
   const [wanted, setCopies] = useState<Copies>(init.copies);
+  const [tables, setTables] = useState<string[]>(init.tables); // número de mesa de cada copia
   // Si el papel elegido no admite esas copias (p. ej. 4 × A3), se vuelve a 1
   const copies: Copies = sheetFor(paper, wanted) ? wanted : 1;
   const sheet = sheetFor(paper, copies)!;
@@ -298,14 +301,14 @@ export default function CanvasEditor() {
   useEffect(() => {
     const t = setTimeout(() => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, copies, pages: hist.pages }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, copies, pages: hist.pages, tables }));
         setSaveError(false);
       } catch {
         setSaveError(true); // normalmente: demasiadas imágenes para el límite del navegador
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [paper, copies, hist.pages]);
+  }, [paper, copies, hist.pages, tables]);
 
   // `merge`: ediciones desde el panel (escribir, deslizadores) que deben deshacerse de una vez
   const patch = (id: string, p: Partial<El>, merge = true) =>
@@ -403,16 +406,46 @@ export default function CanvasEditor() {
   };
   // La hoja lista para imprimir: la carta repetida en el folio (una sola imagen con 1 copia)
   const compose = async () => {
-    const { url, dpi } = render(sheet.cols * sheet.rows);
-    if (copies === 1) return { url, dpi };
-    const im = new window.Image();
-    im.src = url;
-    await im.decode();
+    const n = sheet.cols * sheet.rows;
+    // Con números de mesa, cada copia se dibuja por separado cambiando el texto de esos nodos (y se restaura después)
+    const nodes = stageRef.current!.find(".table-number") as Konva.Text[];
+    const urls: string[] = [];
+    let dpi = 0;
+    if (nodes.length) {
+      const orig = nodes.map((t) => ({ text: t.text(), opacity: t.opacity() }));
+      try {
+        for (let c = 0; c < copies; c++) {
+          nodes.forEach((t) => {
+            t.text(tables[c] ?? "");
+            t.opacity(1);
+          });
+          const r = render(n);
+          urls.push(r.url);
+          dpi = r.dpi;
+        }
+      } finally {
+        nodes.forEach((t, i) => {
+          t.text(orig[i].text);
+          t.opacity(orig[i].opacity);
+        });
+      }
+    } else {
+      const r = render(n);
+      urls.push(r.url);
+      dpi = r.dpi;
+    }
+    if (copies === 1) return { url: urls[0], dpi };
+    const ims = await Promise.all(urls.map(async (u) => {
+      const im = new window.Image();
+      im.src = u;
+      await im.decode();
+      return im;
+    }));
     const c = document.createElement("canvas");
-    c.width = im.width * sheet.cols;
-    c.height = im.height * sheet.rows;
+    c.width = ims[0].width * sheet.cols;
+    c.height = ims[0].height * sheet.rows;
     const g = c.getContext("2d")!;
-    for (let r = 0; r < sheet.rows; r++) for (let q = 0; q < sheet.cols; q++) g.drawImage(im, q * im.width, r * im.height);
+    for (let r = 0; r < sheet.rows; r++) for (let q = 0; q < sheet.cols; q++) g.drawImage(ims[(r * sheet.cols + q) % ims.length], q * ims[0].width, r * ims[0].height);
     return { url: c.toDataURL("image/png"), dpi };
   };
   const download = (href: string, name: string) => {
@@ -522,6 +555,7 @@ export default function CanvasEditor() {
       if (!menu) return setImportMsg("Nessun menù trovato: crealo prima nell'editor principale.");
       const pages = await menuToPages(menu, paper);
       setPages(() => pages);
+      setTables(menu.tableNumbers.map(String).slice(0, 4));
       goPage(pages.length - 1); // la página del menú; la copertina es la anterior
       setImportMsg(pages.length > 1 ? "Menù importato, con la copertina." : "Menù importato.");
     });
@@ -693,6 +727,23 @@ export default function CanvasEditor() {
           </p>
         </fieldset>
 
+        {hist.pages.some((p) => p.some((e) => e.type === "text" && e.table)) && (
+          <fieldset className="flex flex-col gap-1.5 text-sm">
+            <legend className="mb-1 font-medium">Numeri di tavolo</legend>
+            {COPY_NAMES[copies].map((where, c) => (
+              <label key={c} className="flex items-center justify-between gap-2">
+                {where}
+                <input
+                  className="w-20 rounded-lg border border-ink/20 p-1 text-center" maxLength={4} inputMode="numeric" placeholder="a penna"
+                  value={tables[c] ?? ""}
+                  onChange={(e) => setTables((t) => Object.assign([...t], { [c]: e.target.value }))}
+                />
+              </label>
+            ))}
+            <p className="text-xs text-ink/65">Lascia vuoto per scriverlo a penna. In pantalla il numero è solo un segnaposto.</p>
+          </fieldset>
+        )}
+
         <div className="flex flex-wrap gap-2">
           <button className={btn} onClick={() => add(newText())}>
             + Testo
@@ -729,6 +780,10 @@ export default function CanvasEditor() {
             {cur.type === "text" && (
               <>
                 <textarea className="rounded-lg border border-ink/20 p-2" rows={3} value={cur.text} onChange={(e) => patch(cur.id, { text: e.target.value })} />
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" className="size-4 accent-mare" checked={!!cur.table} onChange={(e) => patch(cur.id, { table: e.target.checked })} />
+                  Numero di tavolo (diverso per ogni copia)
+                </label>
                 <select className="rounded-lg border border-ink/20 p-1.5" value={cur.fontFamily} onChange={(e) => patch(cur.id, { fontFamily: e.target.value as FontKey })}>
                   {FONTS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
                 </select>
@@ -883,7 +938,7 @@ export default function CanvasEditor() {
                 };
                 if (el.type === "text")
                   return (
-                    <Text key={el.id} {...props} height={undefined} text={el.text} fontSize={el.fontSize} fill={el.fill} fontFamily={fontFamily(el.fontFamily)} align={el.align}
+                    <Text key={el.id} {...props} name={el.table ? "table-number" : undefined} height={undefined} text={el.text} fontSize={el.fontSize} fill={el.fill} fontFamily={fontFamily(el.fontFamily)} align={el.align}
                       fontStyle={fontStyleOf(el)} lineHeight={el.lineHeight ?? 1.2} />
                   );
                 if (el.type === "rect") return <Rect key={el.id} {...props} fill={el.fill} cornerRadius={el.radius} stroke={el.stroke} strokeWidth={el.strokeW} />;

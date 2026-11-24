@@ -122,6 +122,11 @@ async function contentPage(m: Menu, paper: Paper): Promise<El[]> {
     const o: T = { bold: true, size: 4.6, lh: 1.5 };
     const lw = measure(label, o).w;
     text(label, W - 10 - 32 - 3 - lw, by + (13 - 4.6 * 1.5) / 2, lw + 0.5, o);
+    // Número de mesa: «00» tenue indica dónde irá; al exportar se pone el de cada copia o se deja vacío para escribirlo a mano
+    out.push({
+      ...base(W - 10 - 32, by + 2.5, 32, 8), type: "text", text: "00", fontSize: 8, fill: INK, fontFamily: "display",
+      bold: false, italic: false, align: "center", lineHeight: 1, opacity: 0.3, table: true,
+    });
   }
 
   /* Cabecera */
