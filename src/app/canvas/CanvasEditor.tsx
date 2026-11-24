@@ -931,7 +931,7 @@ export default function CanvasEditor() {
       <>
         <p className="text-sm text-ink/70">Scegli uno stile, poi scrivi direttamente sulla carta.</p>
         {textPresets.map((p) => (
-          <button key={p.name} className={`flex w-full flex-col items-start gap-0.5 rounded-lg border border-laguna bg-surface px-3 py-3 text-left lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => { const t = newText(p.o); add(t); freshText.current = t.id; setTab("canvas"); setEditing(t.id); }}>
+          <button key={p.name} className={`flex w-full flex-col items-start gap-0.5 rounded-lg border border-laguna bg-surface px-3 py-3 text-left lift hover:border-mare hover:bg-laguna/15 ${focus}`} onClick={() => { const t = newText({ ...p.o, width: Math.min(p.o.width ?? 100, w - 40) }); add(t); freshText.current = t.id; setTab("canvas"); setEditing(t.id); }}>
             <span className={p.cls}>{p.name}</span>
             <span className="text-xs text-ink/70">{p.hint}</span>
           </button>

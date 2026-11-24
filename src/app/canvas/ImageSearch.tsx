@@ -50,7 +50,7 @@ export function ImageSearch({ onPick }: { onPick: (f: File) => void }) {
     <div role="search" className="space-y-3">
       <div className="flex gap-2">
         <input
-          className={input} type="search" aria-label="Cerca immagini" placeholder="Es. pizza, vino…" value={q}
+          className={input} type="search" aria-label="Cerca immagini" placeholder="Es. pizza" value={q}
           onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }}
         />
         <button type="button" className={`${primary} px-3`} disabled={status === "searching"} onClick={search}>Cerca</button>
