@@ -78,11 +78,68 @@ function Num({ label, value, min, onChange }: { label: string; value: number; mi
   );
 }
 
+/* Fase 3: guardado automático en localStorage y deshacer/rehacer */
+const STORAGE_KEY = "menudo:canvas:v1";
+const MAX_HISTORY = 100;
+type History = { past: El[][]; els: El[]; future: El[][] };
+const starter = (): El[] => [newText({ y: 20, width: 170, height: 20, text: "Menù", fontSize: 14, fontFamily: "display" })];
+
+function load(): { paper: Paper; els: El[] } {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
+    if (raw && raw.paper in PAPERS && Array.isArray(raw.els)) return raw;
+  } catch {}
+  return { paper: "A4", els: starter() };
+}
+
+// Reduce la foto: las del móvil pesan varios MB y no caben en localStorage
+function shrink(src: string, maxPx: number, png: boolean): Promise<{ src: string; w: number; h: number }> {
+  return new Promise((done) => {
+    const i = new window.Image();
+    i.onload = () => {
+      const k = Math.min(1, maxPx / Math.max(i.width, i.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(i.width * k);
+      c.height = Math.round(i.height * k);
+      c.getContext("2d")!.drawImage(i, 0, 0, c.width, c.height);
+      done({ src: c.toDataURL(png ? "image/png" : "image/jpeg", 0.85), w: i.width, h: i.height });
+    };
+    i.src = src;
+  });
+}
+
 const btn = "rounded-lg border border-ink/20 bg-white px-3 py-1.5 text-sm hover:bg-laguna/30 disabled:opacity-40";
 
 export default function CanvasEditor() {
-  const [paper, setPaper] = useState<Paper>("A4");
-  const [els, setEls] = useState<El[]>(() => [newText({ y: 20, width: 170, height: 20, text: "Menù", fontSize: 14, fontFamily: "display" })]);
+  const [init] = useState(load);
+  const [paper, setPaper] = useState<Paper>(init.paper);
+  const [hist, setHist] = useState<History>({ past: [], els: init.els, future: [] });
+  const [saveError, setSaveError] = useState(false);
+  const els = hist.els;
+  const lastKey = useRef("");
+  const lastTime = useRef(0);
+
+  // Cambia los elementos guardando el estado anterior para deshacer. Con `key`, los cambios seguidos
+  // sobre lo mismo (escribir, mover un deslizador) se funden en un solo paso.
+  const setEls = (f: El[] | ((a: El[]) => El[]), key?: string) => {
+    const now = Date.now();
+    const merge = !!key && key === lastKey.current && now - lastTime.current < 1000;
+    lastKey.current = key ?? "";
+    lastTime.current = now;
+    setHist((h) => {
+      const next = typeof f === "function" ? f(h.els) : f;
+      if (next === h.els) return h;
+      return { past: merge ? h.past : [...h.past, h.els].slice(-MAX_HISTORY), els: next, future: [] };
+    });
+  };
+  const undo = () => {
+    lastKey.current = "";
+    setHist((h) => (h.past.length ? { past: h.past.slice(0, -1), els: h.past[h.past.length - 1], future: [h.els, ...h.future] } : h));
+  };
+  const redo = () => {
+    lastKey.current = "";
+    setHist((h) => (h.future.length ? { past: [...h.past, h.els], els: h.future[0], future: h.future.slice(1) } : h));
+  };
   const [, setFontsReady] = useState(0);
   const [sel, setSel] = useState<string | null>(null);
   const [zoom, setZoom] = useState(2); // px por mm
@@ -112,10 +169,33 @@ export default function CanvasEditor() {
     trRef.current?.getLayer()?.batchDraw();
   }, [sel, els]);
 
+  // Guarda sola, un momento después del último cambio
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, els }));
+        setSaveError(false);
+      } catch {
+        setSaveError(true); // normalmente: demasiadas imágenes para el límite del navegador
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [paper, els]);
+
   // Suprimir borra el elemento (salvo si se está escribiendo en un campo)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
+      if ((e.ctrlKey || e.metaKey) && !/INPUT|TEXTAREA|SELECT/.test(t.tagName)) {
+        const k = e.key.toLowerCase();
+        if (k === "z") {
+          e.preventDefault();
+          if (e.shiftKey) redo();
+          else undo();
+        }
+        if (k === "y") { e.preventDefault(); redo(); }
+        return;
+      }
       if (!sel || /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         setEls((a) => a.filter((x) => x.id !== sel));
@@ -125,14 +205,16 @@ export default function CanvasEditor() {
       const d: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
       if (d[e.key]) {
         e.preventDefault();
-        setEls((a) => a.map((x) => (x.id === sel && !x.locked ? { ...x, x: x.x + d[e.key][0], y: x.y + d[e.key][1] } : x)));
+        setEls((a) => a.map((x) => (x.id === sel && !x.locked ? { ...x, x: x.x + d[e.key][0], y: x.y + d[e.key][1] } : x)), "nudge:" + sel);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [sel]);
 
-  const patch = (id: string, p: Partial<El>) => setEls((a) => a.map((x) => (x.id === id ? ({ ...x, ...p } as El) : x)));
+  // `merge`: ediciones desde el panel (escribir, deslizadores) que deben deshacerse de una vez
+  const patch = (id: string, p: Partial<El>, merge = true) =>
+    setEls((a) => a.map((x) => (x.id === id ? ({ ...x, ...p } as El) : x)), merge ? `patch:${id}:${Object.keys(p).join()}` : undefined);
   const add = (e: El) => {
     setEls((a) => [...a, e]);
     setSel(e.id);
@@ -153,14 +235,10 @@ export default function CanvasEditor() {
   const addImage = (file: File | undefined) => {
     if (!file) return;
     const r = new FileReader();
-    r.onload = () => {
-      const src = String(r.result);
-      const i = new window.Image();
-      i.onload = () => {
-        const width = Math.min(100, w - 20);
-        add({ id: uid(), type: "image", src, x: 10, y: 10, width, height: (width * i.height) / i.width, ...common });
-      };
-      i.src = src;
+    r.onload = async () => {
+      const img = await shrink(String(r.result), 1600, file.type === "image/png");
+      const width = Math.min(100, w - 20);
+      add({ id: uid(), type: "image", src: img.src, x: 10, y: 10, width, height: (width * img.h) / img.w, ...common });
     };
     r.readAsDataURL(file);
   };
@@ -173,13 +251,20 @@ export default function CanvasEditor() {
     n.scaleX(1);
     n.scaleY(1);
     const base = { x: n.x(), y: n.y(), rotation: n.rotation(), width: Math.max(5, n.width() * sx), height: Math.max(5, n.height() * sy) };
-    patch(el.id, el.type === "text" ? { ...base, fontSize: Math.max(2, el.fontSize * sy), height: base.height } : base);
+    patch(el.id, el.type === "text" ? { ...base, fontSize: Math.max(2, el.fontSize * sy), height: base.height } : base, false);
   };
 
   return (
     <div className="flex min-h-screen flex-col bg-laguna/35 text-ink md:flex-row">
       <aside className="flex shrink-0 flex-col gap-4 md:sticky md:top-0 md:h-screen md:overflow-y-auto border-b border-laguna/60 bg-white p-4 md:w-72 md:border-r md:border-b-0">
         <h1 className="font-display text-lg font-semibold">Editor libero (prova)</h1>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button className={btn} disabled={!hist.past.length} onClick={undo} title="Ctrl+Z">↶ Annulla</button>
+          <button className={btn} disabled={!hist.future.length} onClick={redo} title="Ctrl+Maiusc+Z">↷ Ripeti</button>
+          <button className={btn} onClick={() => { if (confirm("Cancellare tutto e ricominciare?")) { setEls(starter()); setSel(null); } }}>Nuovo</button>
+        </div>
+        {saveError && <p role="alert" className="rounded-lg bg-limone/60 p-2 text-sm">Non c&apos;è spazio per salvare: ci sono troppe immagini. Il lavoro non verrà ripristinato se ricarichi.</p>}
 
         <fieldset className="flex flex-wrap gap-2">
           <legend className="mb-1 text-sm font-medium">Carta</legend>
@@ -300,7 +385,7 @@ export default function CanvasEditor() {
                   listening: !el.locked,
                   onClick: () => setSel(el.id),
                   onTap: () => setSel(el.id),
-                  onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => patch(el.id, { x: e.target.x(), y: e.target.y() }),
+                  onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => patch(el.id, { x: e.target.x(), y: e.target.y() }, false),
                   onTransformEnd: (e: Konva.KonvaEventObject<Event>) => onTransformEnd(e, el),
                 };
                 if (el.type === "text")
