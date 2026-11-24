@@ -15,7 +15,7 @@ import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
 import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, Range, secondary, ShapeIcon, Switch } from "./ui";
 import { Tip } from "./Tip";
-import { buildTemplate } from "./templateBuild";
+import { buildTemplate, cleanMenu } from "./templateBuild";
 import { defaultSpec, parseSpec } from "./templateSpec";
 import { useGlow } from "./glow";
 import type { Lang } from "../i18n";
@@ -180,28 +180,31 @@ export default function CanvasEditor() {
     if (q.length < 3) return setAiMsg(tr("Scrivi almeno qualche parola."));
     setAiBusy(true);
     setAiMsg("");
-    const menu = readSavedMenu();
-    const fallback = () => defaultSpec(q, menu?.name?.trim() || tr("Menù"), menu?.subtitle?.trim() || "");
-    let spec = fallback();
-    let note = "";
     try {
-      const r = await fetch("/api/template", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: q, lang, context: aiUseMenu && menu ? { name: menu.name, sections: menu.sections.map((x) => x.title) } : undefined }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (r.ok && d.spec) spec = parseSpec(d.spec);
-      else note = tr(d.error === "nokey" ? "L'IA non è attiva su questo server: ho usato un modello standard." : d.error === "limit" ? "Hai raggiunto il limite di richieste: ho usato un modello standard. Riprova più tardi." : "L'IA non è disponibile ora: ho usato un modello standard.");
-    } catch {
-      note = tr("L'IA non è disponibile ora: ho usato un modello standard.");
+      const menu = cleanMenu(readSavedMenu()); // el menú guardado puede estar dañado: solo se usa lo que tiene la forma esperada
+      const fallback = () => defaultSpec(q, menu?.name?.trim() || tr("Menù"), menu?.subtitle.trim() || "");
+      let spec = fallback();
+      let note = "";
+      try {
+        const r = await fetch("/api/template", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: q, lang, context: aiUseMenu && menu ? { name: menu.name, sections: menu.sections.map((x) => x.title) } : undefined }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.spec) spec = parseSpec(d.spec);
+        else note = tr(d.error === "nokey" ? "L'IA non è attiva su questo server: ho usato un modello standard." : d.error === "limit" ? "Hai raggiunto il limite di richieste: ho usato un modello standard. Riprova più tardi." : "L'IA non è disponibile ora: ho usato un modello standard.");
+      } catch {
+        note = tr("L'IA non è disponibile ora: ho usato un modello standard.");
+      }
+      const at = hist.pages.length;
+      setPages((p) => [...p, buildTemplate(spec, paper, menu, lang)]);
+      goPage(at);
+      setTab("canvas");
+      setAiMsg(note || tr("Modello aggiunto come nuova pagina."));
+    } finally {
+      setAiBusy(false); // pase lo que pase, el botón vuelve a estar disponible
     }
-    const at = hist.pages.length;
-    setPages((p) => [...p, buildTemplate(spec, paper, menu, lang)]);
-    goPage(at);
-    setTab("canvas");
-    setAiMsg(note || tr("Modello aggiunto come nuova pagina."));
-    setAiBusy(false);
   };
   const rootRef = useRef<HTMLDivElement>(null);
   useGlow(rootRef); // brillo que sigue al ratón en los elementos .glow

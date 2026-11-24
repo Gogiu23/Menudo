@@ -8,6 +8,23 @@ import { contrast, type Spec } from "./templateSpec";
 
 export type MenuLike = { name?: string; sections: { title: string; items: { name: string; desc?: string; price: string }[] }[] };
 
+// Lo guardado por el editor principal puede estar dañado o ser de otra versión: se queda solo con lo que tiene la forma esperada
+export function cleanMenu(raw: unknown): (MenuLike & { subtitle: string }) | null {
+  const m = raw as { name?: unknown; subtitle?: unknown; sections?: unknown } | null;
+  if (!m || typeof m !== "object" || !Array.isArray(m.sections)) return null;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const sections = (m.sections as unknown[]).flatMap((s) => {
+    const sec = s as { title?: unknown; items?: unknown } | null;
+    if (!sec || typeof sec.title !== "string" || !Array.isArray(sec.items)) return [];
+    const items = (sec.items as unknown[]).flatMap((i) => {
+      const it = i as { name?: unknown; desc?: unknown; price?: unknown } | null;
+      return it && typeof it.name === "string" ? [{ name: it.name, desc: str(it.desc), price: str(it.price) }] : [];
+    });
+    return [{ title: sec.title, items }];
+  });
+  return { name: str(m.name), subtitle: str(m.subtitle), sections };
+}
+
 export function sampleMenu(lang: "it" | "es"): MenuLike {
   return lang === "es"
     ? { sections: [
@@ -66,7 +83,7 @@ export function buildTemplate(spec: Spec, paper: Paper, menu: MenuLike | null, l
   const hx = 20;
   const hw = 170;
   const titleY = spec.layout === "band" ? 20 : spec.layout === "columns" ? 22 : 32;
-  const titleSize = Math.max(10, Math.min(spec.layout === "columns" ? 17 : 22, hw / (Math.max(spec.title.length, 1) * 0.56)));
+  const titleSize = Math.max(8, Math.min(spec.layout === "columns" ? 17 : 22, hw / (Math.max(spec.title.length, 1) * 0.62)));
   const titleInk = spec.layout === "band" ? onAccent : spec.ink;
   const script = spec.titleFont === "greatvibes" || spec.titleFont === "dancing"; // las letras de firma no llevan negrita
   if (spec.decor.includes("stars")) for (let i = 0; i < 3; i++) shape("star", 105 - 12 + i * 12 - 3.5, titleY - 13, 7, spec.accent);
@@ -96,7 +113,7 @@ export function buildTemplate(spec: Spec, paper: Paper, menu: MenuLike | null, l
   };
   const place = (sec: Sec, x0: number, y0: number, w: number, s: number, v: number, al: "left" | "center") => {
     let y = y0;
-    text(sec.title, x0, y, w, { size: 7.5 * s, font: spec.titleFont, bold: !script, align: al, fill: sectionInk });
+    text(clip(sec.title, 28), x0, y, w, { size: 7.5 * s, font: spec.titleFont, bold: !script, align: al, fill: sectionInk });
     y += HEAD * s * v;
     const priceW = 21 * s;
     const nameW = w - priceW - 2;

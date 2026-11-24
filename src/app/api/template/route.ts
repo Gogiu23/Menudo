@@ -50,14 +50,15 @@ export async function POST(req: NextRequest) {
   const base = process.env.AI_BASE_URL;
   const model = process.env.AI_MODEL;
   if (!base || !model) return Response.json({ error: "nokey" }, { status: 503 });
-  if (Number(req.headers.get("content-length") ?? 0) > 8000) return Response.json({ error: "bad" }, { status: 413 });
-
-  let body: Record<string, unknown>;
+  // El tamaño se comprueba sobre el texto leído (Content-Length puede faltar o ser falso); un cuerpo que no sea un objeto JSON es un 400
+  const raw = await req.text().catch(() => "");
+  if (raw.length > 8000) return Response.json({ error: "bad" }, { status: 413 });
+  let parsed: unknown = null;
   try {
-    body = await req.json();
-  } catch {
-    return Response.json({ error: "bad" }, { status: 400 });
-  }
+    parsed = JSON.parse(raw);
+  } catch {}
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return Response.json({ error: "bad" }, { status: 400 });
+  const body = parsed as Record<string, unknown>;
   const prompt = clean(body.prompt, 500);
   if (prompt.length < 3) return Response.json({ error: "bad" }, { status: 400 });
   const lang = body.lang === "es" ? "Spanish (Spain)" : "Italian";
@@ -93,7 +94,8 @@ export async function POST(req: NextRequest) {
 
   try {
     let r = await call(true);
-    if (r.status === 400) r = await call(false); // algunos proveedores no admiten response_format
+    // Algunos proveedores no admiten response_format: se reintenta sin él solo si el 400 habla de eso (un 400 por otra causa no se repite)
+    if (r.status === 400 && /response_format|json/i.test(await r.clone().text().catch(() => ""))) r = await call(false);
     if (r.status === 429) return Response.json({ error: "busy" }, { status: 503 });
     if (!r.ok) return Response.json({ error: "upstream" }, { status: 502 });
     const data = (await r.json()) as { choices?: { message?: { content?: unknown } }[] };
