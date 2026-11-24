@@ -97,6 +97,8 @@ export default function CanvasEditor() {
   // Cambia los elementos guardando el estado anterior para deshacer. Con `key`, los cambios seguidos
   // sobre lo mismo (escribir, mover un deslizador) se funden en un solo paso.
   const setEls = (f: El[] | ((a: El[]) => El[]), key?: string) => {
+    // Solo se llama desde manejadores de eventos, nunca durante el render
+    // eslint-disable-next-line react-hooks/purity
     const now = Date.now();
     const merge = !!key && key === lastKey.current && now - lastTime.current < 1000;
     lastKey.current = key ?? "";
@@ -116,7 +118,11 @@ export default function CanvasEditor() {
     setHist((h) => (h.future.length ? { past: [...h.past, h.els], els: h.future[0], future: h.future.slice(1) } : h));
   };
   const [, setFontsReady] = useState(0);
-  const [sel, setSel] = useState<string | null>(null);
+  const [sels, setSels] = useState<string[]>([]);
+  const sel = sels.length === 1 ? sels[0] : null; // un solo elemento: se muestra el panel de propiedades
+  const setSel = (id: string | null) => setSels(id ? [id] : []);
+  const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const marqueeFrom = useRef<{ x: number; y: number; add: boolean } | null>(null);
   const [zoom, setZoom] = useState(2); // px por mm
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
   const wrap = useRef<HTMLDivElement>(null);
@@ -142,13 +148,16 @@ export default function CanvasEditor() {
     return () => ro.disconnect();
   }, [w]);
 
-  // El transformador sigue al elemento seleccionado
+  // El transformador sigue a los elementos seleccionados (los bloqueados quedan fuera)
   useEffect(() => {
-    const locked = els.find((x) => x.id === sel)?.locked;
-    const node = sel && !locked ? layerRef.current?.findOne("#" + sel) : undefined;
-    trRef.current?.nodes(node ? [node] : []);
+    const nodes = sels.flatMap((id) => {
+      const el = els.find((x) => x.id === id);
+      const n = el && !el.locked && el.visible ? layerRef.current?.findOne("#" + id) : undefined;
+      return n ? [n] : [];
+    });
+    trRef.current?.nodes(nodes);
     trRef.current?.getLayer()?.batchDraw();
-  }, [sel, els]);
+  }, [sels, els]);
 
   // Guarda sola, un momento después del último cambio
   useEffect(() => {
@@ -163,36 +172,6 @@ export default function CanvasEditor() {
     return () => clearTimeout(t);
   }, [paper, copies, els]);
 
-  // Suprimir borra el elemento (salvo si se está escribiendo en un campo)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement;
-      if ((e.ctrlKey || e.metaKey) && !/INPUT|TEXTAREA|SELECT/.test(t.tagName)) {
-        const k = e.key.toLowerCase();
-        if (k === "z") {
-          e.preventDefault();
-          if (e.shiftKey) redo();
-          else undo();
-        }
-        if (k === "y") { e.preventDefault(); redo(); }
-        return;
-      }
-      if (!sel || /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
-      if (e.key === "Delete" || e.key === "Backspace") {
-        setEls((a) => a.filter((x) => x.id !== sel));
-        setSel(null);
-      }
-      const step = e.shiftKey ? 5 : 1;
-      const d: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
-      if (d[e.key]) {
-        e.preventDefault();
-        setEls((a) => a.map((x) => (x.id === sel && !x.locked ? { ...x, x: x.x + d[e.key][0], y: x.y + d[e.key][1] } : x)), "nudge:" + sel);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [sel]);
-
   // `merge`: ediciones desde el panel (escribir, deslizadores) que deben deshacerse de una vez
   const patch = (id: string, p: Partial<El>, merge = true) =>
     setEls((a) => a.map((x) => (x.id === id ? ({ ...x, ...p } as El) : x)), merge ? `patch:${id}:${Object.keys(p).join()}` : undefined);
@@ -202,7 +181,56 @@ export default function CanvasEditor() {
   };
   const cur = els.find((x) => x.id === sel);
 
-  const duplicate = (e: El) => add({ ...e, id: uid(), x: e.x + 5, y: e.y + 5, locked: false });
+  const selEls = els.filter((x) => sels.includes(x.id));
+
+  // Clic en un elemento: se selecciona él y los de su grupo; con Maiusc/Ctrl se suma o se quita
+  const pick = (id: string, additive: boolean) => {
+    const g = els.find((x) => x.id === id)?.group;
+    const ids = g ? els.filter((x) => x.group === g).map((x) => x.id) : [id];
+    setSels((cur) => (additive ? (ids.every((i) => cur.includes(i)) ? cur.filter((i) => !ids.includes(i)) : [...new Set([...cur, ...ids])]) : ids));
+  };
+  const group = () => {
+    const g = uid();
+    setEls((a) => a.map((x) => (sels.includes(x.id) ? { ...x, group: g } : x)));
+  };
+  const ungroup = () => setEls((a) => a.map((x) => (sels.includes(x.id) && x.group ? { ...x, group: undefined } : x)));
+  const removeSel = () => {
+    setEls((a) => a.filter((x) => !sels.includes(x.id)));
+    setSels([]);
+  };
+  const duplicateSel = () => {
+    const groups = new Map<string, string>();
+    const copies = selEls.map((e) => {
+      if (e.group && !groups.has(e.group)) groups.set(e.group, uid());
+      return { ...e, id: uid(), x: e.x + 5, y: e.y + 5, locked: false, group: e.group && groups.get(e.group) } as El;
+    });
+    setEls((a) => [...a, ...copies]);
+    setSels(copies.map((c) => c.id));
+  };
+  // Alinea la selección entre sí (o con la hoja si es un solo elemento)
+  const align = (mode: "l" | "c" | "r" | "t" | "m" | "b") => {
+    const layer = layerRef.current!;
+    const boxes = selEls.flatMap((e) => {
+      const b = !e.locked ? layer.findOne("#" + e.id)?.getClientRect({ relativeTo: layer }) : undefined;
+      return b ? [{ id: e.id, b }] : [];
+    });
+    if (!boxes.length) return;
+    const x0 = Math.min(...boxes.map((o) => o.b.x));
+    const y0 = Math.min(...boxes.map((o) => o.b.y));
+    const x1 = Math.max(...boxes.map((o) => o.b.x + o.b.width));
+    const y1 = Math.max(...boxes.map((o) => o.b.y + o.b.height));
+    const ref = boxes.length > 1 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : { x: 0, y: 0, w, h };
+    const delta = (b: { x: number; y: number; width: number; height: number }) => ({
+      l: [ref.x - b.x, 0], c: [ref.x + ref.w / 2 - (b.x + b.width / 2), 0], r: [ref.x + ref.w - (b.x + b.width), 0],
+      t: [0, ref.y - b.y], m: [0, ref.y + ref.h / 2 - (b.y + b.height / 2)], b: [0, ref.y + ref.h - (b.y + b.height)],
+    })[mode];
+    setEls((a) => a.map((x) => {
+      const o = boxes.find((q) => q.id === x.id);
+      if (!o) return x;
+      const [dx, dy] = delta(o.b);
+      return { ...x, x: x.x + dx, y: x.y + dy };
+    }));
+  };
   const move = (id: string, dir: -1 | 1) =>
     setEls((a) => {
       const i = a.findIndex((x) => x.id === id);
@@ -333,15 +361,90 @@ export default function CanvasEditor() {
       window.print();
     });
 
-  // Al terminar de transformar, la escala pasa a width/height para no acumularla
-  const onTransformEnd = (e: Konva.KonvaEventObject<Event>, el: El) => {
-    const n = e.target;
-    const sx = n.scaleX();
-    const sy = n.scaleY();
-    n.scaleX(1);
-    n.scaleY(1);
-    const base = { x: n.x(), y: n.y(), rotation: n.rotation(), width: Math.max(5, n.width() * sx), height: Math.max(5, n.height() * sy) };
-    patch(el.id, el.type === "text" ? { ...base, fontSize: Math.max(2, el.fontSize * sy), height: base.height } : base, false);
+  // Suprimir borra el elemento (salvo si se está escribiendo en un campo)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if ((e.ctrlKey || e.metaKey) && !/INPUT|TEXTAREA|SELECT/.test(t.tagName)) {
+        const k = e.key.toLowerCase();
+        if (k === "z") {
+          e.preventDefault();
+          if (e.shiftKey) redo();
+          else undo();
+        }
+        if (k === "y") { e.preventDefault(); redo(); }
+        if (k === "a") { e.preventDefault(); setSels(els.filter((x) => x.visible && !x.locked).map((x) => x.id)); }
+        if (k === "g" && sels.length) { e.preventDefault(); if (e.shiftKey) ungroup(); else if (sels.length > 1) group(); }
+        if (k === "d" && sels.length) { e.preventDefault(); duplicateSel(); }
+        return;
+      }
+      if (/INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
+      if (e.key === "Escape") setSels([]);
+      if (!sels.length) return;
+      if (e.key === "Delete" || e.key === "Backspace") removeSel();
+      const step = e.shiftKey ? 5 : 1;
+      const d: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+      if (d[e.key]) {
+        e.preventDefault();
+        setEls((a) => a.map((x) => (sels.includes(x.id) && !x.locked ? { ...x, x: x.x + d[e.key][0], y: x.y + d[e.key][1] } : x)), "nudge:" + sels.join());
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // Tras mover o transformar, guarda todos los elementos seleccionados y pasa la escala a width/height
+  // para no acumularla. Es idempotente: si Konva avisa varias veces (una por nodo) no añade pasos de historial.
+  const commit = () => {
+    const layer = layerRef.current!;
+    const upd = new Map<string, Partial<El>>();
+    for (const el of els) {
+      const n = sels.includes(el.id) ? layer.findOne("#" + el.id) : undefined;
+      if (!n) continue;
+      const sx = n.scaleX();
+      const sy = n.scaleY();
+      n.scaleX(1);
+      n.scaleY(1);
+      const u: Partial<El> = { x: n.x(), y: n.y(), rotation: n.rotation() };
+      if (sx !== 1 || sy !== 1) {
+        u.width = Math.max(1, n.width() * sx);
+        if (el.type === "text") (u as Partial<typeof el>).fontSize = Math.max(2, el.fontSize * sy);
+        else if (el.type !== "line") u.height = Math.max(0.1, n.height() * sy);
+      }
+      upd.set(el.id, u);
+    }
+    if (!upd.size) return;
+    setEls((a) => {
+      let changed = false;
+      const next = a.map((x) => {
+        const u = upd.get(x.id);
+        if (!u || (Object.keys(u) as (keyof El)[]).every((k) => x[k] === u[k])) return x;
+        changed = true;
+        return { ...x, ...u } as El;
+      });
+      return changed ? next : a;
+    });
+  };
+
+  // Rectángulo de selección: arrastrar sobre la hoja vacía
+  const toMm = (stage: Konva.Stage) => {
+    const p = stage.getPointerPosition()!;
+    return { x: p.x / zoom, y: p.y / zoom };
+  };
+  const emptyHit = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => e.target === e.target.getStage() || e.target.name() === "paper";
+  const endMarquee = () => {
+    const from = marqueeFrom.current;
+    marqueeFrom.current = null;
+    if (!from || !marquee) return setMarquee(null);
+    const layer = layerRef.current!;
+    const hit = els.filter((el) => {
+      const b = el.visible && !el.locked ? layer.findOne("#" + el.id)?.getClientRect({ relativeTo: layer }) : undefined;
+      return !!b && b.x < marquee.x + marquee.w && b.x + b.width > marquee.x && b.y < marquee.y + marquee.h && b.y + b.height > marquee.y;
+    });
+    const groups = new Set(hit.map((e) => e.group).filter(Boolean));
+    const ids = els.filter((e) => hit.includes(e) || (e.group && groups.has(e.group))).map((e) => e.id);
+    setSels((cur) => (from.add ? [...new Set([...cur, ...ids])] : ids));
+    setMarquee(null);
   };
 
   return (
@@ -409,6 +512,23 @@ export default function CanvasEditor() {
           </label>
         </div>
 
+        {sels.length > 0 && (
+          <div className="flex flex-col gap-2 text-sm">
+            <p className="font-medium">{sels.length === 1 ? "Elemento selezionato" : `${sels.length} elementi selezionati`}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {([["l", "Sx", "a sinistra"], ["c", "Ct", "al centro"], ["r", "Dx", "a destra"], ["t", "Alto", "in alto"], ["m", "Mezzo", "al centro in verticale"], ["b", "Basso", "in basso"]] as const).map(([m, t, d]) => (
+                <button key={m} title={`Allinea ${d}`} aria-label={`Allinea ${d}`} className={`${btn} px-2 py-1 text-xs`} onClick={() => align(m)}>{t}</button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {sels.length > 1 && <button className={btn} onClick={group} title="Ctrl+G">Raggruppa</button>}
+              {selEls.some((x) => x.group) && <button className={btn} onClick={ungroup} title="Ctrl+Maiusc+G">Separa</button>}
+              <button className={btn} onClick={duplicateSel} title="Ctrl+D">Duplica</button>
+              <button className={btn} onClick={removeSel}>Elimina</button>
+            </div>
+          </div>
+        )}
+
         {cur ? (
           <div className="flex flex-col gap-2 text-sm">
             <p className="font-medium">Proprietà</p>
@@ -465,21 +585,18 @@ export default function CanvasEditor() {
               {cur.type !== "text" && <Num label="A" value={cur.height} min={1} onChange={(v) => patch(cur.id, { height: v })} />}
               <Num label="Rot°" value={cur.rotation} onChange={(v) => patch(cur.id, { rotation: v })} />
             </div>
-            <div className="flex gap-2">
-              <button className={btn} onClick={() => duplicate(cur)}>Duplica</button>
-              <button className={btn} onClick={() => { setEls((a) => a.filter((x) => x.id !== cur.id)); setSel(null); }}>Elimina</button>
-            </div>
           </div>
-        ) : (
-          <p className="text-sm text-ink/65">Seleziona un elemento per modificarlo. Trascina, ridimensiona e ruota con le maniglie; frecce per spostare (Maiusc = 5 mm).</p>
-        )}
+        ) : sels.length === 0 ? (
+          <p className="text-sm text-ink/65">Seleziona un elemento per modificarlo, oppure trascina sulla carta per selezionarne di più (Maiusc per aggiungere). Frecce per spostare (Maiusc = 5 mm).</p>
+        ) : null}
 
         <div className="flex flex-col gap-1 text-sm">
           <p className="font-medium">Livelli</p>
           {[...els].reverse().map((e) => (
-            <div key={e.id} className={`flex items-center gap-1 rounded-lg px-1.5 py-1 ${e.id === sel ? "bg-laguna/50" : ""}`}>
-              <button className={`min-w-0 flex-1 truncate text-left ${e.visible ? "" : "text-ink/40 line-through"}`} onClick={() => setSel(e.id)}>
+            <div key={e.id} className={`flex items-center gap-1 rounded-lg px-1.5 py-1 ${sels.includes(e.id) ? "bg-laguna/50" : ""}`}>
+              <button className={`min-w-0 flex-1 truncate text-left ${e.visible ? "" : "text-ink/40 line-through"}`} onClick={(ev) => pick(e.id, ev.shiftKey || ev.ctrlKey || ev.metaKey)}>
                 {label(e)}
+                {e.group && <span className="ml-1 text-xs text-ink/45">gruppo</span>}
               </button>
               <button title="Su" aria-label="Porta su" className="px-1 hover:bg-laguna/30" onClick={() => move(e.id, 1)}>↑</button>
               <button title="Giù" aria-label="Porta giù" className="px-1 hover:bg-laguna/30" onClick={() => move(e.id, -1)}>↓</button>
@@ -498,8 +615,23 @@ export default function CanvasEditor() {
             height={h * zoom}
             scaleX={zoom}
             scaleY={zoom}
-            onMouseDown={(e) => e.target === e.target.getStage() || e.target.name() === "paper" ? setSel(null) : undefined}
-            onTouchStart={(e) => e.target === e.target.getStage() || e.target.name() === "paper" ? setSel(null) : undefined}
+            onMouseDown={(e) => {
+              if (!emptyHit(e)) return;
+              const add = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+              const p = toMm(e.target.getStage()!);
+              marqueeFrom.current = { ...p, add };
+              setMarquee({ ...p, w: 0, h: 0 });
+              if (!add) setSels([]);
+            }}
+            onMouseMove={(e) => {
+              const from = marqueeFrom.current;
+              if (!from) return;
+              const p = toMm(e.target.getStage()!);
+              setMarquee({ x: Math.min(from.x, p.x), y: Math.min(from.y, p.y), w: Math.abs(p.x - from.x), h: Math.abs(p.y - from.y) });
+            }}
+            onMouseUp={endMarquee}
+            onMouseLeave={endMarquee}
+            onTouchStart={(e) => (emptyHit(e) ? setSels([]) : undefined)}
           >
             <Layer ref={layerRef}>
               <Rect name="paper" width={w} height={h} fill="#fff" />
@@ -515,14 +647,22 @@ export default function CanvasEditor() {
                   visible: el.visible,
                   draggable: !el.locked,
                   listening: !el.locked,
-                  onClick: () => setSel(el.id),
-                  onTap: () => setSel(el.id),
-                  onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => snap(e, el.id),
-                  onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
-                    setGuides({ v: [], h: [] });
-                    patch(el.id, { x: e.target.x(), y: e.target.y() }, false);
+                  // Se selecciona al pulsar (no al soltar) para poder arrastrar directamente
+                  onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) => {
+                    const add = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+                    if (add || !sels.includes(el.id)) pick(el.id, add);
                   },
-                  onTransformEnd: (e: Konva.KonvaEventObject<Event>) => onTransformEnd(e, el),
+                  onTouchStart: () => {
+                    if (!sels.includes(el.id)) pick(el.id, false);
+                  },
+                  onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => {
+                    if (sels.length <= 1) snap(e, el.id); // con varios, el transformador mueve el resto por su cuenta
+                  },
+                  onDragEnd: () => {
+                    setGuides({ v: [], h: [] });
+                    commit();
+                  },
+                  onTransformEnd: commit,
                 };
                 if (el.type === "text")
                   return (
@@ -537,6 +677,7 @@ export default function CanvasEditor() {
               })}
               {guides.v.map((x) => <Line key={"v" + x} points={[x, 0, x, h]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
               {guides.h.map((y) => <Line key={"h" + y} points={[0, y, w, y]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
+              {marquee && <Rect x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h} fill={PALETTE[1].hex} opacity={0.18} stroke={PALETTE[1].hex} strokeWidth={1 / zoom} listening={false} />}
               <Transformer ref={trRef} borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" rotateEnabled keepRatio={false} boundBoxFunc={(o, n) => (n.width < 5 || n.height < 5 ? o : n)} />
             </Layer>
           </Stage>

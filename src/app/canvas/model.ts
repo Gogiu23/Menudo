@@ -31,7 +31,7 @@ export function fontFamily(key: FontKey) {
   return v ? `${v}, ${f.fallback}` : f.fallback;
 }
 
-export type Base = { id: string; x: number; y: number; width: number; height: number; rotation: number; opacity: number; visible: boolean; locked: boolean };
+export type Base = { id: string; x: number; y: number; width: number; height: number; rotation: number; opacity: number; visible: boolean; locked: boolean; group?: string };
 export type TextEl = Base & {
   type: "text";
   text: string;

@@ -62,7 +62,9 @@ export async function menuToElements(m: Menu, paper: Paper): Promise<El[]> {
   const logo = m.logo ? await logoSize(m.logo) : { w: 0, h: 0 };
 
   const out: El[] = [];
-  const base = (x: number, y: number, width: number, height: number) => ({ id: uid(), x, y, width, height, ...common });
+  // Cada bloque (cabecera, sección, pie…) comparte `group`: se selecciona y mueve de una vez
+  let group: string | undefined;
+  const base = (x: number, y: number, width: number, height: number) => ({ id: uid(), x, y, width, height, ...common, group });
 
   const text = (t: string, x: number, y: number, width: number, o: T) => {
     const { h } = measure(t, o, width);
@@ -89,6 +91,7 @@ export async function menuToElements(m: Menu, paper: Paper): Promise<El[]> {
   const bottom = m.tiles ? H - 6 : H;
 
   /* Recuadro de «Tavolo n.:» */
+  group = uid();
   if (m.tableBox) {
     const by = top + 2;
     out.push({ ...base(W - 10 - 32, by, 32, 13), type: "rect", fill: "#ffffff", radius: 1, stroke: INK, strokeW: 0.5 });
@@ -99,6 +102,7 @@ export async function menuToElements(m: Menu, paper: Paper): Promise<El[]> {
   }
 
   /* Cabecera */
+  group = uid();
   let y = top + (m.tableBox ? 18 : 11);
   if (logo.w > 0) {
     const k = Math.min(1, 60 / logo.w, 24 / logo.h);
@@ -115,6 +119,7 @@ export async function menuToElements(m: Menu, paper: Paper): Promise<El[]> {
   y += 9;
 
   /* Pie: dirección y contactos, pegados al fondo */
+  group = uid();
   const contacts = [m.phone, m.email, m.web].filter(Boolean);
   const fo: T = { size: 3.7, lh: 1.625, align: "center" };
   const footerH = (m.address ? 3.7 * 1.625 : 0) + (contacts.length ? 3.7 * 1.625 : 0);
@@ -138,6 +143,7 @@ export async function menuToElements(m: Menu, paper: Paper): Promise<El[]> {
 
   /* Precio total (modo «a persona») encima del pie */
   let sectionsBottom = footerTop;
+  group = uid();
   if (total && m.totalPrice) {
     const lab = m.totalLabel ? 5.5 * 1.5 * z : 0;
     const note = m.totalNote ? (0.5 + 3.7 * 1.5 * m.noteSize) * z : 0;
@@ -171,6 +177,7 @@ export async function menuToElements(m: Menu, paper: Paper): Promise<El[]> {
   y += space;
 
   for (const s of sections) {
+    group = uid();
     let sy = y;
     sy += text(s.title, PAD, sy, INNER, { font: "display", italic: true, size: 7.5 * z, lh: 1.5, align: center ? "center" : "left" });
     sy += 1.5 * z;
