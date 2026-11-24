@@ -2,7 +2,8 @@
    se vea igual que el resto de la página. Se duplican aquí, y no se importan del editor, para no arrastrar todo su
    código a esta ruta ni tocar un archivo que cambia a menudo: si cambia el estilo del editor, cambia aquí también. */
 
-import { SHAPES, type ShapeKind } from "./model";
+import { PALETTE, SHAPES, type Grad, type ShapeKind } from "./model";
+import type { Tr } from "./i18n";
 
 export const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink";
 export const input = `w-full rounded-lg border border-laguna bg-surface px-3 py-2.5 text-base placeholder:text-ink/40 md:py-2 md:text-[0.95em] focus:border-mare focus:outline-2 focus:outline-offset-0 focus:outline-mare/40`;
@@ -110,6 +111,46 @@ export function Block({ title, children }: { title: string; children: React.Reac
       <h3 className="text-[13px] font-semibold">{title}</h3>
       {children}
     </section>
+  );
+}
+
+// Muestras de la paleta y un selector libre; `label` da nombre accesible a cada muestra
+export function ColorRow({ value, onChange, tr, label }: { value: string; onChange: (hex: string) => void; tr: Tr; label: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {PALETTE.map((c) => (
+        <button key={c.hex} type="button" title={tr(c.name)} aria-label={`${label}: ${tr(c.name)}`} aria-pressed={value.toLowerCase() === c.hex.toLowerCase()}
+          className={`size-7 rounded-full ring-1 ring-laguna ring-offset-2 ring-offset-surface aria-pressed:ring-2 aria-pressed:ring-mare ${focus}`}
+          style={{ background: c.hex }} onClick={() => onChange(c.hex)} />
+      ))}
+      <input type="color" aria-label={`${label}: ${tr("Altro colore")}`} className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+// «Tinta unita / Sfumatura»: con sfumatura aparecen el color final y el ángulo. `fill` es el color inicial.
+export function GradientControls({ fill, grad, onChange, tr }: { fill: string; grad?: Grad; onChange: (g: Grad | undefined) => void; tr: Tr }) {
+  const seg = (on: boolean) => `h-8 flex-1 rounded-md px-2 text-[13px] font-semibold ${focus} ${on ? "bg-surface shadow-sm" : "text-ink/70 hover:text-ink"}`;
+  return (
+    <div className="space-y-3">
+      <div role="group" aria-label={tr("Tipo di colore")} className="flex rounded-lg bg-laguna/25 p-0.5">
+        <button type="button" aria-pressed={!grad} className={seg(!grad)} onClick={() => onChange(undefined)}>{tr("Tinta unita")}</button>
+        <button type="button" aria-pressed={!!grad} className={seg(!!grad)}
+          onClick={() => onChange(grad ?? { to: fill.toLowerCase() === PALETTE[1].hex.toLowerCase() ? PALETTE[0].hex : PALETTE[1].hex, angle: 90 })}>{tr("Sfumatura")}</button>
+      </div>
+      {grad && (
+        <>
+          <div className="h-6 rounded-md ring-1 ring-laguna" style={{ background: `linear-gradient(${grad.angle + 90}deg, ${fill}, ${grad.to})` }} />
+          <p className="text-xs font-semibold text-ink/70">{tr("Colore finale")}</p>
+          <ColorRow value={grad.to} onChange={(to) => onChange({ ...grad, to })} tr={tr} label={tr("Colore finale")} />
+          <label className="flex items-center gap-2 text-[13px] font-semibold">
+            {tr("Angolo")}
+            <input type="range" className="min-w-0 flex-1 accent-mare" min={0} max={360} step={15} value={grad.angle} onChange={(e) => onChange({ ...grad, angle: Number(e.target.value) })} />
+            <span className="w-10 text-right font-normal tabular-nums">{grad.angle}°</span>
+          </label>
+        </>
+      )}
+    </div>
   );
 }
 

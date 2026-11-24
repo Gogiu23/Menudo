@@ -10,10 +10,10 @@ import type Konva from "konva";
    Fase 2: panel de propiedades completo y panel de capas (orden, ocultar, bloquear, duplicar).
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
-import { common, Copies, COPIES, COPY_NAMES, El, FONTS, fontFamily, fontStyleOf, newText, PALETTE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, tilePattern, tileScale, uid } from "./model";
+import { common, Copies, COPIES, COPY_NAMES, El, FONTS, fontFamily, fontStyleOf, fillGrad, Grad, gradPoints, newText, PALETTE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
-import { Block, Brand, chip, chipOn, focus, Group, Icon, ICONS, iconBtn, input, Num, primary, secondary, ShapeIcon } from "./ui";
+import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, secondary, ShapeIcon } from "./ui";
 import { Tip } from "./Tip";
 import type { Lang } from "../i18n";
 import { LANG_KEY, loadLang, makeTr, type Tr } from "./i18n";
@@ -49,14 +49,21 @@ function ShapeNode({ el, ...rest }: { el: Extract<El, { type: "shape" }> } & Kon
         c.save();
         c.scale(shape.width() / d.vb, shape.height() / d.vb);
         const path = new Path2D(d.d);
+        let paint: string | CanvasGradient = el.fill;
+        if (el.grad) {
+          const { start, end } = gradPoints(d.vb, d.vb, el.grad.angle);
+          paint = c.createLinearGradient(start.x, start.y, end.x, end.y);
+          paint.addColorStop(0, el.fill);
+          paint.addColorStop(1, el.grad.to);
+        }
         if (d.stroke) {
-          c.strokeStyle = el.fill;
+          c.strokeStyle = paint;
           c.lineWidth = 1.7;
           c.lineCap = "round";
           c.lineJoin = "round";
           c.stroke(path);
         } else {
-          c.fillStyle = el.fill;
+          c.fillStyle = paint;
           c.fill(path, "evenodd");
         }
         c.restore();
@@ -94,21 +101,26 @@ const readZoom = () => {
     return 1;
   }
 };
+const okGrad = (v: unknown): Grad | undefined => {
+  const g = v as { to?: unknown; angle?: unknown } | null | undefined;
+  return g && typeof g.to === "string" && /^#[0-9a-f]{6}$/i.test(g.to) && typeof g.angle === "number" ? { to: g.to, angle: ((g.angle % 360) + 360) % 360 } : undefined;
+};
 const okBg = (v: unknown) => (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v : "#ffffff");
 const MAX_HISTORY = 100;
 const THEME_KEY = "menudo:theme"; // el mismo que el editor principal
 type History = { past: El[][][]; pages: El[][]; future: El[][][] }; // cada paso del historial guarda todas las páginas
 const starter = (): El[] => [newText({ y: 20, width: 170, height: 20, text: "Menù", fontSize: 14, fontFamily: "display" })];
 
-function load(): { paper: Paper; copies: Copies; pages: El[][]; tables: string[]; bg: string } {
+function load(): { paper: Paper; copies: Copies; pages: El[][]; tables: string[]; bg: string; bgGrad?: Grad } {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
     const copies = COPIES.includes(raw?.copies) ? raw.copies : 1;
     const bg = okBg(raw?.bg);
+    const bgGrad = okGrad(raw?.bgGrad);
     const tables: string[] = Array.isArray(raw?.tables) ? raw.tables.map((x: unknown) => (x == null ? "" : String(x))) : [];
     if (raw && raw.paper in PAPERS) {
-      if (Array.isArray(raw.pages) && raw.pages.length && raw.pages.every(Array.isArray)) return { paper: raw.paper, copies, pages: raw.pages, tables, bg };
-      if (Array.isArray(raw.els)) return { paper: raw.paper, copies, pages: [raw.els], tables, bg }; // formato de las fases 3-10: una sola página
+      if (Array.isArray(raw.pages) && raw.pages.length && raw.pages.every(Array.isArray)) return { paper: raw.paper, copies, pages: raw.pages, tables, bg, bgGrad };
+      if (Array.isArray(raw.els)) return { paper: raw.paper, copies, pages: [raw.els], tables, bg, bgGrad }; // formato de las fases 3-10: una sola página
     }
   } catch {}
   return { paper: "A4", copies: 1, pages: [starter()], tables: [], bg: "#ffffff" };
@@ -151,6 +163,7 @@ export default function CanvasEditor() {
   const [wanted, setCopies] = useState<Copies>(init.copies);
   const [tables, setTables] = useState<string[]>(init.tables); // número de mesa de cada copia
   const [bg, setBg] = useState(init.bg); // color de la hoja
+  const [bgGrad, setBgGrad] = useState<Grad | undefined>(init.bgGrad); // y su degradado, si lo hay
   // Si el papel elegido no admite esas copias (p. ej. 4 × A3), se vuelve a 1
   const copies: Copies = sheetFor(paper, wanted) ? wanted : 1;
   const sheet = sheetFor(paper, copies)!;
@@ -406,14 +419,14 @@ export default function CanvasEditor() {
   useEffect(() => {
     const t = setTimeout(() => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, copies, pages: hist.pages, tables, bg }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, copies, pages: hist.pages, tables, bg, bgGrad }));
         setSaveError(false);
       } catch {
         setSaveError(true); // normalmente: demasiadas imágenes para el límite del navegador
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [paper, copies, hist.pages, tables, bg]);
+  }, [paper, copies, hist.pages, tables, bg, bgGrad]);
 
   // `merge`: ediciones desde el panel (escribir, deslizadores) que deben deshacerse de una vez
   const patch = (id: string, p: Partial<El>, merge = true) =>
@@ -669,7 +682,7 @@ export default function CanvasEditor() {
     try {
       const same = saved.find((d) => d.name.toLowerCase() === name.toLowerCase());
       if (same && !confirm(lang === "es" ? `Ya existe «${same.name}». ¿Quieres reemplazarlo?` : `Esiste già «${same.name}». Sostituirlo?`)) return;
-      await designs.save({ id: same?.id ?? uid(), name, savedAt: Date.now(), doc: { paper, copies, pages: hist.pages, tables, bg } });
+      await designs.save({ id: same?.id ?? uid(), name, savedAt: Date.now(), doc: { paper, copies, pages: hist.pages, tables, bg, bgGrad } });
       setDesignName("");
       setArchiveMsg(lang === "es" ? `Guardado «${name}».` : `Salvato «${name}».`);
       await refreshSaved();
@@ -683,6 +696,7 @@ export default function CanvasEditor() {
     setCopies(COPIES.includes(d.doc.copies) ? d.doc.copies : 1);
     setTables(d.doc.tables ?? []);
     setBg(okBg(d.doc.bg));
+    setBgGrad(okGrad(d.doc.bgGrad));
     setPages(() => d.doc.pages);
     goPage(0);
     setArchiveMsg(lang === "es" ? `Abierto «${d.name}».` : `Aperto «${d.name}».`);
@@ -885,14 +899,8 @@ export default function CanvasEditor() {
       )}
       {cur && cur.type !== "image" && (
         <Block title={tr("Colore")}>
-          <div className="flex flex-wrap items-center gap-2">
-            {PALETTE.map((c) => (
-              <button key={c.hex} title={tr(c.name)} aria-label={tr(c.name)} aria-pressed={cur.fill.toLowerCase() === c.hex.toLowerCase()}
-                className={`size-7 rounded-full ring-1 ring-laguna ring-offset-2 ring-offset-surface aria-pressed:ring-2 aria-pressed:ring-mare ${focus}`}
-                style={{ background: c.hex }} onClick={() => patch(cur.id, { fill: c.hex })} />
-            ))}
-            <input type="color" aria-label={tr("Altro colore")} className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={cur.fill} onChange={(e) => patch(cur.id, { fill: e.target.value })} />
-          </div>
+          <ColorRow value={cur.fill} onChange={(hex) => patch(cur.id, { fill: hex })} tr={tr} label={cur.grad ? tr("Colore iniziale") : tr("Colore")} />
+          {cur.type !== "tiles" && <GradientControls fill={cur.fill} grad={cur.grad} onChange={(g) => patch(cur.id, { grad: g })} tr={tr} />}
         </Block>
       )}
       {cur && (
@@ -1014,16 +1022,10 @@ export default function CanvasEditor() {
     ) },
     { id: "sheet", label: tr("Foglio"), hint: tr("Carta, copie e numeri di tavolo"), icon: ICONS.sheet, body: (
       <>
-          <fieldset>
-          <legend className="mb-1.5 text-sm font-semibold">{tr("Colore della carta")}</legend>
-          <div className="flex flex-wrap items-center gap-2">
-          {PALETTE.map((c) => (
-          <button key={c.hex} type="button" title={tr(c.name)} aria-label={`${tr("Carta")} ${tr(c.name)}`} aria-pressed={bg.toLowerCase() === c.hex.toLowerCase()}
-          className={`size-7 rounded-full ring-1 ring-laguna ring-offset-2 ring-offset-surface aria-pressed:ring-2 aria-pressed:ring-mare ${focus}`}
-          style={{ background: c.hex }} onClick={() => setBg(c.hex)} />
-          ))}
-          <input type="color" aria-label={tr("Altro colore della carta")} className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0" value={bg} onChange={(e) => setBg(e.target.value)} />
-          </div>
+          <fieldset className="space-y-3">
+            <legend className="mb-1.5 text-sm font-semibold">{tr("Colore della carta")}</legend>
+            <ColorRow value={bg} onChange={setBg} tr={tr} label={bgGrad ? tr("Colore iniziale") : tr("Colore della carta")} />
+            <GradientControls fill={bg} grad={bgGrad} onChange={setBgGrad} tr={tr} />
           </fieldset>
           <fieldset>
             <legend className="mb-1.5 text-sm font-semibold">{tr("Carta")}</legend>
@@ -1264,7 +1266,7 @@ export default function CanvasEditor() {
             onTouchStart={(e) => (emptyHit(e) && !multi ? setSels([]) : undefined)}
           >
             <Layer ref={layerRef}>
-              <Rect name="paper" width={w} height={h} fill={bg} />
+              <Rect name="paper" width={w} height={h} {...fillGrad(bg, bgGrad, w, h)} />
               {els.map((el) => {
                 const props = {
                   id: el.id,
@@ -1304,13 +1306,13 @@ export default function CanvasEditor() {
                 };
                 if (el.type === "text")
                   return (
-                    <Text key={el.id} {...props} visible={el.visible && editing !== el.id} onDblClick={() => setEditing(el.id)} onDblTap={() => setEditing(el.id)} name={el.table ? "table-number" : undefined} height={undefined} text={el.text} fontSize={el.fontSize} fill={el.fill} fontFamily={fontFamily(el.fontFamily)} align={el.align}
+                    <Text key={el.id} {...props} visible={el.visible && editing !== el.id} onDblClick={() => setEditing(el.id)} onDblTap={() => setEditing(el.id)} name={el.table ? "table-number" : undefined} height={undefined} text={el.text} fontSize={el.fontSize} {...fillGrad(el.fill, el.grad, el.width, el.fontSize * (el.lineHeight ?? 1.2) * Math.max(1, el.text.split("\n").length))} fontFamily={fontFamily(el.fontFamily)} align={el.align}
                       fontStyle={fontStyleOf(el)} lineHeight={el.lineHeight ?? 1.2} />
                   );
-                if (el.type === "rect") return <Rect key={el.id} {...props} fill={el.fill} cornerRadius={el.radius} stroke={el.stroke} strokeWidth={el.strokeW} />;
+                if (el.type === "rect") return <Rect key={el.id} {...props} {...fillGrad(el.fill, el.grad, el.width, el.height)} cornerRadius={el.radius} stroke={el.stroke} strokeWidth={el.strokeW} />;
                 if (el.type === "tiles") return <TilesNode key={el.id} el={el} {...props} />;
                 if (el.type === "line")
-                  return <Line key={el.id} {...props} points={[0, 0, el.width, 0]} stroke={el.fill} strokeWidth={el.thickness} lineCap="round" dash={el.dash ? [0.01, el.thickness * 2] : undefined} hitStrokeWidth={4} />;
+                  return <Line key={el.id} {...props} points={[0, 0, el.width, 0]} {...strokeGrad(el.fill, el.grad, el.width, el.thickness)} strokeWidth={el.thickness} lineCap="round" dash={el.dash ? [0.01, el.thickness * 2] : undefined} hitStrokeWidth={4} />;
                 if (el.type === "shape") return <ShapeNode key={el.id} el={el} {...props} />;
                 return <ImageNode key={el.id} el={el} {...props} />;
               })}

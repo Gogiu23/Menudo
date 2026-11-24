@@ -210,6 +210,12 @@ const ES: Record<string, string> = {
   "Cerca": "Buscar",
   "Aggiungi immagine": "Añadir imagen",
   "Immagini da Pixabay": "Imágenes de Pixabay",
+  "Tinta unita": "Sólido",
+  "Sfumatura": "Degradado",
+  "Colore finale": "Color final",
+  "Colore iniziale": "Color inicial",
+  "Angolo": "Ángulo",
+  "Tipo di colore": "Tipo de color",
 };
 
 export type Tr = (s: string, ctx?: string) => string;

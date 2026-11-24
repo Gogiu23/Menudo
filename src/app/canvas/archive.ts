@@ -1,8 +1,8 @@
-import type { Copies, El, Paper } from "./model";
+import type { Copies, El, Grad, Paper } from "./model";
 
 /* Archivo de diseños con nombre, en IndexedDB (las imágenes no caben en localStorage). */
 
-export type Doc = { paper: Paper; copies: Copies; pages: El[][]; tables: string[]; bg?: string }; // bg: color de la hoja (#rrggbb); los diseños antiguos no lo traen
+export type Doc = { paper: Paper; copies: Copies; pages: El[][]; tables: string[]; bg?: string; bgGrad?: Grad }; // bg: color de la hoja (#rrggbb) y bgGrad su degradado; los diseños antiguos no los traen
 export type Design = { id: string; name: string; savedAt: number; doc: Doc };
 
 const DB = "menudo-canvas";

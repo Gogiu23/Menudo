@@ -36,7 +36,9 @@ export function fontFamily(key: FontKey) {
   return v ? `${v}, ${f.fallback}` : f.fallback;
 }
 
-export type Base = { id: string; x: number; y: number; width: number; height: number; rotation: number; opacity: number; visible: boolean; locked: boolean; group?: string };
+// Degradado lineal del color del elemento (`fill`) hasta `to`; angle en grados: 0 = de izquierda a derecha, 90 = de arriba abajo
+export type Grad = { to: string; angle: number };
+export type Base = { grad?: Grad; id: string; x: number; y: number; width: number; height: number; rotation: number; opacity: number; visible: boolean; locked: boolean; group?: string };
 export type TextEl = Base & {
   type: "text";
   text: string;
@@ -77,6 +79,26 @@ export const SHAPES: Record<ShapeKind, { label: string; hint: string; d: string;
 };
 export type ShapeEl = Base & { type: "shape"; kind: ShapeKind; fill: string };
 export type El = TextEl | RectEl | ImageEl | TilesEl | LineEl | ShapeEl;
+
+// Puntos de inicio y fin de un degradado lineal que cubre una caja w×h con ese ángulo
+export function gradPoints(w: number, h: number, angle: number) {
+  const a = (angle * Math.PI) / 180;
+  const [dx, dy] = [Math.cos(a), Math.sin(a)];
+  const half = (Math.abs(w * dx) + Math.abs(h * dy)) / 2;
+  const [cx, cy] = [w / 2, h / 2];
+  return { start: { x: cx - dx * half, y: cy - dy * half }, end: { x: cx + dx * half, y: cy + dy * half } };
+}
+// Propiedades de relleno de Konva: color liso o degradado
+export function fillGrad(fill: string, g: Grad | undefined, w: number, h: number) {
+  if (!g) return { fill };
+  const { start, end } = gradPoints(w, h, g.angle);
+  return { fillLinearGradientStartPoint: start, fillLinearGradientEndPoint: end, fillLinearGradientColorStops: [0, fill, 1, g.to] };
+}
+export function strokeGrad(stroke: string, g: Grad | undefined, w: number, h: number) {
+  if (!g) return { stroke };
+  const { start, end } = gradPoints(w, h, g.angle);
+  return { strokeLinearGradientStartPoint: start, strokeLinearGradientEndPoint: end, strokeLinearGradientColorStops: [0, stroke, 1, g.to] };
+}
 
 export const uid = () => Math.random().toString(36).slice(2, 9);
 export const common = { rotation: 0, opacity: 1, visible: true, locked: false };
