@@ -43,7 +43,8 @@ function Num({ label, value, min, onChange }: { label: string; value: number; mi
   );
 }
 
-/* Fase 6: guías de alineación con imán (Alt las desactiva) y texto con altura automática.
+/* Fase 9: uso en móvil (pestañas Carta/Strumenti, barra inferior, modo selección múltiple táctil, maniglie grandes).
+   Fase 6: guías de alineación con imán (Alt las desactiva) y texto con altura automática.
    Fase 4: exportar a PNG y PDF a resolución de impresión, e imprimir.
    Fase 3: guardado automático en localStorage y deshacer/rehacer */
 const STORAGE_KEY = "menudo:canvas:v1";
@@ -121,6 +122,10 @@ export default function CanvasEditor() {
   const [sels, setSels] = useState<string[]>([]);
   const sel = sels.length === 1 ? sels[0] : null; // un solo elemento: se muestra el panel de propiedades
   const setSel = (id: string | null) => setSels(id ? [id] : []);
+  const [tab, setTab] = useState<"canvas" | "tools">("canvas"); // solo en móvil; en escritorio se ven las dos
+  const [multi, setMulti] = useState(false); // modo táctil: tocar suma elementos a la selección
+  const addedOnTouch = useRef(false);
+  const [coarse] = useState(() => window.matchMedia("(pointer: coarse)").matches);
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const marqueeFrom = useRef<{ x: number; y: number; add: boolean } | null>(null);
   const [zoom, setZoom] = useState(2); // px por mm
@@ -451,7 +456,7 @@ export default function CanvasEditor() {
     <>
     <style>{`@page { size: ${sheet.name} ${sheet.landscape ? "landscape" : "portrait"}; margin: 0; }`}</style>
     <div className="flex min-h-screen flex-col bg-laguna/35 text-ink md:flex-row print:hidden">
-      <aside className="flex shrink-0 flex-col gap-4 md:sticky md:top-0 md:h-screen md:overflow-y-auto border-b border-laguna/60 bg-white p-4 md:w-72 md:border-r md:border-b-0">
+      <aside className={`${tab === "tools" ? "flex" : "hidden"} md:flex shrink-0 flex-col gap-4 pb-24 md:pb-4 md:sticky md:top-0 md:h-screen md:overflow-y-auto border-b border-laguna/60 bg-white p-4 md:w-72 md:border-r md:border-b-0`}>
         <h1 className="font-display text-lg font-semibold">Editor libero (prova)</h1>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -607,7 +612,7 @@ export default function CanvasEditor() {
         </div>
       </aside>
 
-      <main ref={wrap} className="flex flex-1 justify-center overflow-auto p-4">
+      <main ref={wrap} className={`${tab === "canvas" ? "flex" : "hidden"} md:flex flex-1 justify-center overflow-auto p-4 pb-40 md:pb-4`}>
         <div className="h-fit shadow-[0_18px_40px_-18px_rgb(23_48_51/0.45)]">
           <Stage
             ref={stageRef}
@@ -631,7 +636,7 @@ export default function CanvasEditor() {
             }}
             onMouseUp={endMarquee}
             onMouseLeave={endMarquee}
-            onTouchStart={(e) => (emptyHit(e) ? setSels([]) : undefined)}
+            onTouchStart={(e) => (emptyHit(e) && !multi ? setSels([]) : undefined)}
           >
             <Layer ref={layerRef}>
               <Rect name="paper" width={w} height={h} fill="#fff" />
@@ -652,8 +657,16 @@ export default function CanvasEditor() {
                     const add = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
                     if (add || !sels.includes(el.id)) pick(el.id, add);
                   },
+                  // Táctil: con «Multi» activo, tocar suma al conjunto; tocar uno ya elegido (sin arrastrar) lo quita
                   onTouchStart: () => {
-                    if (!sels.includes(el.id)) pick(el.id, false);
+                    addedOnTouch.current = false;
+                    if (!sels.includes(el.id)) {
+                      pick(el.id, multi);
+                      addedOnTouch.current = true;
+                    }
+                  },
+                  onTap: () => {
+                    if (multi && !addedOnTouch.current && sels.includes(el.id) && sels.length > 1) pick(el.id, true);
                   },
                   onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => {
                     if (sels.length <= 1) snap(e, el.id); // con varios, el transformador mueve el resto por su cuenta
@@ -678,11 +691,28 @@ export default function CanvasEditor() {
               {guides.v.map((x) => <Line key={"v" + x} points={[x, 0, x, h]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
               {guides.h.map((y) => <Line key={"h" + y} points={[0, y, w, y]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
               {marquee && <Rect x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h} fill={PALETTE[1].hex} opacity={0.18} stroke={PALETTE[1].hex} strokeWidth={1 / zoom} listening={false} />}
-              <Transformer ref={trRef} borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" rotateEnabled keepRatio={false} boundBoxFunc={(o, n) => (n.width < 5 || n.height < 5 ? o : n)} />
+              <Transformer ref={trRef} borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" anchorSize={coarse ? 26 : 10} anchorCornerRadius={coarse ? 13 : 0} rotateAnchorOffset={coarse ? 40 : 50} rotateEnabled keepRatio={false} boundBoxFunc={(o, n) => (n.width < 5 || n.height < 5 ? o : n)} />
             </Layer>
           </Stage>
         </div>
       </main>
+
+      {/* Móvil: acciones de la selección y barra de pestañas, en la zona del pulgar */}
+      {tab === "canvas" && sels.length > 0 && (
+        <div className="fixed inset-x-2 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] flex flex-wrap justify-center gap-1.5 rounded-2xl bg-white/95 p-2 shadow-lg ring-1 ring-ink/10 md:hidden">
+          <button className={btn} onClick={duplicateSel}>Duplica</button>
+          {sels.length > 1 && <button className={btn} onClick={group}>Raggruppa</button>}
+          {selEls.some((x) => x.group) && <button className={btn} onClick={ungroup}>Separa</button>}
+          <button className={btn} onClick={removeSel}>Elimina</button>
+        </div>
+      )}
+      <nav aria-label="Sezioni" className="fixed inset-x-0 bottom-0 grid grid-cols-4 border-t border-laguna/60 bg-white/95 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden">
+        {([["canvas", "Carta"], ["tools", "Strumenti"]] as const).map(([id, t]) => (
+          <button key={id} aria-current={tab === id ? "page" : undefined} className={`rounded-lg py-2 text-xs ${tab === id ? "bg-laguna/50 font-semibold" : "text-ink/65"}`} onClick={() => setTab(id)}>{t}</button>
+        ))}
+        <button className="rounded-lg py-2 text-xs disabled:opacity-40" disabled={!hist.past.length} onClick={undo}>↶ Annulla</button>
+        <button aria-pressed={multi} className={`rounded-lg py-2 text-xs ${multi ? "bg-mare font-semibold" : "text-ink/65"}`} onClick={() => setMulti((v) => !v)}>Multi</button>
+      </nav>
     </div>
     {/* Solo al imprimir: la hoja renderizada a alta resolución, a tamaño real */}
     {/* eslint-disable-next-line @next/next/no-img-element -- data URL local, no hay nada que optimizar */}
