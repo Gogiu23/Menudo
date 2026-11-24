@@ -43,12 +43,8 @@ body {
 /* Mesa de trabajo: cuadrícula de puntos bajo la hoja, como en un programa de maquetación */
 @utility canvas {
   background-color: var(--canvas);
-  /* arriba, el foco de luz del cursor (--px/--py/--po los pone useGlow en la raíz); debajo, la cuadrícula de puntos */
-  background-image:
-    radial-gradient(calc(var(--po, 0) * 380px) circle at var(--px, -999px) var(--py, -999px), color-mix(in oklab, var(--color-mare) 16%, transparent), transparent 70%),
-    radial-gradient(var(--canvas-dot) 1px, transparent 1px);
-  background-size: auto, 16px 16px;
-  background-attachment: fixed, scroll;
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: 16px 16px;
 }
 
 /* Azul de la marca: de oscuro a claro (botones, sección abierta, icono de la app) */
@@ -137,21 +133,6 @@ input[type="range"] {
   cursor: var(--cur-hand);
 }
 
-/* Foco de luz del cursor sobre los fondos: un solo punto anclado a la ventana (fixed), así se ve continuo por paneles, cabecera y mesa.
-   --po (0–1) se anima en la raíz con .glow-root y lo heredan las superficies .glow-bg; el foco crece de 0 a 380 px con él */
-@property --po {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
-@utility glow-root {
-  transition: --po 250ms ease-out;
-}
-@utility glow-bg {
-  background-image: radial-gradient(calc(var(--po, 0) * 380px) circle at var(--px, -999px) var(--py, -999px), color-mix(in oklab, var(--color-mare) 16%, transparent), transparent 70%);
-  background-attachment: fixed;
-}
-
 /* Brillo que sigue al ratón (useGlow, canvas/glow.ts): el borde y el fondo se iluminan hacia el cursor, en el azul de la interfaz */
 @utility glow {
   position: relative;
@@ -191,60 +172,68 @@ input[type="number"] {
   appearance: textfield;
 }
 
-/* Deslizador propio (componente Range): pista rellena en el azul de la interfaz hasta --pct y pomo blanco con aro azul */
+/* Deslizador propio (componente Range): pista gruesa rellena con el degradado azul de la marca hasta --pct; pomo blanco con punto azul */
 input.range {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 22px;
+  height: 28px;
   background: transparent;
 }
 input.range::-webkit-slider-runnable-track {
-  height: 6px;
+  height: 10px;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--color-mare) var(--pct, 0%), color-mix(in oklab, var(--color-laguna) 55%, transparent) var(--pct, 0%));
+  background:
+    linear-gradient(90deg, #0b2a6f, #2f6bff 60%, #56c2ff) 0 0 / var(--pct, 0%) 100% no-repeat,
+    color-mix(in oklab, var(--color-laguna) 45%, transparent);
+  box-shadow: inset 0 1px 2px rgb(14 26 43 / 0.18);
 }
 input.range::-moz-range-track {
-  height: 6px;
+  height: 10px;
   border-radius: 999px;
-  background: color-mix(in oklab, var(--color-laguna) 55%, transparent);
+  background: color-mix(in oklab, var(--color-laguna) 45%, transparent);
+  box-shadow: inset 0 1px 2px rgb(14 26 43 / 0.18);
 }
 input.range::-moz-range-progress {
-  height: 6px;
+  height: 10px;
   border-radius: 999px;
-  background: var(--color-mare);
+  background: linear-gradient(90deg, #0b2a6f, #2f6bff 60%, #56c2ff);
 }
 input.range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  margin-top: -6px;
-  width: 18px;
-  height: 18px;
+  margin-top: -7px;
+  width: 24px;
+  height: 24px;
+  border: 0;
   border-radius: 50%;
-  border: 2px solid var(--color-mare);
-  background: var(--color-surface);
-  box-shadow: 0 2px 6px rgb(14 26 43 / 0.28);
+  background: radial-gradient(circle, #2f6bff 0 30%, #fff 34%);
+  box-shadow: 0 0 0 1px rgb(14 26 43 / 0.12), 0 3px 8px rgb(14 26 43 / 0.3);
   transition: transform 150ms ease-out, box-shadow 150ms;
 }
 input.range::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 24px;
+  height: 24px;
+  border: 0;
   border-radius: 50%;
-  border: 2px solid var(--color-mare);
-  background: var(--color-surface);
-  box-shadow: 0 2px 6px rgb(14 26 43 / 0.28);
+  background: radial-gradient(circle, #2f6bff 0 30%, #fff 34%);
+  box-shadow: 0 0 0 1px rgb(14 26 43 / 0.12), 0 3px 8px rgb(14 26 43 / 0.3);
 }
 input.range:hover::-webkit-slider-thumb {
-  transform: scale(1.12);
+  transform: scale(1.1);
+}
+input.range:active::-webkit-slider-thumb {
+  transform: scale(0.94);
+  box-shadow: 0 0 0 6px color-mix(in oklab, var(--color-mare) 22%, transparent), 0 3px 8px rgb(14 26 43 / 0.3);
 }
 input.range:focus-visible {
   outline: none;
 }
 input.range:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-mare) 28%, transparent);
+  box-shadow: 0 0 0 5px color-mix(in oklab, var(--color-mare) 30%, transparent), 0 3px 8px rgb(14 26 43 / 0.3);
 }
 input.range:focus-visible::-moz-range-thumb {
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-mare) 28%, transparent);
+  box-shadow: 0 0 0 5px color-mix(in oklab, var(--color-mare) 30%, transparent), 0 3px 8px rgb(14 26 43 / 0.3);
 }
 
 /* Relieve al pasar el ratón: el botón sube un píxel y proyecta sombra; al pulsarlo, se hunde */

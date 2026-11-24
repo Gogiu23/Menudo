@@ -151,7 +151,7 @@ export function GradientControls({ fill, grad, onChange, tr }: { fill: string; g
           <ColorRow value={grad.to} onChange={(to) => onChange({ ...grad, to })} tr={tr} label={tr("Colore finale")} />
           <label className="flex items-center gap-2 text-[13px] font-semibold">
             {tr("Angolo")}
-            <Range min={0} max={360} step={15} value={grad.angle} label={tr("Angolo")} onChange={(angle) => onChange({ ...grad, angle })} />
+            <Range min={0} max={360} step={15} value={grad.angle} label={tr("Angolo")} format={(v) => `${v}°`} onChange={(angle) => onChange({ ...grad, angle })} />
             <span className="w-10 text-right font-normal tabular-nums">{grad.angle}°</span>
           </label>
         </>
@@ -160,14 +160,23 @@ export function GradientControls({ fill, grad, onChange, tr }: { fill: string; g
   );
 }
 
-// Deslizador propio: la pista se rellena hasta el valor (--pct, ver globals.css)
-export function Range({ value, min, max, step, label, onChange }: { value: number; min: number; max: number; step: number; label: string; onChange: (v: number) => void }) {
+// Deslizador propio: pista rellena con el degradado de la marca hasta el valor (--pct, ver globals.css) y una burbuja con el valor sobre el pomo
+export function Range({ value, min, max, step, label, format = String, onChange }: { value: number; min: number; max: number; step: number; label: string; format?: (v: number) => string; onChange: (v: number) => void }) {
+  const pct = ((value - min) / (max - min)) * 100;
   return (
-    <input
-      type="range" aria-label={label} className="range min-w-0 flex-1" min={min} max={max} step={step} value={value}
-      style={{ "--pct": `${((value - min) / (max - min)) * 100}%` } as React.CSSProperties}
-      onChange={(e) => onChange(Number(e.target.value))}
-    />
+    <span className="group/range relative flex min-w-0 flex-1 items-center">
+      <input
+        type="range" aria-label={label} className="range min-w-0 flex-1" min={min} max={max} step={step} value={value}
+        style={{ "--pct": `${pct}%` } as React.CSSProperties}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+      <span
+        aria-hidden style={{ left: `calc(${pct}% + ${(0.5 - pct / 100) * 24}px)` }}
+        className="pointer-events-none absolute -top-4 -translate-x-1/2 rounded-md bg-ink px-1.5 py-0.5 text-[11px] leading-none font-semibold text-surface tabular-nums opacity-0 shadow-md transition-opacity group-focus-within/range:opacity-100 group-hover/range:opacity-100"
+      >
+        {format(value)}
+      </span>
+    </span>
   );
 }
 
