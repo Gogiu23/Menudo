@@ -102,3 +102,18 @@ export function tilePattern(color: string) {
   return c;
 }
 export const tileScale = (k: number) => (TILE_UNIT * k * MM_PER_TILE_PX) / (TILE_UNIT * TILE_RES);
+
+/* Copias por hoja: la carta (papel P) se repite en un folio mayor que las contiene exactas, sin escalar.
+   2 copias → folio un tamaño mayor en horizontal (2 × A4 = A3); 4 copias → dos tamaños mayor (4 × A5 = A3). */
+export type Copies = 1 | 2 | 4;
+export const COPIES: Copies[] = [1, 2, 4];
+const SIZES: Paper[] = ["A5", "A4", "A3", "A2"];
+
+export function sheetFor(paper: Paper, copies: Copies) {
+  const j = SIZES.indexOf(paper) + (copies === 1 ? 0 : copies === 2 ? 1 : 2);
+  if (j >= SIZES.length) return null; // no existe un folio mayor (A1…) en la lista
+  const name = SIZES[j];
+  const landscape = copies === 2;
+  const { w, h } = PAPERS[name];
+  return { name, landscape, w: landscape ? h : w, h: landscape ? w : h, cols: copies === 1 ? 1 : 2, rows: copies === 4 ? 2 : 1 };
+}

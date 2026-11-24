@@ -8,7 +8,7 @@ import type Konva from "konva";
    Fase 2: panel de propiedades completo y panel de capas (orden, ocultar, bloquear, duplicar).
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
-import { common, El, FONTS, FontKey, fontFamily, fontStyleOf, newText, PALETTE, PAPERS, Paper, tilePattern, tileScale, uid } from "./model";
+import { common, Copies, COPIES, El, FONTS, FontKey, fontFamily, fontStyleOf, newText, PALETTE, PAPERS, Paper, sheetFor, tilePattern, tileScale, uid } from "./model";
 import { menuToElements, readSavedMenu } from "./menuTemplate";
 
 const label = (e: El) =>
@@ -51,12 +51,12 @@ const MAX_HISTORY = 100;
 type History = { past: El[][]; els: El[]; future: El[][] };
 const starter = (): El[] => [newText({ y: 20, width: 170, height: 20, text: "Menù", fontSize: 14, fontFamily: "display" })];
 
-function load(): { paper: Paper; els: El[] } {
+function load(): { paper: Paper; copies: Copies; els: El[] } {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
-    if (raw && raw.paper in PAPERS && Array.isArray(raw.els)) return raw;
+    if (raw && raw.paper in PAPERS && Array.isArray(raw.els)) return { ...raw, copies: COPIES.includes(raw.copies) ? raw.copies : 1 };
   } catch {}
-  return { paper: "A4", els: starter() };
+  return { paper: "A4", copies: 1, els: starter() };
 }
 
 // Reduce la foto: las del móvil pesan varios MB y no caben en localStorage
@@ -84,6 +84,10 @@ const btn = "rounded-lg border border-ink/20 bg-white px-3 py-1.5 text-sm hover:
 export default function CanvasEditor() {
   const [init] = useState(load);
   const [paper, setPaper] = useState<Paper>(init.paper);
+  const [wanted, setCopies] = useState<Copies>(init.copies);
+  // Si el papel elegido no admite esas copias (p. ej. 4 × A3), se vuelve a 1
+  const copies: Copies = sheetFor(paper, wanted) ? wanted : 1;
+  const sheet = sheetFor(paper, copies)!;
   const [hist, setHist] = useState<History>({ past: [], els: init.els, future: [] });
   const [saveError, setSaveError] = useState(false);
   const els = hist.els;
@@ -150,14 +154,14 @@ export default function CanvasEditor() {
   useEffect(() => {
     const t = setTimeout(() => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, els }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, copies, els }));
         setSaveError(false);
       } catch {
         setSaveError(true); // normalmente: demasiadas imágenes para el límite del navegador
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [paper, els]);
+  }, [paper, copies, els]);
 
   // Suprimir borra el elemento (salvo si se está escribiendo en un campo)
   useEffect(() => {
@@ -221,18 +225,32 @@ export default function CanvasEditor() {
   };
 
   // Dibuja la hoja entera a ~300 ppp (menos si superaría el límite de píxeles) sin las maniglie
-  const render = () => {
+  const render = (n: number) => {
     const stage = stageRef.current!;
     const tr = trRef.current!;
     const targetW = (w / MM_PER_INCH) * DPI;
     const targetH = (h / MM_PER_INCH) * DPI;
-    const k = Math.min(1, Math.sqrt(MAX_PIXELS / (targetW * targetH)));
+    const k = Math.min(1, Math.sqrt(MAX_PIXELS / (targetW * targetH * n))); // n copias = n veces los píxeles
     tr.visible(false);
     try {
       return { url: stage.toDataURL({ pixelRatio: (targetW * k) / (w * zoom), mimeType: "image/png" }), dpi: Math.round(DPI * k) };
     } finally {
       tr.visible(true);
     }
+  };
+  // La hoja lista para imprimir: la carta repetida en el folio (una sola imagen con 1 copia)
+  const compose = async () => {
+    const { url, dpi } = render(sheet.cols * sheet.rows);
+    if (copies === 1) return { url, dpi };
+    const im = new window.Image();
+    im.src = url;
+    await im.decode();
+    const c = document.createElement("canvas");
+    c.width = im.width * sheet.cols;
+    c.height = im.height * sheet.rows;
+    const g = c.getContext("2d")!;
+    for (let r = 0; r < sheet.rows; r++) for (let q = 0; q < sheet.cols; q++) g.drawImage(im, q * im.width, r * im.height);
+    return { url: c.toDataURL("image/png"), dpi };
   };
   const download = (href: string, name: string) => {
     const a = document.createElement("a");
@@ -252,18 +270,18 @@ export default function CanvasEditor() {
       setBusy(false);
     }
   };
-  const exportPng = () => run(async () => download(render().url, `menu-${paper}.png`));
+  const exportPng = () => run(async () => download((await compose()).url, `menu-${paper}-x${copies}.png`));
   const exportPdf = () =>
     run(async () => {
       const { PDFDocument } = await import("pdf-lib");
-      const png = await fetch(render().url).then((r) => r.arrayBuffer());
+      const png = await fetch((await compose()).url).then((r) => r.arrayBuffer());
       const doc = await PDFDocument.create();
       const pt = (mm: number) => (mm / MM_PER_INCH) * 72;
-      const page = doc.addPage([pt(w), pt(h)]);
-      page.drawImage(await doc.embedPng(png), { x: 0, y: 0, width: pt(w), height: pt(h) });
+      const page = doc.addPage([pt(sheet.w), pt(sheet.h)]);
+      page.drawImage(await doc.embedPng(png), { x: 0, y: 0, width: pt(sheet.w), height: pt(sheet.h) });
       const bytes = await doc.save();
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
-      download(url, `menu-${paper}.pdf`);
+      download(url, `menu-${paper}-x${copies}.pdf`);
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
     });
   // Imán al arrastrar: los bordes y el centro del elemento se pegan a los de la hoja y a los de los demás
@@ -306,7 +324,7 @@ export default function CanvasEditor() {
     });
   const print = () =>
     run(async () => {
-      const { url } = render();
+      const { url } = await compose();
       const im = new window.Image();
       im.src = url;
       await im.decode();
@@ -328,7 +346,7 @@ export default function CanvasEditor() {
 
   return (
     <>
-    <style>{`@page { size: ${paper} portrait; margin: 0; }`}</style>
+    <style>{`@page { size: ${sheet.name} ${sheet.landscape ? "landscape" : "portrait"}; margin: 0; }`}</style>
     <div className="flex min-h-screen flex-col bg-laguna/35 text-ink md:flex-row print:hidden">
       <aside className="flex shrink-0 flex-col gap-4 md:sticky md:top-0 md:h-screen md:overflow-y-auto border-b border-laguna/60 bg-white p-4 md:w-72 md:border-r md:border-b-0">
         <h1 className="font-display text-lg font-semibold">Editor libero (prova)</h1>
@@ -358,6 +376,24 @@ export default function CanvasEditor() {
               {p} ({PAPERS[p].w} × {PAPERS[p].h} mm)
             </label>
           ))}
+        </fieldset>
+
+        <fieldset className="flex flex-col gap-1">
+          <legend className="mb-1 text-sm font-medium">Copie per foglio</legend>
+          <div className="flex flex-wrap gap-2">
+            {COPIES.map((n) => {
+              const sh = sheetFor(paper, n);
+              return (
+                <label key={n} className={`rounded-lg px-2 py-1 text-xs ring-1 ${!sh ? "cursor-not-allowed opacity-40 ring-ink/20" : copies === n ? "cursor-pointer bg-mare font-semibold text-ink ring-mare" : "cursor-pointer ring-ink/20"}`}>
+                  <input type="radio" name="copies" className="sr-only" disabled={!sh} checked={copies === n} onChange={() => setCopies(n)} />
+                  {n === 1 ? "1 copia" : `${n} copie`}
+                </label>
+              );
+            })}
+          </div>
+          <p className="text-xs text-ink/65">
+            Foglio: {sheet.name} {sheet.landscape ? "orizzontale" : "verticale"} ({sheet.w} × {sheet.h} mm)
+          </p>
         </fieldset>
 
         <div className="flex flex-wrap gap-2">
@@ -509,7 +545,7 @@ export default function CanvasEditor() {
     </div>
     {/* Solo al imprimir: la hoja renderizada a alta resolución, a tamaño real */}
     {/* eslint-disable-next-line @next/next/no-img-element -- data URL local, no hay nada que optimizar */}
-    <div className="hidden print:block">{printSrc && <img src={printSrc} alt="" style={{ width: `${w}mm`, height: `${h}mm`, display: "block" }} />}</div>
+    <div className="hidden print:block">{printSrc && <img src={printSrc} alt="" style={{ width: `${sheet.w}mm`, height: `${sheet.h}mm`, display: "block" }} />}</div>
     </>
   );
 }
