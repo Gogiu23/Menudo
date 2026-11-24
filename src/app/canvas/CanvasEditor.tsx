@@ -345,7 +345,12 @@ export default function CanvasEditor() {
   const patch = (id: string, p: Partial<El>, merge = true) =>
     setEls((a) => a.map((x) => (x.id === id ? ({ ...x, ...p } as El) : x)), merge ? `patch:${id}:${Object.keys(p).join()}` : undefined);
   const add = (e: El) => {
-    setEls((a) => [...a, e]);
+    // Si ya hay algo exactamente ahí (varios «Aggiungi» seguidos), baja 8 mm para que no se apilen
+    setEls((a) => {
+      let y = e.y;
+      while (a.some((x) => x.x === e.x && x.y === y)) y += 8;
+      return [...a, { ...e, y } as El];
+    });
     setSel(e.id);
   };
   const cur = els.find((x) => x.id === sel);
@@ -808,7 +813,7 @@ export default function CanvasEditor() {
         <Block title="Aspetto">
           <label className="flex items-center gap-2 text-[13px] font-semibold">
             Opacità
-            <input type="range" className="flex-1 accent-mare" min={0} max={1} step={0.05} value={cur.opacity} onChange={(e) => patch(cur.id, { opacity: Number(e.target.value) })} />
+            <input type="range" className="min-w-0 flex-1 accent-mare" min={0} max={1} step={0.05} value={cur.opacity} onChange={(e) => patch(cur.id, { opacity: Number(e.target.value) })} />
             <span className="w-10 text-right font-normal tabular-nums">{Math.round(cur.opacity * 100)}%</span>
           </label>
           {cur.type === "rect" && <Num label="Angoli (mm)" value={cur.radius} min={0} onChange={(v) => patch(cur.id, { radius: v })} />}
