@@ -1027,6 +1027,24 @@ export default function CanvasEditor() {
         : { width: Math.max(5, n.width() * n.scaleX()), fontSize: Math.max(2, n.fontSize() * n.scaleX()) };
     n.setAttrs({ ...next, scaleX: 1, scaleY: 1 });
   };
+  // Doble clic en un tirador: la caja de cada texto seleccionado se ajusta a su texto (el renglón más largo, sin saltos automáticos)
+  const fitTexts = () => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    const upd = new Map<string, { x: number; width: number }>();
+    for (const el of els) {
+      const n = el.type === "text" && !el.locked && sels.includes(el.id) ? (layer.findOne("#" + el.id) as Konva.Text | undefined) : undefined;
+      if (!n || el.type !== "text") continue;
+      const c = n.clone({ width: "auto" }) as Konva.Text;
+      const w = Math.max(5, c.width());
+      c.destroy();
+      const dw = el.width - w;
+      // el texto centrado o a la derecha mantiene su centro o su borde derecho (si está girado se deja la esquina)
+      const dx = el.rotation % 360 !== 0 ? 0 : el.align === "center" ? dw / 2 : el.align === "right" ? dw : 0;
+      upd.set(el.id, { x: el.x + dx, width: w });
+    }
+    if (upd.size) setEls((a) => a.map((x) => (upd.has(x.id) ? ({ ...x, ...upd.get(x.id) } as El) : x)));
+  };
   const commit = () => {
     const layer = layerRef.current!;
     const upd = new Map<string, Partial<El>>();
@@ -1760,7 +1778,7 @@ export default function CanvasEditor() {
               {guides.v.map((x) => <Line key={"v" + x} points={[x, 0, x, h]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
               {guides.h.map((y) => <Line key={"h" + y} points={[0, y, w, y]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
               {marquee && <Rect x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h} fill={PALETTE[1].hex} opacity={0.18} stroke={PALETTE[1].hex} strokeWidth={1 / zoom} listening={false} />}
-              <Transformer ref={trRef} shouldOverdrawWholeArea borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" anchorSize={coarse ? 26 : 10} anchorCornerRadius={coarse ? 13 : 0} rotateAnchorOffset={coarse ? 40 : 50} rotateEnabled keepRatio={false} enabledAnchors={onlyLines ? ["middle-left", "middle-right"] : ALL_ANCHORS} boundBoxFunc={(o, n) => (n.width < 5 || (!onlyLines && n.height < 5) ? o : n)} />
+              <Transformer ref={trRef} onDblClick={(e) => e.target.hasName("_anchor") && fitTexts()} onDblTap={(e) => e.target.hasName("_anchor") && fitTexts()} shouldOverdrawWholeArea borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" anchorSize={coarse ? 26 : 10} anchorCornerRadius={coarse ? 13 : 0} rotateAnchorOffset={coarse ? 40 : 50} rotateEnabled keepRatio={false} enabledAnchors={onlyLines ? ["middle-left", "middle-right"] : ALL_ANCHORS} boundBoxFunc={(o, n) => (n.width < 5 || (!onlyLines && n.height < 5) ? o : n)} />
             </Layer>
           </Stage>
           {editEl && (
