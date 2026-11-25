@@ -18,6 +18,11 @@ const WINDOW = 10 * 60 * 1000;
 let day = { d: "", n: 0 };
 const DAILY = Number(process.env.AI_DAILY_LIMIT) || 300;
 
+// Motivo del fallo: va al registro del servidor y, solo fuera de producción, también en la respuesta (el cuerpo del proveedor no lleva la clave)
+const fail = (error: string, status: number, detail: string) => {
+  console.error(`[api/template] ${error}: ${detail}`);
+  return Response.json(process.env.NODE_ENV === "production" ? { error } : { error, detail }, { status });
+};
 const clean = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
 const SYSTEM = `You design a one-page restaurant menu template. Reply with ONE JSON object and nothing else (no markdown).
@@ -48,8 +53,9 @@ function extractJson(text: string): unknown {
 
 export async function POST(req: NextRequest) {
   const base = process.env.AI_BASE_URL;
-  const model = process.env.AI_MODEL;
-  if (!base || !model) return Response.json({ error: "nokey" }, { status: 503 });
+  // AI_MODEL admite varios nombres separados por comas: se prueban en orden si uno falla por demanda, límite o por no existir
+  const models = (process.env.AI_MODEL ?? "").split(",").map((m) => m.trim()).filter(Boolean);
+  if (!base || !models.length) return Response.json({ error: "nokey" }, { status: 503 });
   // El tamaño se comprueba sobre el texto leído (Content-Length puede faltar o ser falso); un cuerpo que no sea un objeto JSON es un 400
   const raw = await req.text().catch(() => "");
   if (raw.length > 8000) return Response.json({ error: "bad" }, { status: 413 });
@@ -78,7 +84,7 @@ export async function POST(req: NextRequest) {
   day.n++;
 
   const user = [`Request: ${prompt}`, venue && `Venue name: ${venue}`, sections.length && `Menu sections: ${sections.join(", ")}`, `Write title and subtitle in ${lang}.`].filter(Boolean).join("\n");
-  const call = (json: boolean) =>
+  const call = (model: string, json: boolean) =>
     fetch(`${base.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(process.env.AI_API_KEY ? { Authorization: `Bearer ${process.env.AI_API_KEY}` } : {}) },
@@ -93,17 +99,35 @@ export async function POST(req: NextRequest) {
     });
 
   try {
-    let r = await call(true);
-    // Algunos proveedores no admiten response_format: se reintenta sin él solo si el 400 habla de eso (un 400 por otra causa no se repite)
-    if (r.status === 400 && /response_format|json/i.test(await r.clone().text().catch(() => ""))) r = await call(false);
-    if (r.status === 429) return Response.json({ error: "busy" }, { status: 503 });
-    if (!r.ok) return Response.json({ error: "upstream" }, { status: 502 });
+    let r: Response | null = null;
+    let last = "";
+    for (const model of models) {
+      let x = await call(model, true);
+      // Algunos proveedores no admiten response_format: se reintenta sin él solo si el 400 habla de eso (un 400 por otra causa no se repite)
+      if (x.status === 400 && /response_format|json/i.test(await x.clone().text().catch(() => ""))) x = await call(model, false);
+      if (x.ok) {
+        r = x;
+        break;
+      }
+      last = `${model} → ${x.status}: ${(await x.text().catch(() => "")).slice(0, 200)}`;
+      if (![404, 429, 500, 502, 503, 504].includes(x.status)) break; // un 400/401/403 no mejora con otro modelo
+    }
+    if (!r) {
+      let hint = "";
+      // Solo en desarrollo: si el modelo no es válido, se listan los que la clave permite (ayuda a corregir AI_MODEL)
+      if (process.env.NODE_ENV !== "production" && /→ (400|404):/.test(last)) {
+        const m = await fetch(`${base.replace(/\/$/, "")}/models`, { headers: process.env.AI_API_KEY ? { Authorization: `Bearer ${process.env.AI_API_KEY}` } : {}, signal: AbortSignal.timeout(8000) }).then((x) => x.json()).catch(() => null);
+        const ids: string[] = Array.isArray(m?.data) ? m.data.map((x: { id?: unknown }) => String(x.id)).filter((id: string) => /gemini|flash|pro/i.test(id)).slice(0, 25) : [];
+        if (ids.length) hint = ` | modelos disponibles para tu clave: ${ids.join(", ")}`;
+      }
+      return fail(/→ (429|503):/.test(last) ? "busy" : "upstream", /→ (429|503):/.test(last) ? 503 : 502, `ningún modelo respondió. Último: ${last}${hint}`);
+    }
     const data = (await r.json()) as { choices?: { message?: { content?: unknown } }[] };
     const text = data.choices?.[0]?.message?.content;
     const raw = typeof text === "string" ? extractJson(text) : null;
-    if (!raw || typeof raw !== "object") return Response.json({ error: "invalid" }, { status: 422 });
+    if (!raw || typeof raw !== "object") return fail("invalid", 422, `la respuesta no era un JSON: ${JSON.stringify(data).slice(0, 300)}`);
     return Response.json({ spec: parseSpec(raw) });
-  } catch {
-    return Response.json({ error: "upstream" }, { status: 502 });
+  } catch (e) {
+    return fail("upstream", 502, `no se pudo llamar al proveedor: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
   }
 }
