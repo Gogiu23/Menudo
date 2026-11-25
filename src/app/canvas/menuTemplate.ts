@@ -1,6 +1,6 @@
 import Konva from "konva";
 import { formatPrice } from "../price";
-import { common, El, FONTS, FontKey, fontFamily, fontStyleOf, INK, PAPERS, Paper, uid } from "./model";
+import { common, El, FONTS, FontKey, fontFamily, fontStyleOf, INK, PAPERS, Paper, uid, type Link } from "./model";
 
 /* Convierte la carta del editor principal (ContentPage) en elementos del lienzo.
    Se calcula en A4 (210 × 297 mm), con las mismas medidas que el CSS original, y al final se escala al papel. */
@@ -65,9 +65,11 @@ function logoSize(src: string): Promise<{ w: number; h: number }> {
 function makeHelpers(getGroup: () => string | undefined) {
   const out: El[] = [];
   const base = (x: number, y: number, width: number, height: number) => ({ id: uid(), x, y, width, height, ...common, group: getGroup() });
-  const text = (t: string, x: number, y: number, width: number, o: T) => {
+  // link: el texto queda enlazado a ese dato de la carta (se sincroniza con el editor normal)
+  const text = (t: string, x: number, y: number, width: number, o: T, link?: Omit<Link, "v">) => {
     const { h } = measure(t, o, width);
     out.push({
+      ...(link ? { link: { ...link, v: t } } : {}),
       ...base(x, y, width, h + 0.5), type: "text", text: t, fontSize: o.size, fill: o.fill ?? INK, fontFamily: o.font ?? "sans",
       bold: !!o.bold, italic: !!o.italic, align: o.align ?? "left", lineHeight: o.lh, opacity: o.opacity ?? 1,
     });
@@ -148,22 +150,23 @@ async function contentPage(m: Menu, paper: Paper, tableLabel: string): Promise<E
     out.push({ ...base((W - lw) / 2, y, lw, lh), type: "image", src: m.logo });
     y += lh + 4;
   }
-  y += text(m.name, PAD, y, INNER, { font: "display", bold: true, size: 11 * m.titleSize, lh: 1.05, align: "center" });
+  y += text(m.name, PAD, y, INNER, { font: "display", bold: true, size: 11 * m.titleSize, lh: 1.05, align: "center" }, { f: "name" });
   if (m.subtitle) {
     y += 2;
-    y += text(m.subtitle, PAD, y, INNER, { font: "display", italic: true, size: 5.5, lh: 1.5, align: "center" });
+    y += text(m.subtitle, PAD, y, INNER, { font: "display", italic: true, size: 5.5, lh: 1.5, align: "center" }, { f: "subtitle" });
   }
   y += 9;
 
   /* Pie: dirección y contactos, pegados al fondo */
   group = uid();
-  const contacts = [m.phone, m.email, m.web].filter(Boolean);
+  const cf = ([["phone", m.phone], ["email", m.email], ["web", m.web]] as const).filter(([, v]) => v);
+  const contacts = cf.map(([, v]) => v);
   const fo: T = { size: 3.7, lh: 1.625, align: "center" };
   const footerH = (m.address ? 3.7 * 1.625 : 0) + (contacts.length ? 3.7 * 1.625 : 0);
   const footerTop = bottom - 8 - footerH;
   {
     let fy = footerTop;
-    if (m.address) fy += text(m.address, PAD, fy, INNER, { ...fo, bold: true });
+    if (m.address) fy += text(m.address, PAD, fy, INNER, { ...fo, bold: true }, { f: "address" });
     if (contacts.length) {
       const widths = contacts.map((c) => measure(c, fo).w + 0.5);
       let fx = (W - (widths.reduce((a, b) => a + b, 0) + 6 * (contacts.length - 1))) / 2;
@@ -171,7 +174,7 @@ async function contentPage(m: Menu, paper: Paper, tableLabel: string): Promise<E
         text(contacts.join("   ·   "), PAD, fy, INNER, fo);
       } else {
         contacts.forEach((c, i) => {
-          text(c, fx, fy, widths[i], fo);
+          text(c, fx, fy, widths[i], fo, { f: cf[i][0] });
           fx += widths[i] + 6;
         });
       }
@@ -189,23 +192,23 @@ async function contentPage(m: Menu, paper: Paper, tableLabel: string): Promise<E
     sectionsBottom = ty;
     bar(W / 2 - 7 * z, ty, 14 * z, 0.9 * z, barColor);
     ty += (0.9 + 4) * z;
-    if (m.totalLabel) ty += text(m.totalLabel, PAD, ty, INNER, { font: "display", italic: true, size: 5.5 * z, lh: 1.5, align: "center" });
-    ty += text(formatPrice(m.totalPrice), PAD, ty, INNER, { font: "display", bold: true, size: 11 * z, lh: 1.25, align: "center" });
-    if (m.totalNote) text(m.totalNote, PAD, ty + 0.5 * z, INNER, { italic: true, size: 3.7 * m.noteSize * z, lh: 1.5, align: "center", fill: "#000000" });
+    if (m.totalLabel) ty += text(m.totalLabel, PAD, ty, INNER, { font: "display", italic: true, size: 5.5 * z, lh: 1.5, align: "center" }, { f: "totalLabel" });
+    ty += text(formatPrice(m.totalPrice), PAD, ty, INNER, { font: "display", bold: true, size: 11 * z, lh: 1.25, align: "center" }, { f: "totalPrice" });
+    if (m.totalNote) text(m.totalNote, PAD, ty + 0.5 * z, INNER, { italic: true, size: 3.7 * m.noteSize * z, lh: 1.5, align: "center", fill: "#000000" }, { f: "totalNote" });
   }
 
   /* Secciones: se reparten solas por el alto disponible, como justify-evenly del original */
-  type Row = { name: string; price: string; desc: string; s: number; h: number };
-  const sections = m.sections.map((s) => {
-    const rows: Row[] = s.items.map((it) => {
+  type Row = { name: string; price: string; desc: string; s: number; h: number; i: number };
+  const sections = m.sections.map((s, si) => {
+    const rows: Row[] = s.items.map((it, i) => {
       const k = z * m.dishSize;
       const nameH = 4.4 * 1.5 * k;
       const descH = it.desc ? 0.5 * k + measure(it.desc, { italic: true, size: 3.7 * k, lh: 1.5 }, INNER).h : 0;
-      return { name: it.name, price: total ? "" : formatPrice(it.price), desc: it.desc, s: k, h: nameH + descH };
+      return { name: it.name, price: total ? "" : formatPrice(it.price), desc: it.desc, s: k, h: nameH + descH, i };
     });
     const head = (7.5 * 1.5 + 1.5 + 0.9 + 5) * z;
     const items = rows.reduce((a, r, i) => a + r.h + (i < rows.length - 1 ? 3.5 * r.s : 0), 0);
-    return { title: s.title, rows, h: head + items };
+    return { title: s.title, rows, h: head + items, si };
   });
   const gap = 6 * z;
   const used = sections.reduce((a, s) => a + s.h, 0) + gap * Math.max(0, sections.length - 1);
@@ -216,7 +219,7 @@ async function contentPage(m: Menu, paper: Paper, tableLabel: string): Promise<E
   for (const s of sections) {
     group = uid();
     let sy = y;
-    sy += text(s.title, PAD, sy, INNER, { font: "display", italic: true, size: 7.5 * z, lh: 1.5, align: center ? "center" : "left" });
+    sy += text(s.title, PAD, sy, INNER, { font: "display", italic: true, size: 7.5 * z, lh: 1.5, align: center ? "center" : "left" }, { f: "sec", s: s.si });
     sy += 1.5 * z;
     bar(center ? W / 2 - 7 * z : PAD, sy, 14 * z, 0.9 * z, barColor);
     sy += (0.9 + 5) * z;
@@ -225,8 +228,8 @@ async function contentPage(m: Menu, paper: Paper, tableLabel: string): Promise<E
       const pw = r.price ? measure(r.price, o).w + 0.5 : 0;
       const maxName = INNER - pw - 8 * r.s;
       const nw = Math.min(measure(r.name, o).w + 0.5, maxName);
-      const nh = text(r.name, PAD, sy, nw, o);
-      if (r.price) text(r.price, PAD + INNER - pw, sy, pw, { ...o, align: "right" });
+      const nh = text(r.name, PAD, sy, nw, o, { f: "item", s: s.si, i: r.i });
+      if (r.price) text(r.price, PAD + INNER - pw, sy, pw, { ...o, align: "right" }, { f: "price", s: s.si, i: r.i });
       // Línea punteada entre el nombre y el precio, a la altura de la base del texto
       const lx = PAD + nw + 2 * r.s;
       const lw = PAD + INNER - (pw ? pw + 2 * r.s : 0) - lx;
@@ -234,7 +237,7 @@ async function contentPage(m: Menu, paper: Paper, tableLabel: string): Promise<E
       sy += nh;
       if (r.desc) {
         sy += 0.5 * r.s;
-        sy += text(r.desc, PAD, sy, INNER, { italic: true, size: 3.7 * r.s, lh: 1.5, opacity: 0.75 });
+        sy += text(r.desc, PAD, sy, INNER, { italic: true, size: 3.7 * r.s, lh: 1.5, opacity: 0.75 }, { f: "desc", s: s.si, i: r.i });
       }
       if (i < s.rows.length - 1) sy += 3.5 * r.s;
     });
@@ -281,8 +284,8 @@ async function coverPage(m: Menu, paper: Paper): Promise<El[]> {
     out.push({ ...base(W / 2 - (logo.w * lk) / 2, y, logo.w * lk, logo.h * lk), type: "image", src: m.logo });
     y += logo.h * lk + 6;
   }
-  y += text(m.name, x0 + 14, y, IN, title);
-  if (m.subtitle) text(m.subtitle, x0 + 14, y + 2, IN, sub);
+  y += text(m.name, x0 + 14, y, IN, title, { f: "name" });
+  if (m.subtitle) text(m.subtitle, x0 + 14, y + 2, IN, sub, { f: "subtitle" });
   return scaleTo(out, paper);
 }
 

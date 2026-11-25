@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check": "node --no-warnings src/app/price.check.mjs"
+    "check": "node --no-warnings src/app/price.check.mjs && node --no-warnings src/app/canvas/menuLink.check.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

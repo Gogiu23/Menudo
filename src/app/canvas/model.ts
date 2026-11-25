@@ -45,6 +45,8 @@ export function fontFamily(key: FontKey) {
 export type Grad = { to: string; angle: number; from?: number }; // from: dónde empieza el degradado (0-0,95 del recorrido); antes, color liso
 // hollow: formas huecas (solo borde, del color del elemento y de grosor borderW en mm)
 export type Base = { hollow?: boolean; borderW?: number; grad?: Grad; id: string; x: number; y: number; width: number; height: number; rotation: number; opacity: number; visible: boolean; locked: boolean; group?: string };
+// Enlace con un dato de la carta del editor normal (ver menuLink.ts). s/i: sección y plato; v: último valor sincronizado
+export type Link = { f: "name" | "subtitle" | "address" | "phone" | "email" | "web" | "totalLabel" | "totalPrice" | "totalNote" | "sec" | "item" | "desc" | "price"; s?: number; i?: number; v: string };
 export type TextEl = Base & {
   type: "text";
   text: string;
@@ -54,6 +56,7 @@ export type TextEl = Base & {
   bold: boolean;
   italic: boolean;
   underline?: boolean;
+  link?: Link;
   align: "left" | "center" | "right";
   lineHeight?: number;
   // Número de mesa: al exportar, su texto se sustituye por el de cada copia (o queda vacío); en pantalla es solo un aviso

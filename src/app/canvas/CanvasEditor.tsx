@@ -10,7 +10,7 @@ import type Konva from "konva";
    Fase 2: panel de propiedades completo y panel de capas (orden, ocultar, bloquear, duplicar).
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
-import { common, Copies, COPIES, COPY_NAMES, El, FONTS, FontKey, fontFamily, fontStyleOf, fillGrad, Grad, gradEnd, gradPoints, TRANSPARENT, DARK_PAPER, LEGACY_WHITE, newText, PALETTE, PAPER_WHITE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
+import { common, Copies, COPIES, COPY_NAMES, El, FONTS, FontKey, fontFamily, type Link as MenuLink, fontStyleOf, fillGrad, Grad, gradEnd, gradPoints, TRANSPARENT, DARK_PAPER, LEGACY_WHITE, newText, PALETTE, PAPER_WHITE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
 import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, Range, secondary, Seg, ShapeIcon, Switch } from "./ui";
@@ -24,6 +24,8 @@ import type { Lang } from "../i18n";
 import { LANG_KEY, loadLang, makeTr, type Tr } from "./i18n";
 import { ImageSearch } from "./ImageSearch";
 import { MAX_PAGES, readPdf, type PdfError } from "./pdfLoad";
+import { okLink, pullLinks, pushLinks } from "./menuLink";
+import { formatPrice } from "../price";
 
 /* Dibujar formas arrastrando: cada herramienta sabe construir su elemento a partir de una geometría (caja, o línea con ángulo).
    Geo: x/y = esquina superior izquierda (o inicio de la línea), w/h = caja (o w = largo de la línea), angle en grados (solo líneas). */
@@ -184,7 +186,8 @@ const cleanPages = (pages: El[][]): El[][] =>
   pages.map((p) =>
     p
       .filter((e) => e && typeof e === "object" && (e.type !== "shape" || e.kind in SHAPES))
-      .map((e) => (e.grad ? { ...e, grad: okGrad(e.grad) } : e)),
+      .map((e) => (e.grad ? { ...e, grad: okGrad(e.grad) } : e))
+      .map((e) => (e.type === "text" && e.link ? { ...e, link: okLink(e.link) } : e)),
   );
 // El blanco roto de una versión intermedia vuelve a ser «blanco» (se muestra suavizado solo en modo oscuro)
 const okBg = (v: unknown) => (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? (v.toLowerCase() === LEGACY_WHITE ? PAPER_WHITE : v) : PAPER_WHITE);
@@ -193,7 +196,23 @@ const THEME_KEY = "menudo:theme"; // el mismo que el editor principal
 type History = { past: El[][][]; pages: El[][]; future: El[][][] }; // cada paso del historial guarda todas las páginas
 const starter = (): El[] => [newText({ y: 20, width: 170, height: 20, text: "Menù", fontSize: 14, fontFamily: "display" })];
 
-function load(): { paper: Paper; copies: Copies; pages: El[][]; tables: string[]; bg: string; bgGrad?: Grad } {
+// Carta del editor normal tal cual está guardada (todos sus campos), para sincronizar los textos enlazados
+const MENU_KEY = "menudo:menu";
+const readMenuRaw = (): Record<string, unknown> | null => {
+  try {
+    const m = JSON.parse(localStorage.getItem(MENU_KEY) ?? "null");
+    return m && typeof m === "object" && !Array.isArray(m) ? m : null;
+  } catch {
+    return null;
+  }
+};
+
+// Al abrir: lo que cambió en el editor normal llega a los textos enlazados
+function load() {
+  const l = loadSaved();
+  return { ...l, pages: pullLinks(l.pages, readMenuRaw(), formatPrice) };
+}
+function loadSaved(): { paper: Paper; copies: Copies; pages: El[][]; tables: string[]; bg: string; bgGrad?: Grad } {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
     const copies = COPIES.includes(raw?.copies) ? raw.copies : 1;
@@ -227,6 +246,18 @@ function shrink(src: string, maxPx: number, png: boolean): Promise<{ src: string
 const DPI = 300;
 const MAX_PIXELS = 16_000_000; // por encima, iOS Safari y otros navegadores móviles se quedan sin memoria de canvas
 const MM_PER_INCH = 25.4;
+
+// Nombre del dato de la carta al que está enlazado un texto
+function linkLabel(l: MenuLink, tr: Tr): string {
+  const n = (k?: number) => (k ?? 0) + 1;
+  switch (l.f) {
+    case "sec": return `${tr("Sezione")} ${n(l.s)}`;
+    case "item": return `${tr("Sezione")} ${n(l.s)} · ${tr("Piatto")} ${n(l.i)}`;
+    case "desc": return `${tr("Sezione")} ${n(l.s)} · ${tr("Piatto")} ${n(l.i)} · ${tr("descrizione")}`;
+    case "price": return `${tr("Sezione")} ${n(l.s)} · ${tr("Piatto")} ${n(l.i)} · ${tr("prezzo")}`;
+    default: return tr(({ name: "Nome del locale", subtitle: "Sottotitolo", address: "Indirizzo", phone: "Telefono", email: "Email", web: "Sito web", totalLabel: "Etichetta del prezzo", totalPrice: "Prezzo a persona", totalNote: "Nota del prezzo" } as const)[l.f]);
+  }
+}
 
 // Lista de letras (cada nombre con su letra), para un elemento y para varios
 function FontList({ value, onPick, tr }: { value: string; onPick: (k: FontKey) => void; tr: Tr }) {
@@ -554,7 +585,10 @@ export default function CanvasEditor() {
   useEffect(() => {
     const t = setTimeout(() => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, copies, pages: hist.pages, tables, bg, bgGrad }));
+        // Lo que cambió en los textos enlazados va a la carta del editor normal (y se guarda como ya sincronizado)
+        const sync = pushLinks(hist.pages, readMenuRaw());
+        if (sync) localStorage.setItem(MENU_KEY, JSON.stringify(sync.menu));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, copies, pages: sync ? sync.pages : hist.pages, tables, bg, bgGrad }));
         setSaveError(false);
       } catch {
         setSaveError(true); // normalmente: demasiadas imágenes para el límite del navegador
@@ -681,7 +715,7 @@ export default function CanvasEditor() {
     const groups = new Map<string, string>();
     const copies = selEls.map((e) => {
       if (e.group && !groups.has(e.group)) groups.set(e.group, uid());
-      return { ...e, id: uid(), x: e.x + 5, y: e.y + 5, locked: false, group: e.group && groups.get(e.group) } as El;
+      return { ...e, id: uid(), x: e.x + 5, y: e.y + 5, locked: false, group: e.group && groups.get(e.group), ...(e.type === "text" ? { link: undefined } : {}) } as El; // la copia no queda enlazada a la carta
     });
     setEls((a) => [...a, ...copies]);
     setSels(copies.map((c) => c.id));
@@ -1256,6 +1290,14 @@ export default function CanvasEditor() {
             {tr("Modifica testo")}
           </button>
           <p className="text-xs text-ink/70">{tr("Oppure doppio clic sul testo, sulla carta.")}</p>
+          {cur.link && (
+            <div className="flex items-center gap-2 rounded-lg bg-laguna/25 px-3 py-2 text-xs">
+              <span className="min-w-0 flex-1">
+                {tr("Collegato all'editor normale")}: <b>{linkLabel(cur.link, tr)}</b>
+              </span>
+              <button type="button" className={`glow rounded-md px-2 py-1 font-semibold hover:bg-laguna/40 ${focus}`} title={tr("Il testo non si aggiornerà più con l'editor normale")} onClick={() => patch(cur.id, { link: undefined })}>{tr("Scollega")}</button>
+            </div>
+          )}
           <Switch checked={!!cur.table} onChange={(v) => patch(cur.id, { table: v })}>{tr("Numero di tavolo (diverso per ogni copia)")}</Switch>
         </Block>
       )}

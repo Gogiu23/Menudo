@@ -272,6 +272,21 @@ const ES: Record<string, string> = {
   "Inizio": "Inicio",
   "Inizio della sfumatura": "Dónde empieza el degradado",
   "Trascina per cambiare livello": "Arrastra para cambiar de nivel",
+  "Collegato all'editor normale": "Enlazado con el editor normal",
+  "Scollega": "Soltar enlace",
+  "Il testo non si aggiornerà più con l'editor normale": "El texto dejará de sincronizarse con el editor normal",
+  "Sezione": "Sección",
+  "Piatto": "Plato",
+  "descrizione": "descripción",
+  "prezzo": "precio",
+  "Nome del locale": "Nombre del local",
+  "Indirizzo": "Dirección",
+  "Telefono": "Teléfono",
+  "Email": "Email",
+  "Sito web": "Web",
+  "Etichetta del prezzo": "Etiqueta del precio",
+  "Prezzo a persona": "Precio por persona",
+  "Nota del prezzo": "Nota del precio",
 };
 
 export type Tr = (s: string, ctx?: string) => string;
