@@ -4,6 +4,9 @@ import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState
 import { flushSync } from "react-dom";
 import Link from "next/link";
 import { formatPrice } from "./price";
+import type { FreeDoc } from "./canvas/model";
+import { FreeSvg } from "./canvas/FreeSvg";
+import { pullLinks } from "./canvas/menuLink";
 import { LangCtx, T, useT, type Dict, type Lang } from "./i18n";
 
 type Item = { name: string; desc: string; price: string };
@@ -17,6 +20,7 @@ type Align = "left" | "center" | "right";
 // PNG decorativo: posición y ancho en mm sobre la hoja; back: detrás del texto (por defecto, delante)
 type Sticker = { src: string; x: number; y: number; w: number; back?: boolean };
 type Menu = {
+  free?: FreeDoc; // diseño hecho en el editor libre: si está, se dibuja él en vez de la plantilla
   name: string;
   subtitle: string;
   logo: string;
@@ -957,9 +961,14 @@ function Preview({ layout, paper, scale, children }: { layout: Layout; paper: Pa
 function Thumbnail({ m, k = 0.12 }: { m: Menu; k?: number }) {
   return (
     <div className="shrink-0 overflow-hidden rounded-sm bg-white shadow ring-1 ring-ink/10" style={{ width: `${210 * k}mm`, height: `${297 * k}mm` }}>
-      <div style={{ transform: `scale(${k})`, transformOrigin: "top left" }}>
-        <ContentPage m={m} />
-      </div>
+      {m.free?.pages[0] ? (
+        // diseño del editor libre: su primera página (con los textos enlazados al día)
+        <FreeSvg page={pullLinks([m.free.pages[0]], m as unknown as Record<string, unknown>, formatPrice)[0]} paper={m.free.paper} bg={m.free.bg} bgGrad={m.free.bgGrad} />
+      ) : (
+        <div style={{ transform: `scale(${k})`, transformOrigin: "top left" }}>
+          <ContentPage m={m} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1922,6 +1931,8 @@ export default function Editor() {
       if (JSON.stringify(fresh) !== JSON.stringify(mRef.current)) {
         mRef.current = fresh;
         setM(fresh);
+        // también al archivo, que es lo que lista la página principal (miniaturas)
+        archive.save(loadCurrentId(), fresh).then(() => archive.list()).then(setSaved, () => {});
       }
       try {
         setDark(localStorage.getItem(THEME_KEY) === "dark");
@@ -2218,7 +2229,19 @@ export default function Editor() {
     : saved;
 
   const content = (copy: number) => <ContentPage m={m} table={m.tableNumbers[copy]} />;
-  const pages = m.coverOn ? [() => <CoverPage m={m} />, content] : [content];
+  // Con diseño del editor libre se dibujan sus páginas, con los textos enlazados al día con los formularios
+  const free = m.free;
+  const pages = free
+    ? pullLinks(free.pages, m as unknown as Record<string, unknown>, formatPrice).map((pg) =>
+        function FreePage(copy: number) {
+          return (
+            <div data-page className="h-[var(--page-h,297mm)] w-[var(--page-w,210mm)] overflow-hidden bg-white">
+              <FreeSvg page={pg} paper={free.paper} bg={free.bg} bgGrad={free.bgGrad} table={m.tableNumbers[copy] ?? ""} />
+            </div>
+          );
+        },
+      )
+    : m.coverOn ? [() => <CoverPage m={m} />, content] : [content];
 
   const tabs = [
     { id: "edit", label: t.edit, icon: ICONS.edit },
@@ -2604,7 +2627,7 @@ export default function Editor() {
                     className={`flex flex-col items-center gap-1.5 rounded-lg p-1.5 text-sm transition-colors hover:bg-laguna/25 ${focus}`}
                     onClick={() => update({ ...m, ...DESIGNS[d] })}
                   >
-                    <Thumbnail m={{ ...m, ...DESIGNS[d] }} k={0.075} />
+                    <Thumbnail m={{ ...m, ...DESIGNS[d], free: undefined }} k={0.075} />
                     {t.designs[d]}
                   </button>
                 ))}
@@ -2885,7 +2908,15 @@ export default function Editor() {
                 </div>
                 )}
               </div>
-              {overflow && <OverflowWarning />}
+              {free ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl bg-laguna/25 px-4 py-3 text-sm">
+                  <p className="min-w-0 flex-1">{t.freeDesign}</p>
+                  <Link href="/canvas" className={`rounded-lg bg-surface px-3 py-1.5 font-semibold ring-1 ring-laguna hover:bg-laguna/30 ${focus}`}>{t.openFree}</Link>
+                  <button className={`rounded-lg px-3 py-1.5 font-semibold hover:bg-laguna/40 ${focus}`} onClick={() => confirm(t.useTemplateAsk) && update({ ...m, free: undefined })}>{t.useTemplate}</button>
+                </div>
+              ) : (
+                overflow && <OverflowWarning />
+              )}
 
               <ZoomControl value={zoom} onChange={setZoom} />
               <EditCtx value={edit}>

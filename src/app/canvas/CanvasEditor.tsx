@@ -10,7 +10,7 @@ import type Konva from "konva";
    Fase 2: panel de propiedades completo y panel de capas (orden, ocultar, bloquear, duplicar).
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
-import { common, Copies, COPIES, COPY_NAMES, El, FONTS, FontKey, fontFamily, type Link as MenuLink, fontStyleOf, fillGrad, Grad, gradEnd, gradPoints, TRANSPARENT, DARK_PAPER, LEGACY_WHITE, newText, PALETTE, PAPER_WHITE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
+import { common, Copies, COPIES, COPY_NAMES, El, FONTS, FontKey, fontFamily, type FreeDoc, type Link as MenuLink, fontStyleOf, fillGrad, Grad, gradEnd, gradPoints, TRANSPARENT, DARK_PAPER, LEGACY_WHITE, newText, PALETTE, PAPER_WHITE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
 import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, Range, secondary, Seg, ShapeIcon, Switch } from "./ui";
@@ -211,8 +211,18 @@ const readMenuRaw = (): Record<string, unknown> | null => {
 // Al abrir: lo que cambió en el editor normal llega a los textos enlazados
 function load() {
   const l = loadSaved();
-  return { ...l, pages: pullLinks(l.pages, readMenuRaw(), formatPrice) };
+  // docId: identifica este documento; la carta del editor normal guarda con él el diseño que dibuja (Menu.free)
+  let docId = "";
+  try {
+    const r = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
+    if (typeof r?.docId === "string") docId = r.docId;
+  } catch {}
+  return { ...l, docId: docId || uid(), pages: pullLinks(l.pages, readMenuRaw(), formatPrice) };
 }
+const menuFreeOf = (m: Record<string, unknown> | null) => {
+  const f = m?.free as FreeDoc | undefined;
+  return f && typeof f.docId === "string" && f.paper in PAPERS && Array.isArray(f.pages) && f.pages.every(Array.isArray) ? f : null;
+};
 function loadSaved(): { paper: Paper; copies: Copies; pages: El[][]; tables: string[]; bg: string; bgGrad?: Grad } {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
@@ -331,6 +341,8 @@ export default function CanvasEditor() {
   const [tables, setTables] = useState<string[]>(init.tables); // número de mesa de cada copia
   const [bg, setBg] = useState(init.bg); // color de la hoja
   const [bgGrad, setBgGrad] = useState<Grad | undefined>(init.bgGrad); // y su degradado, si lo hay
+  const [docId, setDocId] = useState(init.docId);
+  const [menuFree, setMenuFree] = useState(() => menuFreeOf(readMenuRaw())); // diseño que guarda la carta del editor normal
   // Si el papel elegido no admite esas copias (p. ej. 4 × A3), se vuelve a 1
   const copies: Copies = sheetFor(paper, wanted) ? wanted : 1;
   const sheet = sheetFor(paper, copies)!;
@@ -438,6 +450,7 @@ export default function CanvasEditor() {
         const pages = pullLinks(h.pages, readMenuRaw(), formatPrice);
         return pages === h.pages ? h : { ...h, pages };
       });
+      setMenuFree(menuFreeOf(readMenuRaw()));
       try {
         setDark(localStorage.getItem(THEME_KEY) === "dark");
       } catch {}
@@ -602,16 +615,21 @@ export default function CanvasEditor() {
     const t = setTimeout(() => {
       try {
         // Lo que cambió en los textos enlazados va a la carta del editor normal (y se guarda como ya sincronizado)
-        const sync = pushLinks(hist.pages, readMenuRaw());
-        if (sync) localStorage.setItem(MENU_KEY, JSON.stringify(sync.menu));
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, copies, pages: sync ? sync.pages : hist.pages, tables, bg, bgGrad }));
+        const raw = readMenuRaw();
+        const sync = pushLinks(hist.pages, raw);
+        const pages = sync ? sync.pages : hist.pages;
+        let menu = sync?.menu ?? null;
+        // Si la carta dibuja este documento, se le pasa el diseño al día
+        if (menuFreeOf(raw)?.docId === docId) menu = { ...(menu ?? raw), free: { docId, paper, pages, bg, bgGrad, at: Date.now() } satisfies FreeDoc };
+        if (menu) localStorage.setItem(MENU_KEY, JSON.stringify(menu));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ paper, copies, pages, tables, bg, bgGrad, docId }));
         setSaveError(false);
       } catch {
         setSaveError(true); // normalmente: demasiadas imágenes para el límite del navegador
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [paper, copies, hist.pages, tables, bg, bgGrad]);
+  }, [paper, copies, hist.pages, tables, bg, bgGrad, docId]);
 
   // `merge`: ediciones desde el panel (escribir, deslizadores) que deben deshacerse de una vez
   // Último ajuste de estilo por tipo de elemento (color del texto, de la forma…): se anota al editar y se aplica a los nuevos
@@ -961,6 +979,7 @@ export default function CanvasEditor() {
     setBg(okBg(d.doc.bg));
     setBgGrad(okGrad(d.doc.bgGrad));
     setPages(() => cleanPages(d.doc.pages));
+    setDocId(uid());
     goPage(0);
     setArchiveMsg(lang === "es" ? `Abierto «${d.name}».` : `Aperto «${d.name}».`);
   };
@@ -982,7 +1001,9 @@ export default function CanvasEditor() {
     }
     if (!confirm(tr("Il menù dell'editor normale (nome, sezioni e piatti) verrà sostituito da questa pagina. Continuare?"))) return;
     try {
-      localStorage.setItem(MENU_KEY, JSON.stringify({ ...(readMenuRaw() ?? {}), ...menu }));
+      const free: FreeDoc = { docId, paper, pages: hist.pages, bg, bgGrad, at: Date.now() }; // el guardado lo pone al día con los enlaces
+      localStorage.setItem(MENU_KEY, JSON.stringify({ ...(readMenuRaw() ?? {}), ...menu, free }));
+      setMenuFree(free);
     } catch {
       setImportMsg(tr("Non c'è spazio per salvare il menù."));
       return;
@@ -996,6 +1017,17 @@ export default function CanvasEditor() {
     }));
     setImportMsg(`${tr("Fatto")}: ${menu.sections.length} ${tr("sezioni")}, ${dishes} ${tr("piatti")}. ${tr("Aprilo nell'editor normale con «Menù».")}`);
   };
+  // La carta del editor normal dibuja otro documento del lienzo: abrirlo aquí (sustituye el actual)
+  const otherDoc = menuFree && menuFree.docId !== docId ? menuFree : null;
+  const openMenuDesign = () => {
+    if (!otherDoc || !confirm(tr("Aprire il design del menù dell'editor normale? Il lavoro attuale verrà sostituito (salvalo prima nell'archivio se ti serve)."))) return;
+    setPaper(otherDoc.paper);
+    setBg(okBg(otherDoc.bg));
+    setBgGrad(okGrad(otherDoc.bgGrad));
+    setPages(() => pullLinks(cleanPages(otherDoc.pages), readMenuRaw(), formatPrice));
+    setDocId(otherDoc.docId);
+    goPage(0);
+  };
   const importMenu = () =>
     run(async () => {
       setImportMsg("");
@@ -1003,6 +1035,14 @@ export default function CanvasEditor() {
       if (!menu) return setImportMsg(tr("Nessun menù trovato: crealo prima nell'editor principale."));
       const pages = await menuToPages(menu, paper, tr("Tavolo n.:"));
       setPages(() => pages);
+      // Documento nuevo, enlazado a la carta: el editor normal dibujará este diseño
+      const id = uid();
+      const free: FreeDoc = { docId: id, paper, pages, bg, bgGrad, at: Date.now() };
+      try {
+        localStorage.setItem(MENU_KEY, JSON.stringify({ ...(readMenuRaw() ?? {}), free }));
+      } catch {}
+      setDocId(id);
+      setMenuFree(free);
       setTables(menu.tableNumbers.map(String).slice(0, 4));
       goPage(pages.length - 1); // la página del menú; la copertina es la anterior
       setImportMsg(pages.length > 1 ? tr("Menù importato, con la copertina.") : tr("Menù importato."));
@@ -1026,6 +1066,7 @@ export default function CanvasEditor() {
         }
         if (blank) {
           setPaper(r.paper);
+          setDocId(uid());
           setPages(() => r.pages);
           goPage(0);
         } else {
@@ -1702,7 +1743,7 @@ export default function CanvasEditor() {
             <button className={secondary} disabled={busy} onClick={exportPdf}><Icon d={ICONS.download} className="size-4" />PDF</button>
             <button className={secondary} disabled={busy} onClick={exportPng}><Icon d={ICONS.download} className="size-4" />PNG</button>
             <button className={secondary} disabled={busy} onClick={print}><Icon d={ICONS.print} className="size-4" />{tr("Stampa")}</button>
-            <button className={secondary} onClick={() => { if (confirm(tr("Cancellare tutto e ricominciare?"))) { setPages(() => [starter()]); setBg(PAPER_WHITE); setBgGrad(undefined); goPage(0); } }}><Icon d={ICONS.reset} className="size-4" />{tr("Nuovo")}</button>
+            <button className={secondary} onClick={() => { if (confirm(tr("Cancellare tutto e ricominciare?"))) { setPages(() => [starter()]); setBg(PAPER_WHITE); setBgGrad(undefined); setDocId(uid()); goPage(0); } }}><Icon d={ICONS.reset} className="size-4" />{tr("Nuovo")}</button>
           </div>
           {exportError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">{exportError}</p>}
           {saveError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">{tr("Non c'è spazio per salvare: ci sono troppe immagini. Il lavoro non verrà ripristinato se ricarichi.")}</p>}
@@ -1842,6 +1883,14 @@ export default function CanvasEditor() {
                 <button key={i} role="tab" aria-selected={i === page} className={`glow glow-soft grid size-9 place-items-center rounded-full text-sm font-semibold shadow-[0_8px_24px_-8px_rgb(14_26_43/0.45)] ring-1 ring-laguna/60 lift ${focus} ${i === page ? "bg-brand text-white" : "bg-surface"}`} onClick={() => goPage(i)}>{i + 1}</button>
               ))}
             </div>
+        )}
+        {otherDoc && !tool && (
+          <div className="pointer-events-none sticky top-3 z-30 flex h-0 items-start justify-center">
+            <div role="status" className="pointer-events-auto flex items-center gap-3 rounded-full bg-ink py-1.5 pr-1.5 pl-4 text-xs font-semibold text-surface shadow-lg">
+              {tr("Il menù dell'editor normale ha un altro design")}
+              <button type="button" className={`glow glow-soft rounded-full bg-surface px-3 py-1 text-ink ${focus}`} onClick={openMenuDesign}>{tr("Aprilo")}</button>
+            </div>
+          </div>
         )}
         {tool && (
           <div className="pointer-events-none sticky top-3 z-30 flex h-0 justify-center">

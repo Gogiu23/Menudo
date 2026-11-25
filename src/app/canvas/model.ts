@@ -89,6 +89,9 @@ export const SHAPES: Record<ShapeKind, { label: string; hint: string; d: string;
 };
 export type ShapeEl = Base & { type: "shape"; kind: ShapeKind; fill: string };
 export type El = TextEl | RectEl | ImageEl | TilesEl | LineEl | ShapeEl;
+// Diseño del editor libre guardado dentro de la carta del editor normal (Menu.free): este lo dibuja tal cual (FreeSvg).
+// docId: qué documento del lienzo es (el lienzo solo lo actualiza si es el suyo); at: cuándo se guardó
+export type FreeDoc = { docId: string; paper: Paper; pages: El[][]; bg: string; bgGrad?: Grad; at: number };
 
 // Puntos de inicio y fin de un degradado lineal que cubre una caja w×h con ese ángulo
 export function gradPoints(w: number, h: number, angle: number) {
