@@ -231,6 +231,9 @@ const ES: Record<string, string> = {
   "L'IA non è attiva su questo server: ho usato un modello standard.": "La IA no está activa en este servidor: he usado una plantilla estándar.",
   "Scrivi almeno qualche parola.": "Escribe al menos unas palabras.",
   "Senza un menù importato uso piatti di esempio.": "Sin un menú importado uso platos de ejemplo.",
+  "Scegli una forma e trascina sulla carta per disegnarla. Maiusc la mantiene proporzionata.": "Elige una forma y arrastra sobre la hoja para dibujarla. Mayús la mantiene proporcionada.",
+  "Icone semplici: scegline una e trascina sulla carta per disegnarla. Poi cambia colore e misura.": "Iconos sencillos: elige uno y arrastra sobre la hoja para dibujarlo. Luego cambia el color y el tamaño.",
+  "Trascina sulla carta per disegnare · Esc annulla": "Arrastra sobre la hoja para dibujar · Esc cancela",
 };
 
 export type Tr = (s: string, ctx?: string) => string;

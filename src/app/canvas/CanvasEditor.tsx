@@ -23,6 +23,32 @@ import type { Lang } from "../i18n";
 import { LANG_KEY, loadLang, makeTr, type Tr } from "./i18n";
 import { ImageSearch } from "./ImageSearch";
 
+/* Dibujar formas arrastrando: cada herramienta sabe construir su elemento a partir de una geometría (caja, o línea con ángulo).
+   Geo: x/y = esquina superior izquierda (o inicio de la línea), w/h = caja (o w = largo de la línea), angle en grados (solo líneas). */
+type Geo = { x: number; y: number; w: number; h: number; angle: number };
+type Drag = { x0: number; y0: number; x1: number; y1: number; shift: boolean };
+type DrawTool = { id: string; line?: boolean; square?: boolean; def: [number, number]; make: (g: Geo, id: string) => El };
+function drawTool(id: string): DrawTool {
+  const at = (g: Geo, i: string) => ({ id: i, x: g.x, y: g.y, ...common });
+  if (id === "rect") return { id, def: [60, 30], make: (g, i) => ({ ...at(g, i), type: "rect", width: g.w, height: g.h, fill: PALETTE[2].hex, radius: 0 }) };
+  if (id === "circle") return { id, square: true, def: [40, 40], make: (g, i) => ({ ...at(g, i), type: "rect", width: g.w, height: g.h, fill: PALETTE[2].hex, radius: g.w / 2 }) };
+  if (id === "line" || id === "dotted") return { id, line: true, def: [80, 0], make: (g, i) => ({ ...at(g, i), rotation: g.angle, type: "line", width: g.w, height: 1, fill: PALETTE[0].hex, thickness: id === "line" ? 0.6 : 0.8, dash: id === "dotted" }) };
+  const kind = id as ShapeKind;
+  const stroke = SHAPES[kind].stroke; // los objetos (iconos de línea) se dibujan siempre proporcionados
+  return { id, square: stroke, def: stroke ? [30, 30] : [40, 40], make: (g, i) => ({ ...at(g, i), type: "shape", kind, width: g.w, height: g.h, fill: stroke ? PALETTE[0].hex : PALETTE[2].hex }) };
+}
+function geoOf(t: DrawTool, d: Drag): Geo {
+  if (t.line) {
+    const [dx, dy] = [d.x1 - d.x0, d.y1 - d.y0];
+    const a = (Math.atan2(dy, dx) * 180) / Math.PI;
+    return { x: d.x0, y: d.y0, w: Math.max(Math.hypot(dx, dy), 0.1), h: 0, angle: d.shift ? Math.round(a / 15) * 15 : a }; // Mayús: ángulos de 15°
+  }
+  let w = Math.abs(d.x1 - d.x0);
+  let h = Math.abs(d.y1 - d.y0);
+  if (t.square || d.shift) w = h = Math.max(w, h);
+  return { x: d.x1 >= d.x0 ? d.x0 : d.x0 - w, y: d.y1 >= d.y0 ? d.y0 : d.y0 - h, w, h, angle: 0 };
+}
+
 // Iconos Phosphor del raíl, por sección
 const RAIL_ICONS: Record<string, PhosphorIcon> = { text: TextTIcon, shapes: ShapesIcon, objects: ForkKnifeIcon, images: ImageIcon, ai: SparkleIcon, pages: FilesIcon, sheet: LayoutIcon, layers: StackIcon, archive: ArchiveIcon };
 
@@ -496,6 +522,48 @@ export default function CanvasEditor() {
   };
   const cur = els.find((x) => x.id === sel);
 
+  // Dibujar una forma arrastrando sobre la hoja: la herramienta elegida en el panel, la vista previa en vivo y el elemento al soltar
+  const [tool, setTool] = useState<DrawTool | null>(null);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const dragRef = useRef<Drag | null>(null); // la verdad al soltar (el estado llega tarde y soltar se oye dos veces)
+  const pickTool = (id: string) => {
+    if (tool?.id === id) return setTool(null); // pulsar la misma otra vez la suelta
+    setSels([]);
+    setEditing(null);
+    setTool(drawTool(id));
+    setTab("canvas"); // en móvil, a la hoja
+  };
+  const startDraw = (x: number, y: number, shift: boolean) => {
+    dragRef.current = { x0: x, y0: y, x1: x, y1: y, shift };
+    setDrag(dragRef.current);
+  };
+  const moveDraw = (x: number, y: number, shift: boolean) => {
+    if (!dragRef.current) return;
+    dragRef.current = { ...dragRef.current, x1: x, y1: y, shift };
+    setDrag(dragRef.current);
+  };
+  const finishDraw = () => {
+    const d = dragRef.current;
+    if (!tool || !d) return;
+    dragRef.current = null;
+    // Un clic sin arrastrar crea la forma con su tamaño por defecto, centrada en el punto
+    const g = Math.hypot(d.x1 - d.x0, d.y1 - d.y0) > 2 ? geoOf(tool, d) : { x: d.x0 - tool.def[0] / 2, y: d.y0 - tool.def[1] / 2, w: tool.def[0], h: tool.def[1], angle: 0 };
+    add(tool.make(g, uid()));
+    setDrag(null);
+    setTool(null);
+  };
+  useEffect(() => {
+    if (!drag) return;
+    const up = () => finishDraw();
+    window.addEventListener("mouseup", up);
+    window.addEventListener("touchend", up);
+    return () => {
+      window.removeEventListener("mouseup", up);
+      window.removeEventListener("touchend", up);
+    };
+  });
+  const draftEl: El | null = tool && drag ? { ...tool.make(geoOf(tool, drag), "draft"), opacity: 0.7 } : null;
+
   const selEls = els.filter((x) => sels.includes(x.id));
 
   // Clic en un elemento: se selecciona él y los de su grupo; con Maiusc/Ctrl se suma o se quita
@@ -796,6 +864,12 @@ export default function CanvasEditor() {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       // Esc: deja de seleccionar, aunque el foco esté en un campo del panel (se le quita el foco). Escribiendo sobre la hoja, Esc solo cierra la caja
+      if (e.key === "Escape" && tool) {
+        dragRef.current = null;
+        setDrag(null);
+        setTool(null);
+        return;
+      }
       if (e.key === "Escape" && !(t.tagName === "TEXTAREA" && t.getAttribute("aria-label") === tr("Testo"))) {
         if (/INPUT|TEXTAREA|SELECT/.test(t.tagName)) t.blur();
         setSels([]);
@@ -1006,18 +1080,14 @@ export default function CanvasEditor() {
     { name: tr("Sottotitolo"), hint: tr("Per le categorie del menù"), cls: "text-base font-semibold", o: { fontSize: 10, bold: true, width: 170 } },
     { name: tr("Corpo"), hint: tr("Per piatti, ingredienti e prezzi"), cls: "text-sm", o: { fontSize: 6, width: 170 } },
   ];
-  const shapeBase = { x: 20, y: 60, ...common };
   const kinds = (stroke: boolean) => (Object.keys(SHAPES) as ShapeKind[]).filter((k) => SHAPES[k].stroke === stroke);
-  const addShape = (kind: ShapeKind) => {
-    const size = SHAPES[kind].stroke ? 30 : 40;
-    add({ id: uid(), type: "shape", kind, ...shapeBase, width: size, height: size, fill: SHAPES[kind].stroke ? PALETTE[0].hex : PALETTE[2].hex });
-  };
+  const on = (id: string) => (tool?.id === id ? " ring-2 ring-mare bg-mare/15" : ""); // la herramienta activa
   const tile = `flex flex-col items-center gap-1.5 rounded-lg bg-laguna/20 px-2 py-3 text-center glow lift hover:bg-laguna/35 ${focus}`;
   const shapes = [
-    { name: tr("Rettangolo"), hint: tr("Un riquadro pieno, utile come sfondo"), icon: ICONS.rect, el: { type: "rect", ...shapeBase, width: 60, height: 30, fill: PALETTE[2].hex, radius: 0 } as const },
-    { name: tr("Cerchio"), hint: tr("Un cerchio pieno, anche per le icone"), icon: ICONS.circle, el: { type: "rect", ...shapeBase, width: 40, height: 40, fill: PALETTE[2].hex, radius: 20 } as const },
-    { name: tr("Linea"), hint: tr("Separa le sezioni del menù"), icon: ICONS.line, el: { type: "line", ...shapeBase, width: 80, height: 1, fill: PALETTE[0].hex, thickness: 0.6, dash: false } as const },
-    { name: tr("Punteggiata"), hint: tr("Per guidare l'occhio fino al prezzo"), icon: ICONS.dots, el: { type: "line", ...shapeBase, width: 80, height: 1, fill: PALETTE[0].hex, thickness: 0.8, dash: true } as const },
+    { id: "rect", name: tr("Rettangolo"), hint: tr("Un riquadro pieno, utile come sfondo"), icon: ICONS.rect },
+    { id: "circle", name: tr("Cerchio"), hint: tr("Un cerchio pieno, anche per le icone"), icon: ICONS.circle },
+    { id: "line", name: tr("Linea"), hint: tr("Separa le sezioni del menù"), icon: ICONS.line },
+    { id: "dotted", name: tr("Punteggiata"), hint: tr("Per guidare l'occhio fino al prezzo"), icon: ICONS.dots },
   ];
 
   // Secciones del editor: carril de iconos en escritorio; en móvil se apilan todas en la pestaña «Strumenti»
@@ -1035,17 +1105,17 @@ export default function CanvasEditor() {
     ) },
     { id: "shapes", label: tr("Forme"), hint: tr("Rettangoli, cerchi e linee"), icon: ICONS.rect, body: (
       <>
-        <p className="text-sm text-ink/70">{tr("Tocca una forma per aggiungerla alla carta.")}</p>
+        <p className="text-sm text-ink/70">{tr("Scegli una forma e trascina sulla carta per disegnarla. Maiusc la mantiene proporzionata.")}</p>
         <div className="grid grid-cols-2 gap-2">
           {shapes.map((s) => (
-            <button key={s.name} title={s.hint} className={`flex flex-col items-center gap-1.5 rounded-lg bg-laguna/20 px-2 py-3 text-center glow lift hover:bg-laguna/35 ${focus}`} onClick={() => add({ ...s.el, id: uid() } as El)}>
+            <button key={s.id} title={s.hint} aria-pressed={tool?.id === s.id} className={`flex flex-col items-center gap-1.5 rounded-lg bg-laguna/20 px-2 py-3 text-center glow lift hover:bg-laguna/35 ${focus}${on(s.id)}`} onClick={() => pickTool(s.id)}>
               <Icon d={s.icon} className="size-7 text-mare" />
               <span className="text-[13px] font-semibold">{s.name}</span>
               <span className="text-xs leading-tight text-ink/70">{s.hint}</span>
             </button>
           ))}
           {kinds(false).map((k) => (
-            <button key={k} title={tr(SHAPES[k].hint)} className={tile} onClick={() => addShape(k)}>
+            <button key={k} title={tr(SHAPES[k].hint)} aria-pressed={tool?.id === k} className={`${tile}${on(k)}`} onClick={() => pickTool(k)}>
               <ShapeIcon kind={k} className="size-7 text-mare" />
               <span className="text-[13px] font-semibold">{tr(SHAPES[k].label)}</span>
               <span className="text-xs leading-tight text-ink/70">{tr(SHAPES[k].hint)}</span>
@@ -1056,10 +1126,10 @@ export default function CanvasEditor() {
     ) },
     { id: "objects", label: tr("Oggetti"), hint: tr("Icone di caffè, vino, posate e altro"), icon: SHAPES.utensils.d, body: (
       <>
-        <p className="text-sm text-ink/70">{tr("Icone semplici: cambia colore e misura come vuoi.")}</p>
+        <p className="text-sm text-ink/70">{tr("Icone semplici: scegline una e trascina sulla carta per disegnarla. Poi cambia colore e misura.")}</p>
         <div className="grid grid-cols-2 gap-2">
           {kinds(true).map((k) => (
-            <button key={k} title={tr(SHAPES[k].hint)} className={tile} onClick={() => addShape(k)}>
+            <button key={k} title={tr(SHAPES[k].hint)} aria-pressed={tool?.id === k} className={`${tile}${on(k)}`} onClick={() => pickTool(k)}>
               <ShapeIcon kind={k} className="size-7 text-mare" />
               <span className="text-[13px] font-semibold">{tr(SHAPES[k].label)}</span>
               <span className="text-xs leading-tight text-ink/70">{tr(SHAPES[k].hint)}</span>
@@ -1334,9 +1404,14 @@ export default function CanvasEditor() {
               ))}
             </div>
         )}
+        {tool && (
+          <div className="pointer-events-none sticky top-3 z-30 flex h-0 justify-center">
+            <span className="rounded-full bg-ink px-3 py-1.5 text-xs font-semibold text-surface shadow-lg">{tr("Trascina sulla carta per disegnare · Esc annulla")}</span>
+          </div>
+        )}
         {/* m-auto centra la hoja cuando cabe y deja desplazarse cuando es mayor que el área (justify-center la cortaría) */}
         <div className={`flex py-4 md:py-6 ${hist.pages.length > 1 ? "min-h-[calc(100%-3rem)]" : "min-h-full"}`}>
-        <div className="relative m-auto h-fit shrink-0 shadow-[var(--sheet-shadow)]">
+        <div className="relative m-auto h-fit shrink-0 shadow-[var(--sheet-shadow)]" style={tool ? { cursor: "crosshair", touchAction: "none" } : undefined}>
           <Stage
             ref={stageRef}
             width={w * zoom}
@@ -1344,6 +1419,10 @@ export default function CanvasEditor() {
             scaleX={zoom}
             scaleY={zoom}
             onMouseDown={(e) => {
+              if (tool) {
+                if (e.evt.button === 0) startDraw(...Object.values(toMm(e.target.getStage()!)) as [number, number], e.evt.shiftKey);
+                return;
+              }
               if (!emptyHit(e)) return;
               const add = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
               const p = toMm(e.target.getStage()!);
@@ -1352,6 +1431,11 @@ export default function CanvasEditor() {
               if (!add) setSels([]);
             }}
             onMouseMove={(e) => {
+              if (tool) {
+                const p = toMm(e.target.getStage()!);
+                moveDraw(p.x, p.y, e.evt.shiftKey);
+                return;
+              }
               const from = marqueeFrom.current;
               if (!from) return;
               const p = toMm(e.target.getStage()!);
@@ -1359,11 +1443,23 @@ export default function CanvasEditor() {
             }}
             onMouseUp={endMarquee}
             onMouseLeave={endMarquee}
-            onTouchStart={(e) => (emptyHit(e) && !multi ? setSels([]) : undefined)}
+            onTouchStart={(e) => {
+              if (tool) {
+                const p = toMm(e.target.getStage()!);
+                startDraw(p.x, p.y, false);
+                return;
+              }
+              if (emptyHit(e) && !multi) setSels([]);
+            }}
+            onTouchMove={(e) => {
+              if (!tool) return;
+              const p = toMm(e.target.getStage()!);
+              moveDraw(p.x, p.y, false);
+            }}
           >
             <Layer ref={layerRef}>
               <Rect name="paper" width={w} height={h} {...fillGrad(dark && !bgGrad && bg.toLowerCase() === PAPER_WHITE ? DARK_PAPER : bg, bgGrad, w, h)} />
-              {els.map((el) => {
+              {(draftEl ? [...els, draftEl] : els).map((el) => {
                 const props = {
                   id: el.id,
                   x: el.x,
@@ -1373,8 +1469,8 @@ export default function CanvasEditor() {
                   rotation: el.rotation,
                   opacity: el.opacity,
                   visible: el.visible,
-                  draggable: !el.locked,
-                  listening: !el.locked,
+                  draggable: !el.locked && !tool,
+                  listening: !el.locked && !tool,
                   // Se selecciona al pulsar (no al soltar) para poder arrastrar directamente
                   onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) => {
                     const add = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;

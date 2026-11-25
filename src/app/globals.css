@@ -19,10 +19,10 @@
 }
 
 :root {
-  --canvas: #eef2f7;
-  --canvas-dot: #c3cedd;
-  /* Sombra de la hoja sobre la mesa de trabajo */
-  --sheet-shadow: 0 2px 5px rgb(14 26 43 / 0.12), 0 22px 44px -14px rgb(14 26 43 / 0.45);
+  /* La mesa de trabajo (main.canvas) es blanca en claro y en oscuro; la sombra y el filo fino son lo que separa la hoja de ella */
+  --canvas: #ffffff;
+  --canvas-dot: #d3dae6;
+  --sheet-shadow: 0 0 0 1px rgb(14 26 43 / 0.1), 0 2px 5px rgb(14 26 43 / 0.12), 0 22px 44px -14px rgb(14 26 43 / 0.4);
 }
 
 /* Tema oscuro de la interfaz (botón de la barra de arriba) */
@@ -33,10 +33,8 @@
   --color-laguna: #3a4c68;
   --color-sabbia: #6b5217;
   --color-mare: #5b8cff;
-  --canvas: #0a111e;
-  --canvas-dot: #24324c;
-  /* En oscuro la sombra negra no se ve: un halo claro muy suave más el filo de la hoja */
-  --sheet-shadow: 0 0 0 1px rgb(255 255 255 / 0.12), 0 0 46px -6px rgb(160 190 255 / 0.18), 0 26px 50px -14px rgb(0 0 0 / 0.8);
+  --canvas: #ffffff;
+  --canvas-dot: #d3dae6;
 }
 
 body {
