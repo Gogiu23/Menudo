@@ -14,7 +14,7 @@ import { common, Copies, COPIES, COPY_NAMES, El, FONTS, FontKey, fontFamily, fon
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
 import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, Range, secondary, Seg, ShapeIcon, Switch } from "./ui";
-import { ArchiveIcon, FilesIcon, ForkKnifeIcon, ImageIcon, LayoutIcon, PaintBrushIcon, ShapesIcon, SparkleIcon, StackIcon, TextTIcon, type Icon as PhosphorIcon } from "@phosphor-icons/react";
+import { ArchiveIcon, FilesIcon, ForkKnifeIcon, GridFourIcon, ImageIcon, LayoutIcon, LineSegmentIcon, PaintBrushIcon, RectangleIcon, ShapesIcon, SparkleIcon, StackIcon, TextTIcon, type Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { Tip } from "./Tip";
 import { applyLast, loadLast, remember, saveLast, type Last } from "./lastUsed";
 import { buildTemplate, cleanMenu } from "./templateBuild";
@@ -1584,6 +1584,14 @@ export default function CanvasEditor() {
                   }}
                   onPointerCancel={() => { layerPress.current = null; setLayerDrag(null); }}
                   onClick={(ev) => { if (layerClickBlock.current) { layerClickBlock.current = false; return; } pick(e.id, ev.shiftKey || ev.ctrlKey || ev.metaKey); }}>
+                  <span aria-hidden className="mr-2 inline-grid size-5 place-items-center align-[-5px] text-ink/60">
+                    {e.type === "text" ? <TextTIcon size={16} weight="bold" />
+                      : e.type === "image" ? <ImageIcon size={16} weight="fill" />
+                      : e.type === "line" ? <LineSegmentIcon size={16} weight="bold" />
+                      : e.type === "tiles" ? <GridFourIcon size={16} weight="fill" />
+                      : e.type === "shape" ? <ShapeIcon kind={e.kind} className="size-4" />
+                      : <RectangleIcon size={16} weight="fill" />}
+                  </span>
                   {label(e, tr)}
                   {e.group && <span className="ml-1 text-xs text-ink/45">{tr("gruppo")}</span>}
                 </button>
