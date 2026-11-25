@@ -243,6 +243,13 @@ const ES: Record<string, string> = {
   "Arrotondati": "Redondeadas",
   "Bordi dell'immagine": "Bordes de la imagen",
   "Seleziona un'immagine per arrotondarne gli angoli.": "Selecciona una imagen para redondear sus esquinas.",
+  "Importa PDF": "Importar PDF",
+  "Leggo il PDF…": "Leyendo el PDF…",
+  "Il PDF supera i 15 MB: riducilo e riprova.": "El PDF supera los 15 MB: redúcelo e inténtalo de nuevo.",
+  "Il PDF è protetto da password: toglila e riprova.": "El PDF está protegido con contraseña: quítala e inténtalo de nuevo.",
+  "Non riesco a leggere questo PDF: forse è danneggiato.": "No consigo leer este PDF: puede que esté dañado.",
+  "Non ci sono testi modificabili (forse è una scansione): l'ho importato come immagine.": "No hay textos editables (quizá es un escaneo): lo he importado como imagen.",
+  "Fai doppio clic su un testo per modificarlo.": "Haz doble clic en un texto para editarlo.",
 };
 
 export type Tr = (s: string, ctx?: string) => string;

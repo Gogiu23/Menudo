@@ -22,6 +22,7 @@ import { useGlow } from "./glow";
 import type { Lang } from "../i18n";
 import { LANG_KEY, loadLang, makeTr, type Tr } from "./i18n";
 import { ImageSearch } from "./ImageSearch";
+import { MAX_PAGES, readPdf, type PdfError } from "./pdfLoad";
 
 /* Dibujar formas arrastrando: cada herramienta sabe construir su elemento a partir de una geometría (caja, o línea con ángulo).
    Geo: x/y = esquina superior izquierda (o inicio de la línea), w/h = caja (o w = largo de la línea), angle en grados (solo líneas). */
@@ -886,6 +887,43 @@ export default function CanvasEditor() {
       goPage(pages.length - 1); // la página del menú; la copertina es la anterior
       setImportMsg(pages.length > 1 ? tr("Menù importato, con la copertina.") : tr("Menù importato."));
     });
+  // PDF ya hecho → páginas nuevas con fondo fiel y textos editables. Si el documento está vacío, lo sustituye y toma su papel.
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const importPdf = (file: File | undefined) => {
+    if (!file) return;
+    setPdfBusy(true);
+    setImportMsg("");
+    run(async () => {
+      try {
+        const blank = hist.pages.length === 1 && hist.pages[0].every((e) => e.type === "text" && e.text === "Menù");
+        let r;
+        try {
+          r = await readPdf(file, blank ? null : paper);
+        } catch (e) {
+          console.error(e);
+          const code = (e as { code?: PdfError }).code ?? "invalid";
+          return setImportMsg(tr({ big: "Il PDF supera i 15 MB: riducilo e riprova.", password: "Il PDF è protetto da password: toglila e riprova.", invalid: "Non riesco a leggere questo PDF: forse è danneggiato." }[code]));
+        }
+        if (blank) {
+          setPaper(r.paper);
+          setPages(() => r.pages);
+          goPage(0);
+        } else {
+          const at = hist.pages.length;
+          setPages((p) => [...p, ...r.pages]);
+          goPage(at);
+        }
+        setTab("canvas");
+        const n = r.pages.length;
+        const msg = [lang === "es" ? `PDF importado: ${n === 1 ? "1 página" : `${n} páginas`}.` : `PDF importato: ${n === 1 ? "1 pagina" : `${n} pagine`}.`];
+        if (r.total > MAX_PAGES) msg.push(lang === "es" ? `Tenía ${r.total} páginas: solo he importado las ${MAX_PAGES} primeras.` : `Aveva ${r.total} pagine: ho importato solo le prime ${MAX_PAGES}.`);
+        msg.push(tr(r.textless ? "Non ci sono testi modificabili (forse è una scansione): l'ho importato come immagine." : "Fai doppio clic su un testo per modificarlo."));
+        setImportMsg(msg.join(" "));
+      } finally {
+        setPdfBusy(false); // pase lo que pase, el botón vuelve a estar disponible
+      }
+    });
+  };
   const print = () =>
     run(async () => {
       const urls = (await eachPage(compose)).map((c) => c.url);
@@ -1330,6 +1368,11 @@ export default function CanvasEditor() {
             <Icon d={ICONS.edit} className="size-[18px]" />
             {tr("Importa il menù attuale")}
           </button>
+          <label className={`${secondary} w-full justify-center has-[:disabled]:pointer-events-none has-[:disabled]:opacity-40`}>
+            <input type="file" accept="application/pdf" className="sr-only" disabled={busy} onChange={(e) => { importPdf(e.target.files?.[0]); e.target.value = ""; }} />
+            <Icon d={ICONS.pages} className="size-[18px]" />
+            {pdfBusy ? tr("Leggo il PDF…") : tr("Importa PDF")}
+          </label>
           {importMsg && <p role="status" className="text-sm text-ink/65">{importMsg}</p>}
           <div className="flex flex-wrap gap-2">
             <button className={secondary} disabled={busy} onClick={exportPdf}><Icon d={ICONS.download} className="size-4" />PDF</button>
