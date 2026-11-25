@@ -95,17 +95,20 @@ export function gradPoints(w: number, h: number, angle: number) {
   const [cx, cy] = [w / 2, h / 2];
   return { start: { x: cx - dx * half, y: cy - dy * half }, end: { x: cx + dx * half, y: cy + dy * half } };
 }
+// Final del degradado: un color, o TRANSPARENT («transparente»), que es el color inicial con alfa 0 (así no pasa por gris)
+export const TRANSPARENT = "transparent";
+export const gradEnd = (from: string, to: string) => (to !== TRANSPARENT ? to : /^#[0-9a-f]{6}$/i.test(from) ? `${from}00` : "rgba(0,0,0,0)");
 // Propiedades de relleno de Konva: color liso o degradado
 export function fillGrad(fill: string, g: Grad | undefined, w: number, h: number) {
   if (!g) return { fill };
   const { start, end } = gradPoints(w, h, g.angle);
-  return { fillLinearGradientStartPoint: start, fillLinearGradientEndPoint: end, fillLinearGradientColorStops: [0, fill, 1, g.to] };
+  return { fillLinearGradientStartPoint: start, fillLinearGradientEndPoint: end, fillLinearGradientColorStops: [0, fill, 1, gradEnd(fill, g.to)] };
 }
 // oy: la línea se dibuja centrada en y=0, así que la caja del degradado empieza en -grosor/2
 export function strokeGrad(stroke: string, g: Grad | undefined, w: number, h: number, oy = 0) {
   if (!g) return { stroke };
   const { start, end } = gradPoints(w, h, g.angle);
-  return { strokeLinearGradientStartPoint: { x: start.x, y: start.y + oy }, strokeLinearGradientEndPoint: { x: end.x, y: end.y + oy }, strokeLinearGradientColorStops: [0, stroke, 1, g.to] };
+  return { strokeLinearGradientStartPoint: { x: start.x, y: start.y + oy }, strokeLinearGradientEndPoint: { x: end.x, y: end.y + oy }, strokeLinearGradientColorStops: [0, stroke, 1, gradEnd(stroke, g.to)] };
 }
 
 export const uid = () => Math.random().toString(36).slice(2, 9);

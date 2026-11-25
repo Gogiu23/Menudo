@@ -1,4 +1,4 @@
-import { FONTS, SHAPES, type El, type FontKey, type Grad } from "./model";
+import { FONTS, SHAPES, TRANSPARENT, type El, type FontKey, type Grad } from "./model";
 
 /* Recuerda el último color o ajuste usado en cada tipo de elemento («el último texto», «la última forma»…) y lo aplica a los nuevos.
    Se guarda en localStorage. Solo estilo (color, letra, borde…): nunca posición ni tamaño. */
@@ -38,7 +38,8 @@ const hex = (v: unknown) => (typeof v === "string" && HEX.test(v) ? v.toLowerCas
 const grad = (v: unknown): Grad | null | undefined => {
   if (v === null) return null;
   const g = v as { to?: unknown; angle?: unknown } | undefined;
-  return g && hex(g.to) && typeof g.angle === "number" && Number.isFinite(g.angle) ? { to: hex(g.to)!, angle: g.angle } : undefined;
+  const to = g?.to === TRANSPARENT ? TRANSPARENT : hex(g?.to);
+  return g && to && typeof g.angle === "number" && Number.isFinite(g.angle) ? { to, angle: g.angle } : undefined;
 };
 
 // Lo guardado puede estar dañado o ser de otra versión: se queda solo con lo que tiene la forma esperada

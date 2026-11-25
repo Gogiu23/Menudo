@@ -10,7 +10,7 @@ import type Konva from "konva";
    Fase 2: panel de propiedades completo y panel de capas (orden, ocultar, bloquear, duplicar).
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
-import { common, Copies, COPIES, COPY_NAMES, El, FONTS, FontKey, fontFamily, fontStyleOf, fillGrad, Grad, gradPoints, DARK_PAPER, LEGACY_WHITE, newText, PALETTE, PAPER_WHITE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
+import { common, Copies, COPIES, COPY_NAMES, El, FONTS, FontKey, fontFamily, fontStyleOf, fillGrad, Grad, gradEnd, gradPoints, TRANSPARENT, DARK_PAPER, LEGACY_WHITE, newText, PALETTE, PAPER_WHITE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
 import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, Range, secondary, Seg, ShapeIcon, Switch } from "./ui";
@@ -122,7 +122,7 @@ function ShapeNode({ el, ...rest }: { el: Extract<El, { type: "shape" }> } & Kon
           const { start, end } = gradPoints(d.vb, d.vb, el.grad.angle);
           paint = c.createLinearGradient(start.x, start.y, end.x, end.y);
           paint.addColorStop(0, el.fill);
-          paint.addColorStop(1, el.grad.to);
+          paint.addColorStop(1, gradEnd(el.fill, el.grad.to));
         }
         if (d.stroke) {
           c.strokeStyle = paint;
@@ -177,7 +177,7 @@ const readZoom = () => {
 };
 const okGrad = (v: unknown): Grad | undefined => {
   const g = v as { to?: unknown; angle?: unknown } | null | undefined;
-  return g && typeof g.to === "string" && /^#[0-9a-f]{6}$/i.test(g.to) && typeof g.angle === "number" ? { to: g.to, angle: ((g.angle % 360) + 360) % 360 } : undefined;
+  return g && typeof g.to === "string" && (/^#[0-9a-f]{6}$/i.test(g.to) || g.to === TRANSPARENT) && typeof g.angle === "number" ? { to: g.to, angle: ((g.angle % 360) + 360) % 360 } : undefined;
 };
 // Lo guardado puede venir de otra versión o estar estropeado: se descartan las formas desconocidas y se limpian los degradados
 const cleanPages = (pages: El[][]): El[][] =>

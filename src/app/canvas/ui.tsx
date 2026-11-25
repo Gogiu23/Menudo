@@ -2,7 +2,7 @@
    se vea igual que el resto de la página. Se duplican aquí, y no se importan del editor, para no arrastrar todo su
    código a esta ruta ni tocar un archivo que cambia a menudo: si cambia el estilo del editor, cambia aquí también. */
 
-import { PALETTE, SHAPES, type Grad, type ShapeKind } from "./model";
+import { gradEnd, PALETTE, SHAPES, TRANSPARENT, type Grad, type ShapeKind } from "./model";
 import type { Tr } from "./i18n";
 
 export const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink";
@@ -159,9 +159,13 @@ export function GradientControls({ fill, grad, onChange, tr }: { fill: string; g
       </div>
       {grad && (
         <>
-          <div className="h-6 rounded-md ring-1 ring-laguna" style={{ background: `linear-gradient(${grad.angle + 90}deg, ${fill}, ${grad.to})` }} />
+          <div className="h-6 rounded-md ring-1 ring-laguna" style={{ background: `linear-gradient(${grad.angle + 90}deg, ${fill}, ${gradEnd(fill, grad.to)}), repeating-conic-gradient(#d9dee3 0 25%, #fff 0 50%) 0 0 / 10px 10px` }} />
           <p className="text-xs font-semibold text-ink/70">{tr("Colore finale")}</p>
-          <ColorRow value={grad.to} onChange={(to) => onChange({ ...grad, to })} tr={tr} label={tr("Colore finale")} />
+          <div role="group" aria-label={tr("Colore finale")} className="flex rounded-lg bg-laguna/25 p-0.5">
+            <button type="button" aria-pressed={grad.to !== TRANSPARENT} className={seg(grad.to !== TRANSPARENT)} onClick={() => grad.to === TRANSPARENT && onChange({ ...grad, to: fill.toLowerCase() === PALETTE[1].hex.toLowerCase() ? PALETTE[0].hex : PALETTE[1].hex })}>{tr("Colore")}</button>
+            <button type="button" aria-pressed={grad.to === TRANSPARENT} className={seg(grad.to === TRANSPARENT)} onClick={() => onChange({ ...grad, to: TRANSPARENT })}>{tr("Trasparente")}</button>
+          </div>
+          {grad.to !== TRANSPARENT && <ColorRow value={grad.to} onChange={(to) => onChange({ ...grad, to })} tr={tr} label={tr("Colore finale")} />}
           <label className="flex items-center gap-2 text-[13px] font-semibold">
             {tr("Angolo")}
             <Range min={0} max={360} step={15} value={grad.angle} label={tr("Angolo")} format={(v) => `${v}°`} onChange={(angle) => onChange({ ...grad, angle })} />
