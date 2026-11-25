@@ -28,7 +28,7 @@ compatible con OpenAI. Sin estas variables, la sección avisa y aplica una plant
 | Variable | Qué es |
 | --- | --- |
 | `AI_BASE_URL` | URL base del proveedor. Gemini: `https://generativelanguage.googleapis.com/v1beta/openai` |
-| `AI_MODEL` | Nombre del modelo (se puede listar con `GET {AI_BASE_URL}/models`) |
+| `AI_MODEL` | Nombre del modelo, o varios separados por comas: se prueban en orden si uno falla por demanda, límite o por no existir. Ej.: `gemini-3.8-flash,gemini-3.5-flash,gemini-flash-latest`. Los nombres cambian: en desarrollo, si falla, la respuesta de `/api/template` lista los modelos válidos para tu clave |
 | `AI_API_KEY` | Clave del proveedor. Gemini gratis: <https://aistudio.google.com/apikey> |
 | `AI_DAILY_LIMIT` | Opcional: tope diario de peticiones por instancia (por defecto 300) |
 
