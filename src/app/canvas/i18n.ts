@@ -271,6 +271,7 @@ const ES: Record<string, string> = {
   "Trasparente": "Transparente",
   "Inizio": "Inicio",
   "Inizio della sfumatura": "Dónde empieza el degradado",
+  "Trascina per cambiare livello": "Arrastra para cambiar de nivel",
 };
 
 export type Tr = (s: string, ctx?: string) => string;

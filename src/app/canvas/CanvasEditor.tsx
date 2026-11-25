@@ -567,7 +567,11 @@ export default function CanvasEditor() {
   // Último ajuste de estilo por tipo de elemento (color del texto, de la forma…): se anota al editar y se aplica a los nuevos
   // Estilo completo de un texto copiado (para «Copiar estilo» / «Aplicar estilo»)
   const [styleClip, setStyleClip] = useState<Partial<Extract<El, { type: "text" }>> | null>(null);
-  const [fontOpen, setFontOpen] = useState(false); // lista de letras abierta en la barra de texto
+  const [fontOpen, setFontOpen] = useState(false);
+  // Capas: arrastrar una fila (mantener pulsado y mover) la lleva a otro nivel. to = posición en la lista sin la fila arrastrada
+  const [layerDrag, setLayerDrag] = useState<{ id: string; to: number } | null>(null);
+  const layerPress = useRef<{ id: string; y: number; moved: boolean } | null>(null);
+  const layerClickBlock = useRef(false); // lista de letras abierta en la barra de texto
   const lastRef = useRef<Last | null>(null);
   const getLast = () => (lastRef.current ??= loadLast());
   const noteLast = (el: El, p: Partial<El>) => {
@@ -642,6 +646,19 @@ export default function CanvasEditor() {
   const selEls = els.filter((x) => sels.includes(x.id));
 
   // Clic en un elemento: se selecciona él y los de su grupo; con Maiusc/Ctrl se suma o se quita
+  // Lleva el elemento a la posición `to` de la lista de capas (arriba = delante), contada sin él
+  const moveLayer = (id: string, to: number) =>
+    setEls((a) => {
+      const shown = [...a].reverse();
+      const el = shown.find((x) => x.id === id);
+      if (!el) return a;
+      const rest = shown.filter((x) => x.id !== id);
+      rest.splice(Math.max(0, Math.min(rest.length, to)), 0, el);
+      const next = rest.reverse();
+      return next.every((x, i) => x === a[i]) ? a : next;
+    });
+  const layerTarget = (ul: HTMLElement, id: string, y: number) =>
+    [...ul.querySelectorAll<HTMLElement>("li[data-id]")].filter((li) => li.dataset.id !== id).filter((li) => { const r = li.getBoundingClientRect(); return r.top + r.height / 2 < y; }).length;
   const pick = (id: string, additive: boolean) => {
     const g = els.find((x) => x.id === id)?.group;
     const ids = g ? els.filter((x) => x.group === g).map((x) => x.id) : [id];
@@ -1528,9 +1545,32 @@ export default function CanvasEditor() {
             );
           })()}
           <ul className="-mx-2 ml-1 space-y-1.5 border-l border-laguna/70 pl-2">
-            {[...els].reverse().map((e) => (
-              <li key={e.id} className={`glow flex items-center gap-0.5 rounded-lg px-2 py-0.5 ${sels.includes(e.id) ? "bg-laguna/40" : ""}`}>
-                <button className={`min-w-0 flex-1 truncate py-1.5 text-left text-sm ${focus} ${e.visible ? "" : "text-ink/40 line-through"}`} onClick={(ev) => pick(e.id, ev.shiftKey || ev.ctrlKey || ev.metaKey)}>
+            {(() => {
+              const shown = [...els].reverse();
+              const others = layerDrag ? shown.filter((x) => x.id !== layerDrag.id) : shown;
+              return shown.map((e) => {
+                const i = others.indexOf(e);
+                const lineTop = layerDrag && layerDrag.id !== e.id && i === layerDrag.to;
+                const lineBottom = layerDrag && layerDrag.id !== e.id && i === others.length - 1 && layerDrag.to === others.length;
+                return (
+              <li key={e.id} data-id={e.id} className={`glow flex items-center gap-0.5 rounded-lg px-2 py-0.5 ${sels.includes(e.id) ? "bg-laguna/40" : ""} ${layerDrag?.id === e.id ? "opacity-50" : ""} ${lineTop ? "shadow-[inset_0_2px_0_#2f6bff]" : lineBottom ? "shadow-[inset_0_-2px_0_#2f6bff]" : ""}`}>
+                <button title={tr("Trascina per cambiare livello")} className={`min-w-0 flex-1 cursor-grab truncate py-1.5 text-left text-sm active:cursor-grabbing ${focus} ${e.visible ? "" : "text-ink/40 line-through"}`}
+                  onPointerDown={(ev) => { if (ev.button !== 0) return; layerPress.current = { id: e.id, y: ev.clientY, moved: false }; ev.currentTarget.setPointerCapture(ev.pointerId); }}
+                  onPointerMove={(ev) => {
+                    const p = layerPress.current;
+                    if (!p || (!p.moved && Math.abs(ev.clientY - p.y) < 5)) return;
+                    p.moved = true;
+                    const ul = ev.currentTarget.closest("ul");
+                    if (ul) setLayerDrag({ id: p.id, to: layerTarget(ul, p.id, ev.clientY) });
+                  }}
+                  onPointerUp={() => {
+                    const p = layerPress.current;
+                    layerPress.current = null;
+                    if (p?.moved && layerDrag) { moveLayer(p.id, layerDrag.to); layerClickBlock.current = true; }
+                    setLayerDrag(null);
+                  }}
+                  onPointerCancel={() => { layerPress.current = null; setLayerDrag(null); }}
+                  onClick={(ev) => { if (layerClickBlock.current) { layerClickBlock.current = false; return; } pick(e.id, ev.shiftKey || ev.ctrlKey || ev.metaKey); }}>
                   {label(e, tr)}
                   {e.group && <span className="ml-1 text-xs text-ink/45">{tr("gruppo")}</span>}
                 </button>
@@ -1539,7 +1579,9 @@ export default function CanvasEditor() {
                 <button title={tr("Mostra o nascondi")} aria-label={tr("Mostra o nascondi")} aria-pressed={!e.visible} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { visible: !e.visible })}><Icon d={e.visible ? ICONS.eye : ICONS.eyeOff} className="size-4" /></button>
                 <button title={tr("Blocca o sblocca")} aria-label={tr("Blocca o sblocca")} aria-pressed={e.locked} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { locked: !e.locked })}><Icon d={e.locked ? ICONS.lock : ICONS.unlock} className="size-4" /></button>
               </li>
-            ))}
+                );
+              });
+            })()}
           </ul>
       </>
     ) },
