@@ -19,7 +19,7 @@
 }
 
 :root {
-  /* La mesa de trabajo (main.canvas) es blanca en claro y en oscuro; la sombra y el filo fino son lo que separa la hoja de ella */
+  /* Mesa de trabajo (utilidad canvas): en el editor normal sigue al tema; el editor libre fuerza la suya en blanco (CanvasEditor, main) */
   --canvas: #ffffff;
   --canvas-dot: #d3dae6;
   /* Extremos del degradado del fondo general de la interfaz (bg-app) */
@@ -36,8 +36,8 @@
   --color-laguna: #3a4c68;
   --color-sabbia: #6b5217;
   --color-mare: #5b8cff;
-  --canvas: #ffffff;
-  --canvas-dot: #d3dae6;
+  --canvas: #0a111e;
+  --canvas-dot: #24324c;
   --app-from: #0f1b30;
   --app-to: #1a2e55;
 }

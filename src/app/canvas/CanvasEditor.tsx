@@ -429,6 +429,21 @@ export default function CanvasEditor() {
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
+  // Next conserva esta página oculta al navegar (Activity) y al volver no se vuelve a montar: los efectos sí se
+  // repiten, así que aquí se traen los cambios hechos en el editor normal y su tema (un fotograma después: es
+  // sincronizar con localStorage, no estado derivado). No es un paso de historial.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      setHist((h) => {
+        const pages = pullLinks(h.pages, readMenuRaw(), formatPrice);
+        return pages === h.pages ? h : { ...h, pages };
+      });
+      try {
+        setDark(localStorage.getItem(THEME_KEY) === "dark");
+      } catch {}
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
   // Mismo cambio de tema que el editor principal: un círculo que se expande desde el botón
   const toggleTheme = (e: React.MouseEvent<HTMLElement>) => {
     const next = !dark;
@@ -1812,7 +1827,7 @@ export default function CanvasEditor() {
         ))}
       </aside>
 
-      <main ref={wrap} style={{ backgroundColor: "#ffffff" }} className={`${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:block md:px-6 md:pb-6`}>
+      <main ref={wrap} style={{ backgroundColor: "#ffffff", "--canvas-dot": "#d3dae6" } as React.CSSProperties} className={`${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:block md:px-6 md:pb-6`}>
         {/* sticky dentro de la zona que se desplaza (no fixed): las bolas quedan dentro de su caja, como en el editor principal */}
         <div className="pointer-events-none sticky top-1/2 z-20 -mb-5 h-0">
           <div role="group" aria-label={`Zoom ${pct}%`} className="pointer-events-auto absolute right-0 flex -translate-y-1/2 flex-col gap-2">

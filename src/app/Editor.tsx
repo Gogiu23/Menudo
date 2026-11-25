@@ -1914,6 +1914,21 @@ export default function Editor() {
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
+  // Next conserva esta página oculta al navegar (Activity) y al volver no se vuelve a montar; los efectos sí se repiten.
+  // Así llega lo que cambió fuera (la carta convertida o editada en el editor libre, el tema elegido allí)
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const fresh = load();
+      if (JSON.stringify(fresh) !== JSON.stringify(mRef.current)) {
+        mRef.current = fresh;
+        setM(fresh);
+      }
+      try {
+        setDark(localStorage.getItem(THEME_KEY) === "dark");
+      } catch {}
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
   // El tema nuevo se abre en círculo desde el botón (View Transitions); sin soporte o con animaciones reducidas, cambia sin más
   const toggleTheme = (e: React.MouseEvent<HTMLElement>) => {
     const next = !dark;
