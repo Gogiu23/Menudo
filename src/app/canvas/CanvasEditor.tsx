@@ -1223,7 +1223,7 @@ export default function CanvasEditor() {
             className="w-12 bg-transparent text-center text-sm text-ink tabular-nums outline-none" />
         </label>
         <Tip label={tr("Copia stile")}><button type="button" aria-label={tr("Copia stile")} className={barBtn} onClick={() => setStyleClip({ fontFamily: tx.fontFamily, fontSize: tx.fontSize, bold: tx.bold, italic: tx.italic, underline: tx.underline, align: tx.align, fill: tx.fill, grad: tx.grad, lineHeight: tx.lineHeight, opacity: tx.opacity })}><Icon d={ICONS.copy} className="size-[18px]" /></button></Tip>
-        <Tip label={tr("Applica stile")}><button type="button" aria-label={tr("Applica stile")} disabled={!styleClip} className={`${barBtn} disabled:opacity-40`} onClick={() => styleClip && putSel(isText, styleClip)}><PaintBrushIcon size={18} weight="fill" aria-hidden /></button></Tip>
+        <Tip label={tr("Applica stile")}><button type="button" aria-label={tr("Applica stile")} disabled={!styleClip} className={`${barBtn} disabled:text-ink/30`} onClick={() => styleClip && putSel(isText, styleClip)}><PaintBrushIcon size={18} weight="fill" aria-hidden /></button></Tip>
       </div>
       {fontOpen && (
         <div className="absolute left-1/2 top-full z-40 mt-2 w-60 -translate-x-1/2 rounded-xl border border-laguna/60 bg-surface p-1 shadow-[0_10px_30px_-10px_rgb(14_26_43/0.35)]">
