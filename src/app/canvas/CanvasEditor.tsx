@@ -710,15 +710,6 @@ export default function CanvasEditor() {
       return { ...x, x: x.x + dx, y: x.y + dy };
     }));
   };
-  const move = (id: string, dir: -1 | 1) =>
-    setEls((a) => {
-      const i = a.findIndex((x) => x.id === id);
-      const j = i + dir;
-      if (j < 0 || j >= a.length) return a;
-      const b = [...a];
-      [b[i], b[j]] = [b[j], b[i]];
-      return b;
-    });
 
   const addImage = (file: File | undefined) => {
     if (!file) return;
@@ -1595,8 +1586,6 @@ export default function CanvasEditor() {
                   {label(e, tr)}
                   {e.group && <span className="ml-1 text-xs text-ink/45">{tr("gruppo")}</span>}
                 </button>
-                <button title={tr("Porta su")} aria-label={tr("Porta su")} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => move(e.id, 1)}><Icon d={ICONS.up} className="size-4" /></button>
-                <button title={tr("Porta giù")} aria-label={tr("Porta giù")} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => move(e.id, -1)}><Icon d={ICONS.down} className="size-4" /></button>
                 <button title={tr("Mostra o nascondi")} aria-label={tr("Mostra o nascondi")} aria-pressed={!e.visible} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { visible: !e.visible })}><Icon d={e.visible ? ICONS.eye : ICONS.eyeOff} className="size-4" /></button>
                 <button title={tr("Blocca o sblocca")} aria-label={tr("Blocca o sblocca")} aria-pressed={e.locked} className="grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { locked: !e.locked })}><Icon d={e.locked ? ICONS.lock : ICONS.unlock} className="size-4" /></button>
               </li>
