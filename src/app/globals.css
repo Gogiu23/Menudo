@@ -22,6 +22,9 @@
   /* La mesa de trabajo (main.canvas) es blanca en claro y en oscuro; la sombra y el filo fino son lo que separa la hoja de ella */
   --canvas: #ffffff;
   --canvas-dot: #d3dae6;
+  /* Extremos del degradado del fondo general de la interfaz (bg-app) */
+  --app-from: #ffffff;
+  --app-to: #e6efff;
   --sheet-shadow: 0 0 0 1px rgb(14 26 43 / 0.1), 0 2px 5px rgb(14 26 43 / 0.12), 0 22px 44px -14px rgb(14 26 43 / 0.4);
 }
 
@@ -35,11 +38,20 @@
   --color-mare: #5b8cff;
   --canvas: #ffffff;
   --canvas-dot: #d3dae6;
+  --app-from: #0f1b30;
+  --app-to: #1a2e55;
 }
 
 body {
   background: var(--color-surface);
   color: var(--color-ink);
+}
+
+/* Fondo general de la interfaz: degradado azul suave, fijo a la ventana para que sea continuo entre cabecera, raíl y paneles */
+@utility bg-app {
+  background-color: var(--color-surface);
+  background-image: linear-gradient(160deg, var(--app-from), var(--app-to));
+  background-attachment: fixed;
 }
 
 /* Mesa de trabajo: cuadrícula de puntos bajo la hoja, como en un programa de maquetación */

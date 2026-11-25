@@ -1371,8 +1371,8 @@ export default function CanvasEditor() {
     <>
     {/* Medidas explícitas: los nombres A2 y A1 no son tamaños de página válidos en CSS */}
     <style>{`@page { size: ${sheet.w}mm ${sheet.h}mm; margin: 0; }`}</style>
-    <div ref={rootRef} className="flex h-dvh flex-col bg-surface text-ink print:hidden">
-      <header className="shrink-0 border-b border-laguna/60 bg-surface pt-[env(safe-area-inset-top)]">
+    <div ref={rootRef} className="flex h-dvh flex-col bg-app text-ink print:hidden">
+      <header className="shrink-0 border-b border-laguna/60 bg-app pt-[env(safe-area-inset-top)]">
         <div className="flex h-12 items-center gap-2 px-3 md:gap-3 md:px-4">
           <Tip label={tr("Torna al menù")} hint={tr("Esci dall'editor libero. Le modifiche sono già salvate.")}>
             <Link href="/" className={`inline-flex h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold hover:bg-laguna/30 md:h-9 ${focus}`}>
@@ -1422,7 +1422,7 @@ export default function CanvasEditor() {
       <div className="flex min-h-0 flex-1">
       {/* Escritorio: carril de iconos y una sección cada vez, como en Canva */}
       <div className="hidden md:flex">
-        <nav aria-label={tr("Sezioni")} className="flex w-[76px] shrink-0 flex-col items-center overflow-x-hidden overflow-y-auto border-r border-laguna/60 bg-surface py-4">
+        <nav aria-label={tr("Sezioni")} className="flex w-[76px] shrink-0 flex-col items-center overflow-x-hidden overflow-y-auto border-r border-laguna/60 bg-app py-4">
           <div className="my-auto flex flex-col items-center gap-5">
             {sections.map((s, i) => (
               <Fragment key={s.id}>
@@ -1437,7 +1437,7 @@ export default function CanvasEditor() {
             ))}
           </div>
         </nav>
-        <aside aria-label={active.label} className="w-[248px] shrink-0 overflow-y-auto border-r border-laguna/60 bg-surface lg:w-[264px]">
+        <aside aria-label={active.label} className="w-[248px] shrink-0 overflow-y-auto border-r border-laguna/60 bg-app lg:w-[264px]">
           <div className="border-b border-laguna/50 px-5 pt-5 pb-4">
             <h2 className="font-display text-[17px] font-semibold">{active.label}</h2>
             <p className="mt-1 text-xs leading-snug text-ink/70">{active.hint}</p>
@@ -1609,7 +1609,7 @@ export default function CanvasEditor() {
         </div>
         </div>
       </main>
-      <aside aria-label={tr("Proprietà")} className="hidden w-[280px] shrink-0 overflow-y-auto border-l border-laguna/60 bg-surface lg:block">
+      <aside aria-label={tr("Proprietà")} className="hidden w-[280px] shrink-0 overflow-y-auto border-l border-laguna/60 bg-app lg:block">
         {properties}
         {sels.length === 0 && <p className="p-4 text-sm text-ink/70">{hint}</p>}
       </aside>
