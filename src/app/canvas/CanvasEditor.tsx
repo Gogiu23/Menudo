@@ -25,6 +25,7 @@ import { LANG_KEY, loadLang, makeTr, type Tr } from "./i18n";
 import { ImageSearch } from "./ImageSearch";
 import { MAX_PAGES, readPdf, type PdfError } from "./pdfLoad";
 import { okLink, pullLinks, pushLinks } from "./menuLink";
+import { convertToMenu } from "./menuConvert";
 import { formatPrice } from "../price";
 
 /* Dibujar formas arrastrando: cada herramienta sabe construir su elemento a partir de una geometría (caja, o línea con ángulo).
@@ -955,6 +956,31 @@ export default function CanvasEditor() {
   };
 
   // Rehace el lienzo a partir de la carta del editor principal; Annulla lo deshace
+  // «Convertir en carta»: los textos de esta página pasan a ser la carta del editor normal y quedan enlazados a ella
+  const convertPage = () => {
+    const texts = els.flatMap((e) => (e.type === "text" && e.visible && !e.table ? [{ id: e.id, text: e.text, x: e.x, y: e.y, width: e.width, fontSize: e.fontSize, italic: e.italic }] : []));
+    const { menu, links } = convertToMenu(texts, h);
+    const dishes = menu.sections.reduce((a, x) => a + x.items.length, 0);
+    if (!menu.name && !dishes) {
+      setImportMsg(tr("In questa pagina non ci sono testi da convertire."));
+      return;
+    }
+    if (!confirm(tr("Il menù dell'editor normale (nome, sezioni e piatti) verrà sostituito da questa pagina. Continuare?"))) return;
+    try {
+      localStorage.setItem(MENU_KEY, JSON.stringify({ ...(readMenuRaw() ?? {}), ...menu }));
+    } catch {
+      setImportMsg(tr("Non c'è spazio per salvare il menù."));
+      return;
+    }
+    // Los precios se escriben como en el editor normal («12,50 €»): así los dos muestran lo mismo
+    setEls((a) => a.map((e) => {
+      const l = e.type === "text" ? links.get(e.id) : undefined;
+      if (!l || e.type !== "text") return e.type === "text" && e.link ? { ...e, link: undefined } : e;
+      const v = l.f === "price" ? formatPrice(e.text) : e.text.trim();
+      return { ...e, text: v, link: { ...l, v } };
+    }));
+    setImportMsg(`${tr("Fatto")}: ${menu.sections.length} ${tr("sezioni")}, ${dishes} ${tr("piatti")}. ${tr("Aprilo nell'editor normale con «Menù».")}`);
+  };
   const importMenu = () =>
     run(async () => {
       setImportMsg("");
@@ -1646,6 +1672,10 @@ export default function CanvasEditor() {
           <button className={`${primary} w-full`} disabled={busy} onClick={importMenu}>
             <Icon d={ICONS.edit} className="size-[18px]" />
             {tr("Importa il menù attuale")}
+          </button>
+          <button type="button" className={`${secondary} w-full justify-center`} disabled={busy} title={tr("Trasforma i testi di questa pagina nel menù dell'editor normale")} onClick={convertPage}>
+            <Icon d={ICONS.pages} className="size-[18px]" />
+            {tr("Converti in menù")}
           </button>
           <label className={`${secondary} w-full justify-center has-[:disabled]:pointer-events-none has-[:disabled]:opacity-40`}>
             <input type="file" accept="application/pdf" className="sr-only" disabled={busy} onChange={(e) => { importPdf(e.target.files?.[0]); e.target.value = ""; }} />

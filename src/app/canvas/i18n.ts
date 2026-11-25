@@ -287,6 +287,15 @@ const ES: Record<string, string> = {
   "Etichetta del prezzo": "Etiqueta del precio",
   "Prezzo a persona": "Precio por persona",
   "Nota del prezzo": "Nota del precio",
+  "In questa pagina non ci sono testi da convertire.": "En esta página no hay textos que convertir.",
+  "Il menù dell'editor normale (nome, sezioni e piatti) verrà sostituito da questa pagina. Continuare?": "La carta del editor normal (nombre, secciones y platos) se sustituirá por esta página. ¿Seguir?",
+  "Non c'è spazio per salvare il menù.": "No hay espacio para guardar la carta.",
+  "Fatto": "Hecho",
+  "sezioni": "secciones",
+  "piatti": "platos",
+  "Aprilo nell'editor normale con «Menù».": "Ábrela en el editor normal con «Menú».",
+  "Trasforma i testi di questa pagina nel menù dell'editor normale": "Convierte los textos de esta página en la carta del editor normal",
+  "Converti in menù": "Convertir en carta",
 };
 
 export type Tr = (s: string, ctx?: string) => string;
