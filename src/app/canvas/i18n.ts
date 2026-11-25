@@ -263,6 +263,9 @@ const ES: Record<string, string> = {
   "Copia carattere, dimensione, colore e allineamento di questo testo": "Copia la letra, el tamaño, el color y la alineación de este texto",
   "Applica lo stile copiato ai testi selezionati": "Aplica el estilo copiado a los textos seleccionados",
   "Applica stile": "Aplicar estilo",
+  "Riduci dimensione": "Reducir tamaño",
+  "Aumenta dimensione": "Aumentar tamaño",
+  "Applica": "Aplicar",
 };
 
 export type Tr = (s: string, ctx?: string) => string;
