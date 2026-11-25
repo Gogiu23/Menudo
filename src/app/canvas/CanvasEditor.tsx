@@ -1175,14 +1175,14 @@ export default function CanvasEditor() {
     if (!ref) return;
     setEls((a) => a.map((x) => (sels.includes(x.id) && !x.locked && (dim === "width" || (x.type !== "text" && x.type !== "line")) ? ({ ...x, [dim]: ref[dim] } as El) : x)));
   };
-  // Barra de texto (como en Canva): sobre la hoja cuando la selección tiene algún texto. Cambia todos los textos seleccionados
+  // Barra de texto (como en Canva): en la cabecera, en lugar del aviso, cuando la selección tiene algún texto. Cambia todos los textos seleccionados
   const tx = mTexts[0];
   const barBtn = `grid size-9 shrink-0 place-items-center rounded-lg text-ink/80 hover:bg-laguna/30 ${focus}`;
   const barOn = "bg-laguna/40 text-ink";
   const stepSize = (k: number) => tx && putSel(isText, { fontSize: Math.max(2, Math.round((tx.fontSize + k) * 10) / 10) });
   const textBar = tx && !editing && (
-    <div className="pointer-events-none sticky top-3 z-30 flex h-0 items-start justify-center">
-      <div role="toolbar" aria-label={tr("Testo")} className="pointer-events-auto relative flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-laguna/60 bg-surface p-1 shadow-[0_10px_30px_-10px_rgb(14_26_43/0.35)]"
+    <div className="relative flex min-w-0 flex-1 justify-center">
+      <div role="toolbar" aria-label={tr("Testo")} className="flex max-w-full items-center gap-1 overflow-x-auto"
         onKeyDown={(e) => e.key === "Escape" && fontOpen && (e.stopPropagation(), setFontOpen(false))}>
         <button type="button" aria-haspopup="true" aria-expanded={fontOpen} title={tr("Carattere")} className={`flex h-9 w-36 shrink-0 items-center justify-between gap-1 rounded-lg border border-laguna px-2.5 text-[15px] hover:bg-laguna/30 ${focus}`}
           style={{ fontFamily: (() => { const f = FONTS.find((x) => x.key === tx.fontFamily); return f ? `var(${f.cssVar}), ${f.fallback}` : undefined; })() }} onClick={() => setFontOpen((o) => !o)}>
@@ -1225,7 +1225,7 @@ export default function CanvasEditor() {
         <Tip label={tr("Applica stile")}><button type="button" aria-label={tr("Applica stile")} disabled={!styleClip} className={`${barBtn} text-[13px] font-semibold disabled:opacity-40`} onClick={() => styleClip && putSel(isText, styleClip)}>{tr("Applica")}</button></Tip>
       </div>
       {fontOpen && (
-        <div className="pointer-events-auto absolute top-12 w-60 rounded-xl border border-laguna/60 bg-surface p-1 shadow-[0_10px_30px_-10px_rgb(14_26_43/0.35)]">
+        <div className="absolute left-1/2 top-full z-40 mt-2 w-60 -translate-x-1/2 rounded-xl border border-laguna/60 bg-surface p-1 shadow-[0_10px_30px_-10px_rgb(14_26_43/0.35)]">
           <FontList value={tx.fontFamily} tr={tr} onPick={(k) => { putSel(isText, { fontFamily: k }); setFontOpen(false); }} />
         </div>
       )}
@@ -1606,9 +1606,11 @@ export default function CanvasEditor() {
           <Link href="/" aria-label="Menudo" className={`hidden rounded-md sm:block ${focus}`}>
             <Brand />
           </Link>
-          <p className="min-w-0 flex-1 truncate text-xs text-ink/70" aria-live="polite">
-            {tr("Editor libero · Le modifiche si salvano da sole")}
-          </p>
+          {textBar || (
+            <p className="min-w-0 flex-1 truncate text-xs text-ink/70" aria-live="polite">
+              {tr("Editor libero · Le modifiche si salvano da sole")}
+            </p>
+          )}
           <Tip label={tr("Annulla")} hint="Ctrl+Z">
             <button className={iconBtn} aria-label={tr("Annulla")} disabled={!hist.past.length} onClick={undo}>
               <Icon d={ICONS.undo} className="size-[18px]" />
@@ -1695,7 +1697,6 @@ export default function CanvasEditor() {
               ))}
             </div>
         )}
-        {textBar}
         {tool && (
           <div className="pointer-events-none sticky top-3 z-30 flex h-0 justify-center">
             <span className="rounded-full bg-ink px-3 py-1.5 text-xs font-semibold text-surface shadow-lg">{tr("Trascina sulla carta per disegnare · Esc annulla")}</span>
