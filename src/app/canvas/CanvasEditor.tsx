@@ -10,12 +10,13 @@ import type Konva from "konva";
    Fase 2: panel de propiedades completo y panel de capas (orden, ocultar, bloquear, duplicar).
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
-import { common, Copies, COPIES, COPY_NAMES, El, FONTS, fontFamily, fontStyleOf, fillGrad, Grad, gradPoints, DARK_PAPER, LEGACY_WHITE, newText, PALETTE, PAPER_WHITE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
+import { common, Copies, COPIES, COPY_NAMES, El, FONTS, FontKey, fontFamily, fontStyleOf, fillGrad, Grad, gradPoints, DARK_PAPER, LEGACY_WHITE, newText, PALETTE, PAPER_WHITE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
 import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, Range, secondary, Seg, ShapeIcon, Switch } from "./ui";
 import { ArchiveIcon, FilesIcon, ForkKnifeIcon, ImageIcon, LayoutIcon, ShapesIcon, SparkleIcon, StackIcon, TextTIcon, type Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { Tip } from "./Tip";
+import { applyLast, loadLast, remember, saveLast, type Last } from "./lastUsed";
 import { buildTemplate, cleanMenu } from "./templateBuild";
 import { defaultSpec, parseSpec } from "./templateSpec";
 import { useGlow } from "./glow";
@@ -226,6 +227,21 @@ function shrink(src: string, maxPx: number, png: boolean): Promise<{ src: string
 const DPI = 300;
 const MAX_PIXELS = 16_000_000; // por encima, iOS Safari y otros navegadores móviles se quedan sin memoria de canvas
 const MM_PER_INCH = 25.4;
+
+// Lista de letras (cada nombre con su letra), para un elemento y para varios
+function FontList({ value, onPick, tr }: { value: string; onPick: (k: FontKey) => void; tr: Tr }) {
+  return (
+    <div role="radiogroup" aria-label={tr("Carattere")} className="max-h-52 space-y-0.5 overflow-y-auto rounded-lg border border-laguna p-1">
+      {FONTS.map((f) => (
+        <button key={f.key} type="button" role="radio" aria-checked={value === f.key}
+          className={`flex w-full items-center rounded-md px-3 py-1.5 text-left text-lg hover:bg-laguna/30 ${focus} ${value === f.key ? "bg-laguna/40 font-semibold" : ""}`}
+          style={{ fontFamily: `var(${f.cssVar}), ${f.fallback}` }} onClick={() => onPick(f.key)}>
+          {f.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function CanvasEditor() {
   const [init] = useState(load);
@@ -548,9 +564,26 @@ export default function CanvasEditor() {
   }, [paper, copies, hist.pages, tables, bg, bgGrad]);
 
   // `merge`: ediciones desde el panel (escribir, deslizadores) que deben deshacerse de una vez
-  const patch = (id: string, p: Partial<El>, merge = true) =>
+  // Último ajuste de estilo por tipo de elemento (color del texto, de la forma…): se anota al editar y se aplica a los nuevos
+  // Estilo completo de un texto copiado (para «Copiar estilo» / «Aplicar estilo»)
+  const [styleClip, setStyleClip] = useState<Partial<Extract<El, { type: "text" }>> | null>(null);
+  const lastRef = useRef<Last | null>(null);
+  const getLast = () => (lastRef.current ??= loadLast());
+  const noteLast = (el: El, p: Partial<El>) => {
+    const before = getLast();
+    const next = remember(before, el, p);
+    if (next !== before) {
+      lastRef.current = next;
+      saveLast(next);
+    }
+  };
+  const patch = (id: string, p: Partial<El>, merge = true) => {
+    const el = els.find((x) => x.id === id);
+    if (el) noteLast(el, p);
     setEls((a) => a.map((x) => (x.id === id ? ({ ...x, ...p } as El) : x)), merge ? `patch:${id}:${Object.keys(p).join()}` : undefined);
-  const add = (e: El) => {
+  };
+  const add = (e0: El) => {
+    const e = applyLast(getLast(), e0); // estilo del último elemento parecido
     // Si ya hay algo exactamente ahí (varios «Aggiungi» seguidos), baja 8 mm para que no se apilen
     setEls((a) => {
       let y = e.y;
@@ -1074,6 +1107,55 @@ export default function CanvasEditor() {
         <Num label={tr("Angoli (mm)")} value={cur.radius ?? 0} min={0} onChange={(v) => patch(cur.id, { radius: v })} />
       </div>
     ) : null;
+  // Edición en conjunto (varios elementos seleccionados): un cambio se aplica a los del tipo al que corresponde
+  type TextEl = Extract<El, { type: "text" }>;
+  type FillEl = Exclude<El, { type: "image" } | { type: "tiles" }>;
+  type ShapeLike = Extract<El, { type: "rect" }> | Extract<El, { type: "shape" }>;
+  const isText = (e: El): e is TextEl => e.type === "text";
+  const isFill = (e: El): e is FillEl => e.type !== "image" && e.type !== "tiles";
+  const isShapeLike = (e: El): e is ShapeLike => e.type === "rect" || (e.type === "shape" && !SHAPES[e.kind].stroke);
+  const isImg = (e: El): e is Extract<El, { type: "image" }> => e.type === "image";
+  const putSel = (pick: (e: El) => boolean, p: Partial<El>) => {
+    const hit = selEls.filter((x) => !x.locked && pick(x));
+    if (!hit.length) return;
+    noteLast(hit[0], p);
+    setEls((a) => a.map((x) => (sels.includes(x.id) && !x.locked && pick(x) ? ({ ...x, ...p } as El) : x)), `multi:${Object.keys(p).join()}`);
+  };
+  const mTexts = selEls.filter(isText);
+  const mFill = selEls.filter(isFill);
+  const mShapes = selEls.filter(isShapeLike);
+  const mImgs = selEls.filter(isImg);
+  // Cajas de los seleccionados en mm (las que usa también «alinear»)
+  const boxesOfSel = () => {
+    const layer = layerRef.current!;
+    return selEls.flatMap((e) => {
+      const b = !e.locked ? layer.findOne("#" + e.id)?.getClientRect({ relativeTo: layer }) : undefined;
+      return b ? [{ id: e.id, b }] : [];
+    });
+  };
+  // Distribuir: el mismo espacio entre elementos (el primero y el último no se mueven)
+  const distribute = (axis: "x" | "y") => {
+    const boxes = boxesOfSel();
+    if (boxes.length < 3) return;
+    const [pos, size] = axis === "x" ? (["x", "width"] as const) : (["y", "height"] as const);
+    boxes.sort((p, q) => p.b[pos] - q.b[pos]);
+    const first = boxes[0].b[pos];
+    const lastBox = boxes[boxes.length - 1].b;
+    const gap = (lastBox[pos] + lastBox[size] - first - boxes.reduce((a, o) => a + o.b[size], 0)) / (boxes.length - 1);
+    const delta = new Map<string, number>();
+    let at = first;
+    for (const o of boxes) {
+      delta.set(o.id, at - o.b[pos]);
+      at += o.b[size] + gap;
+    }
+    setEls((a) => a.map((x) => (delta.has(x.id) ? (axis === "x" ? { ...x, x: x.x + delta.get(x.id)! } : { ...x, y: x.y + delta.get(x.id)! }) : x)));
+  };
+  // Misma anchura o altura que el primer elemento seleccionado (el alto de textos y líneas no se toca)
+  const sameSize = (dim: "width" | "height") => {
+    const ref = els.find((x) => x.id === sels[0]);
+    if (!ref) return;
+    setEls((a) => a.map((x) => (sels.includes(x.id) && !x.locked && (dim === "width" || (x.type !== "text" && x.type !== "line")) ? ({ ...x, [dim]: ref[dim] } as El) : x)));
+  };
   const properties = sels.length > 0 && (
     <div>
       <div className="border-b border-laguna/50 px-5 py-4">
@@ -1095,6 +1177,66 @@ export default function CanvasEditor() {
           ))}
         </div>
       </Block>
+      {sels.length > 1 && (
+        <>
+          <Block title={tr("Disposizione")}>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button type="button" title={tr("Distribuisci in orizzontale")} disabled={selEls.length < 3} className={`${small} justify-center`} onClick={() => distribute("x")}>{tr("Orizzontale")}</button>
+              <button type="button" title={tr("Distribuisci in verticale")} disabled={selEls.length < 3} className={`${small} justify-center`} onClick={() => distribute("y")}>{tr("Verticale")}</button>
+              <button type="button" title={tr("Stessa larghezza")} className={`${small} justify-center`} onClick={() => sameSize("width")}>{tr("Larghezza")}</button>
+              <button type="button" title={tr("Stessa altezza")} className={`${small} justify-center`} onClick={() => sameSize("height")}>{tr("Altezza")}</button>
+            </div>
+          </Block>
+          {mTexts.length > 0 && (
+            <Block title={tr("Testo")}>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button type="button" title={tr("Copia carattere, dimensione, colore e allineamento di questo testo")} className={`${small} justify-center`} onClick={() => { const t = mTexts[0]; setStyleClip({ fontFamily: t.fontFamily, fontSize: t.fontSize, bold: t.bold, italic: t.italic, align: t.align, fill: t.fill, grad: t.grad, lineHeight: t.lineHeight, opacity: t.opacity }); }}>{tr("Copia stile")}</button>
+                <button type="button" title={tr("Applica lo stile copiato ai testi selezionati")} disabled={!styleClip} className={`${small} justify-center`} onClick={() => styleClip && putSel(isText, styleClip)}>{tr("Applica stile")}</button>
+              </div>
+              <FontList value={mTexts[0].fontFamily} tr={tr} onPick={(k) => putSel(isText, { fontFamily: k })} />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Tip label={tr("Grassetto")}><button type="button" aria-pressed={mTexts[0].bold} className={`${iconBtn} font-bold ${mTexts[0].bold ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Grassetto")} onClick={() => putSel(isText, { bold: !mTexts[0].bold })}>B</button></Tip>
+                <Tip label={tr("Corsivo")}><button type="button" aria-pressed={mTexts[0].italic} className={`${iconBtn} italic ${mTexts[0].italic ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Corsivo")} onClick={() => putSel(isText, { italic: !mTexts[0].italic })}>I</button></Tip>
+                {(["left", "center", "right"] as const).map((al) => {
+                  const t = tr(`Allinea testo ${al === "left" ? "a sinistra" : al === "center" ? "al centro" : "a destra"}`);
+                  return (
+                    <Tip key={al} label={t}>
+                      <button type="button" aria-pressed={mTexts[0].align === al} className={`${iconBtn} ${mTexts[0].align === al ? "bg-laguna/40 text-ink" : ""}`} aria-label={t} onClick={() => putSel(isText, { align: al })}>
+                        <Icon d={al === "left" ? ICONS.alignLeft : al === "center" ? ICONS.alignCenter : ICONS.alignRight} className="size-[18px]" />
+                      </button>
+                    </Tip>
+                  );
+                })}
+              </div>
+              <Num label={tr("Dimensione (mm)")} value={mTexts[0].fontSize} min={2} onChange={(v) => putSel(isText, { fontSize: v })} />
+            </Block>
+          )}
+          {mShapes.length > 0 && (
+            <Block title={tr("Riempimento")}>
+              <Seg label={tr("Riempimento")} value={mShapes[0].hollow ? "line" : "fill"} onChange={(v) => putSel(isShapeLike, { hollow: v === "line" })} options={[["fill", tr("Pieno")], ["line", tr("Solo bordo")]] as const} />
+              {mShapes[0].hollow && <Num label={tr("Spessore bordo (mm)")} value={mShapes[0].borderW ?? 1} min={0.1} step={0.1} onChange={(v) => putSel(isShapeLike, { borderW: v })} />}
+            </Block>
+          )}
+          {mFill.length > 0 && (
+            <Block title={tr("Colore")}>
+              <ColorRow value={mFill[0].fill} onChange={(hex) => putSel(isFill, { fill: hex })} tr={tr} label={mFill[0].grad ? tr("Colore iniziale") : tr("Colore")} />
+              <GradientControls fill={mFill[0].fill} grad={mFill[0].grad} onChange={(g) => putSel(isFill, { grad: g })} tr={tr} />
+            </Block>
+          )}
+          {mImgs.length > 0 && (
+            <Block title={tr("Bordi dell'immagine")}>
+              <Num label={tr("Angoli (mm)")} value={mImgs[0].radius ?? 0} min={0} onChange={(v) => putSel(isImg, { radius: v })} />
+            </Block>
+          )}
+          <Block title={tr("Aspetto")}>
+            <label className="flex items-center gap-2 text-[13px] font-semibold">
+              {tr("Opacità")}
+              <Range min={0} max={1} step={0.05} value={selEls[0]?.opacity ?? 1} label={tr("Opacità")} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => putSel(() => true, { opacity: v })} />
+              <span className="w-10 text-right font-normal tabular-nums">{Math.round((selEls[0]?.opacity ?? 1) * 100)}%</span>
+            </label>
+          </Block>
+        </>
+      )}
       {cur && (
         <Block title={tr("Posizione e misure")}>
           <div className="space-y-3">
@@ -1113,15 +1255,11 @@ export default function CanvasEditor() {
             {tr("Modifica testo")}
           </button>
           <p className="text-xs text-ink/70">{tr("Oppure doppio clic sul testo, sulla carta.")}</p>
-          <div role="radiogroup" aria-label={tr("Carattere")} className="max-h-52 space-y-0.5 overflow-y-auto rounded-lg border border-laguna p-1">
-            {FONTS.map((f) => (
-              <button key={f.key} type="button" role="radio" aria-checked={cur.fontFamily === f.key}
-                className={`flex w-full items-center rounded-md px-3 py-1.5 text-left text-lg hover:bg-laguna/30 ${focus} ${cur.fontFamily === f.key ? "bg-laguna/40 font-semibold" : ""}`}
-                style={{ fontFamily: `var(${f.cssVar}), ${f.fallback}` }} onClick={() => patch(cur.id, { fontFamily: f.key })}>
-                {f.label}
-              </button>
-            ))}
-          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+                <button type="button" title={tr("Copia carattere, dimensione, colore e allineamento di questo testo")} className={`${small} justify-center`} onClick={() => { const t = cur; setStyleClip({ fontFamily: t.fontFamily, fontSize: t.fontSize, bold: t.bold, italic: t.italic, align: t.align, fill: t.fill, grad: t.grad, lineHeight: t.lineHeight, opacity: t.opacity }); }}>{tr("Copia stile")}</button>
+                <button type="button" title={tr("Applica lo stile copiato ai testi selezionati")} disabled={!styleClip} className={`${small} justify-center`} onClick={() => styleClip && putSel(isText, styleClip)}>{tr("Applica stile")}</button>
+              </div>
+              <FontList value={cur.fontFamily} tr={tr} onPick={(k) => patch(cur.id, { fontFamily: k })} />
           <div className="flex flex-wrap items-center gap-1.5">
             <Tip label={tr("Grassetto")}><button aria-pressed={cur.bold} className={`${iconBtn} font-bold ${cur.bold ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Grassetto")} onClick={() => patch(cur.id, { bold: !cur.bold })}>B</button></Tip>
             <Tip label={tr("Corsivo")}><button aria-pressed={cur.italic} className={`${iconBtn} italic ${cur.italic ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Corsivo")} onClick={() => patch(cur.id, { italic: !cur.italic })}>I</button></Tip>

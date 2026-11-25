@@ -250,6 +250,19 @@ const ES: Record<string, string> = {
   "Non riesco a leggere questo PDF: forse è danneggiato.": "No consigo leer este PDF: puede que esté dañado.",
   "Non ci sono testi modificabili (forse è una scansione): l'ho importato come immagine.": "No hay textos editables (quizá es un escaneo): lo he importado como imagen.",
   "Fai doppio clic su un testo per modificarlo.": "Haz doble clic en un texto para editarlo.",
+  "Disposizione": "Disposición",
+  "Distribuisci in orizzontale": "Distribuir con el mismo espacio en horizontal",
+  "Distribuisci in verticale": "Distribuir con el mismo espacio en vertical",
+  "Orizzontale": "Horizontal",
+  "Verticale": "Vertical",
+  "Larghezza": "Anchura",
+  "Altezza": "Altura",
+  "Stessa larghezza": "Misma anchura que el primero",
+  "Stessa altezza": "Misma altura que el primero",
+  "Copia stile": "Copiar estilo",
+  "Copia carattere, dimensione, colore e allineamento di questo testo": "Copia la letra, el tamaño, el color y la alineación de este texto",
+  "Applica lo stile copiato ai testi selezionati": "Aplica el estilo copiado a los textos seleccionados",
+  "Applica stile": "Aplicar estilo",
 };
 
 export type Tr = (s: string, ctx?: string) => string;
