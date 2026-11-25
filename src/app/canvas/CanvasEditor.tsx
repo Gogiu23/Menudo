@@ -1597,7 +1597,7 @@ export default function CanvasEditor() {
     <style>{`@page { size: ${sheet.w}mm ${sheet.h}mm; margin: 0; }`}</style>
     <div ref={rootRef} className="flex h-dvh flex-col bg-app text-ink print:hidden">
       <header className="shrink-0 border-b border-laguna/60 bg-app pt-[env(safe-area-inset-top)]">
-        <div className="flex h-12 items-center gap-2 px-3 md:gap-3 md:px-4">
+        <div className="flex h-14 items-center gap-2 px-3 pt-1.5 md:h-16 md:gap-3 md:px-4">
           <Tip label={tr("Torna al menù")} hint={tr("Esci dall'editor libero. Le modifiche sono già salvate.")}>
             <Link href="/" className={`inline-flex h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold hover:bg-laguna/30 md:h-9 ${focus}`}>
               <Icon d={ICONS.left} className="size-[18px]" />
