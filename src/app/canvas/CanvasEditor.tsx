@@ -121,7 +121,7 @@ function ShapeNode({ el, ...rest }: { el: Extract<El, { type: "shape" }> } & Kon
         if (el.grad) {
           const { start, end } = gradPoints(d.vb, d.vb, el.grad.angle);
           paint = c.createLinearGradient(start.x, start.y, end.x, end.y);
-          paint.addColorStop(0, el.fill);
+          paint.addColorStop(el.grad.from ?? 0, el.fill);
           paint.addColorStop(1, gradEnd(el.fill, el.grad.to));
         }
         if (d.stroke) {
@@ -176,8 +176,8 @@ const readZoom = () => {
   }
 };
 const okGrad = (v: unknown): Grad | undefined => {
-  const g = v as { to?: unknown; angle?: unknown } | null | undefined;
-  return g && typeof g.to === "string" && (/^#[0-9a-f]{6}$/i.test(g.to) || g.to === TRANSPARENT) && typeof g.angle === "number" ? { to: g.to, angle: ((g.angle % 360) + 360) % 360 } : undefined;
+  const g = v as { to?: unknown; angle?: unknown; from?: unknown } | null | undefined;
+  return g && typeof g.to === "string" && (/^#[0-9a-f]{6}$/i.test(g.to) || g.to === TRANSPARENT) && typeof g.angle === "number" ? { to: g.to, angle: ((g.angle % 360) + 360) % 360, ...(typeof g.from === "number" && g.from > 0 && g.from <= 0.95 ? { from: g.from } : {}) } : undefined;
 };
 // Lo guardado puede venir de otra versión o estar estropeado: se descartan las formas desconocidas y se limpian los degradados
 const cleanPages = (pages: El[][]): El[][] =>

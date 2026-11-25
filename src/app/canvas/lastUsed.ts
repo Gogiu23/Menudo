@@ -37,9 +37,9 @@ const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >=
 const hex = (v: unknown) => (typeof v === "string" && HEX.test(v) ? v.toLowerCase() : undefined);
 const grad = (v: unknown): Grad | null | undefined => {
   if (v === null) return null;
-  const g = v as { to?: unknown; angle?: unknown } | undefined;
+  const g = v as { to?: unknown; angle?: unknown; from?: unknown } | undefined;
   const to = g?.to === TRANSPARENT ? TRANSPARENT : hex(g?.to);
-  return g && to && typeof g.angle === "number" && Number.isFinite(g.angle) ? { to, angle: g.angle } : undefined;
+  return g && to && typeof g.angle === "number" && Number.isFinite(g.angle) ? { to, angle: g.angle, ...(typeof g.from === "number" && g.from > 0 && g.from <= 0.95 ? { from: g.from } : {}) } : undefined;
 };
 
 // Lo guardado puede estar dañado o ser de otra versión: se queda solo con lo que tiene la forma esperada

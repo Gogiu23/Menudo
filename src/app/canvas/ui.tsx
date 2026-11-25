@@ -159,13 +159,18 @@ export function GradientControls({ fill, grad, onChange, tr }: { fill: string; g
       </div>
       {grad && (
         <>
-          <div className="h-6 rounded-md ring-1 ring-laguna" style={{ background: `linear-gradient(${grad.angle + 90}deg, ${fill}, ${gradEnd(fill, grad.to)}), repeating-conic-gradient(#d9dee3 0 25%, #fff 0 50%) 0 0 / 10px 10px` }} />
+          <div className="h-6 rounded-md ring-1 ring-laguna" style={{ background: `linear-gradient(${grad.angle + 90}deg, ${fill} ${Math.round((grad.from ?? 0) * 100)}%, ${gradEnd(fill, grad.to)}), repeating-conic-gradient(#d9dee3 0 25%, #fff 0 50%) 0 0 / 10px 10px` }} />
           <p className="text-xs font-semibold text-ink/70">{tr("Colore finale")}</p>
           <div role="group" aria-label={tr("Colore finale")} className="flex rounded-lg bg-laguna/25 p-0.5">
             <button type="button" aria-pressed={grad.to !== TRANSPARENT} className={seg(grad.to !== TRANSPARENT)} onClick={() => grad.to === TRANSPARENT && onChange({ ...grad, to: fill.toLowerCase() === PALETTE[1].hex.toLowerCase() ? PALETTE[0].hex : PALETTE[1].hex })}>{tr("Colore")}</button>
             <button type="button" aria-pressed={grad.to === TRANSPARENT} className={seg(grad.to === TRANSPARENT)} onClick={() => onChange({ ...grad, to: TRANSPARENT })}>{tr("Trasparente")}</button>
           </div>
           {grad.to !== TRANSPARENT && <ColorRow value={grad.to} onChange={(to) => onChange({ ...grad, to })} tr={tr} label={tr("Colore finale")} />}
+          <label className="flex items-center gap-2 text-[13px] font-semibold">
+            {tr("Inizio")}
+            <Range min={0} max={95} step={5} value={Math.round((grad.from ?? 0) * 100)} label={tr("Inizio della sfumatura")} format={(v) => `${v}%`} onChange={(v) => onChange({ ...grad, from: v ? v / 100 : undefined })} />
+            <span className="w-10 text-right font-normal tabular-nums">{Math.round((grad.from ?? 0) * 100)}%</span>
+          </label>
           <label className="flex items-center gap-2 text-[13px] font-semibold">
             {tr("Angolo")}
             <Range min={0} max={360} step={15} value={grad.angle} label={tr("Angolo")} format={(v) => `${v}°`} onChange={(angle) => onChange({ ...grad, angle })} />

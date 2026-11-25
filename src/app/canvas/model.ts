@@ -42,7 +42,7 @@ export function fontFamily(key: FontKey) {
 }
 
 // Degradado lineal del color del elemento (`fill`) hasta `to`; angle en grados: 0 = de izquierda a derecha, 90 = de arriba abajo
-export type Grad = { to: string; angle: number };
+export type Grad = { to: string; angle: number; from?: number }; // from: dónde empieza el degradado (0-0,95 del recorrido); antes, color liso
 // hollow: formas huecas (solo borde, del color del elemento y de grosor borderW en mm)
 export type Base = { hollow?: boolean; borderW?: number; grad?: Grad; id: string; x: number; y: number; width: number; height: number; rotation: number; opacity: number; visible: boolean; locked: boolean; group?: string };
 export type TextEl = Base & {
@@ -102,13 +102,13 @@ export const gradEnd = (from: string, to: string) => (to !== TRANSPARENT ? to : 
 export function fillGrad(fill: string, g: Grad | undefined, w: number, h: number) {
   if (!g) return { fill };
   const { start, end } = gradPoints(w, h, g.angle);
-  return { fillLinearGradientStartPoint: start, fillLinearGradientEndPoint: end, fillLinearGradientColorStops: [0, fill, 1, gradEnd(fill, g.to)] };
+  return { fillLinearGradientStartPoint: start, fillLinearGradientEndPoint: end, fillLinearGradientColorStops: [g.from ?? 0, fill, 1, gradEnd(fill, g.to)] };
 }
 // oy: la línea se dibuja centrada en y=0, así que la caja del degradado empieza en -grosor/2
 export function strokeGrad(stroke: string, g: Grad | undefined, w: number, h: number, oy = 0) {
   if (!g) return { stroke };
   const { start, end } = gradPoints(w, h, g.angle);
-  return { strokeLinearGradientStartPoint: { x: start.x, y: start.y + oy }, strokeLinearGradientEndPoint: { x: end.x, y: end.y + oy }, strokeLinearGradientColorStops: [0, stroke, 1, gradEnd(stroke, g.to)] };
+  return { strokeLinearGradientStartPoint: { x: start.x, y: start.y + oy }, strokeLinearGradientEndPoint: { x: end.x, y: end.y + oy }, strokeLinearGradientColorStops: [g.from ?? 0, stroke, 1, gradEnd(stroke, g.to)] };
 }
 
 export const uid = () => Math.random().toString(36).slice(2, 9);

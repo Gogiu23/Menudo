@@ -269,6 +269,8 @@ const ES: Record<string, string> = {
   "Seleziona tutti gli elementi del foglio per spostarli insieme": "Selecciona todos los elementos de la hoja para moverlos juntos",
   "Sottolineato": "Subrayado",
   "Trasparente": "Transparente",
+  "Inizio": "Inicio",
+  "Inizio della sfumatura": "Dónde empieza el degradado",
 };
 
 export type Tr = (s: string, ctx?: string) => string;
