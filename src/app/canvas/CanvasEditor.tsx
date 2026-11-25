@@ -49,6 +49,8 @@ function geoOf(t: DrawTool, d: Drag): Geo {
   return { x: d.x1 >= d.x0 ? d.x0 : d.x0 - w, y: d.y1 >= d.y0 ? d.y0 : d.y0 - h, w, h, angle: 0 };
 }
 
+const ALL_ANCHORS = ["top-left", "top-center", "top-right", "middle-right", "bottom-right", "bottom-center", "bottom-left", "middle-left"];
+
 // Iconos Phosphor del raíl, por sección
 const RAIL_ICONS: Record<string, PhosphorIcon> = { text: TextTIcon, shapes: ShapesIcon, objects: ForkKnifeIcon, images: ImageIcon, ai: SparkleIcon, pages: FilesIcon, sheet: LayoutIcon, layers: StackIcon, archive: ArchiveIcon };
 
@@ -562,6 +564,8 @@ export default function CanvasEditor() {
       window.removeEventListener("touchend", up);
     };
   });
+  // Solo líneas seleccionadas: se estiran por los lados y se giran; no tienen alto que acotar
+  const onlyLines = sels.length > 0 && sels.every((id) => els.find((x) => x.id === id)?.type === "line");
   const draftEl: El | null = tool && drag ? { ...tool.make(geoOf(tool, drag), "draft"), opacity: 0.7 } : null;
 
   const selEls = els.filter((x) => sels.includes(x.id));
@@ -1388,7 +1392,7 @@ export default function CanvasEditor() {
         ))}
       </aside>
 
-      <main ref={wrap} className={`${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:block md:px-6 md:pb-6`}>
+      <main ref={wrap} style={{ backgroundColor: "#ffffff" }} className={`${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:block md:px-6 md:pb-6`}>
         {/* sticky dentro de la zona que se desplaza (no fixed): las bolas quedan dentro de su caja, como en el editor principal */}
         <div className="pointer-events-none sticky top-1/2 z-20 -mb-5 h-0">
           <div role="group" aria-label={`Zoom ${pct}%`} className="pointer-events-auto absolute right-0 flex -translate-y-1/2 flex-col gap-2">
@@ -1511,7 +1515,7 @@ export default function CanvasEditor() {
               {guides.v.map((x) => <Line key={"v" + x} points={[x, 0, x, h]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
               {guides.h.map((y) => <Line key={"h" + y} points={[0, y, w, y]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
               {marquee && <Rect x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h} fill={PALETTE[1].hex} opacity={0.18} stroke={PALETTE[1].hex} strokeWidth={1 / zoom} listening={false} />}
-              <Transformer ref={trRef} shouldOverdrawWholeArea borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" anchorSize={coarse ? 26 : 10} anchorCornerRadius={coarse ? 13 : 0} rotateAnchorOffset={coarse ? 40 : 50} rotateEnabled keepRatio={false} boundBoxFunc={(o, n) => (n.width < 5 || n.height < 5 ? o : n)} />
+              <Transformer ref={trRef} shouldOverdrawWholeArea borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" anchorSize={coarse ? 26 : 10} anchorCornerRadius={coarse ? 13 : 0} rotateAnchorOffset={coarse ? 40 : 50} rotateEnabled keepRatio={false} enabledAnchors={onlyLines ? ["middle-left", "middle-right"] : ALL_ANCHORS} boundBoxFunc={(o, n) => (n.width < 5 || (!onlyLines && n.height < 5) ? o : n)} />
             </Layer>
           </Stage>
           {editEl && (
