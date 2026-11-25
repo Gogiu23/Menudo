@@ -53,6 +53,7 @@ export type TextEl = Base & {
   fontFamily: FontKey;
   bold: boolean;
   italic: boolean;
+  underline?: boolean;
   align: "left" | "center" | "right";
   lineHeight?: number;
   // Número de mesa: al exportar, su texto se sustituye por el de cada copia (o queda vacío); en pantalla es solo un aviso

@@ -1177,19 +1177,19 @@ export default function CanvasEditor() {
   };
   // Barra de texto (como en Canva): en la cabecera, en lugar del aviso, cuando la selección tiene algún texto. Cambia todos los textos seleccionados
   const tx = mTexts[0];
-  const barBtn = `grid size-9 shrink-0 place-items-center rounded-lg text-ink/80 hover:bg-laguna/30 ${focus}`;
+  const barBtn = `glow grid size-9 shrink-0 place-items-center rounded-lg text-ink/80 hover:bg-laguna/30 ${focus}`;
   const barOn = "bg-laguna/40 text-ink";
   const stepSize = (k: number) => tx && putSel(isText, { fontSize: Math.max(2, Math.round((tx.fontSize + k) * 10) / 10) });
   const textBar = tx && !editing && (
     <div className="relative flex min-w-0 flex-1 justify-center">
-      <div role="toolbar" aria-label={tr("Testo")} className="flex max-w-full items-center gap-1 overflow-x-auto"
+      <div role="toolbar" aria-label={tr("Testo")} className="flex items-center gap-1"
         onKeyDown={(e) => e.key === "Escape" && fontOpen && (e.stopPropagation(), setFontOpen(false))}>
-        <button type="button" aria-haspopup="true" aria-expanded={fontOpen} title={tr("Carattere")} className={`flex h-9 w-36 shrink-0 items-center justify-between gap-1 rounded-lg border border-laguna px-2.5 text-[15px] hover:bg-laguna/30 ${focus}`}
+        <button type="button" aria-haspopup="true" aria-expanded={fontOpen} title={tr("Carattere")} className={`glow flex h-9 w-36 shrink-0 items-center justify-between gap-1 rounded-lg border border-laguna px-2.5 text-[15px] hover:bg-laguna/30 ${focus}`}
           style={{ fontFamily: (() => { const f = FONTS.find((x) => x.key === tx.fontFamily); return f ? `var(${f.cssVar}), ${f.fallback}` : undefined; })() }} onClick={() => setFontOpen((o) => !o)}>
           <span className="truncate">{FONTS.find((x) => x.key === tx.fontFamily)?.label ?? tx.fontFamily}</span>
           <span aria-hidden className="text-xs text-ink/60">▾</span>
         </button>
-        <div className="flex h-9 shrink-0 items-center rounded-lg border border-laguna">
+        <div className="glow flex h-9 shrink-0 items-center rounded-lg border border-laguna">
           <button type="button" className={`${barBtn} size-8`} aria-label={tr("Riduci dimensione")} onClick={() => stepSize(-0.5)}>−</button>
           <input type="number" aria-label={tr("Dimensione (mm)")} title={tr("Dimensione (mm)")} min={2} step={0.5} value={Math.round(tx.fontSize * 10) / 10}
             onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v >= 2) putSel(isText, { fontSize: v }); }}
@@ -1204,6 +1204,7 @@ export default function CanvasEditor() {
         <span aria-hidden className="mx-0.5 h-6 w-px shrink-0 bg-laguna" />
         <Tip label={tr("Grassetto")}><button type="button" aria-pressed={tx.bold} aria-label={tr("Grassetto")} className={`${barBtn} font-bold ${tx.bold ? barOn : ""}`} onClick={() => putSel(isText, { bold: !tx.bold })}>B</button></Tip>
         <Tip label={tr("Corsivo")}><button type="button" aria-pressed={tx.italic} aria-label={tr("Corsivo")} className={`${barBtn} font-serif italic ${tx.italic ? barOn : ""}`} onClick={() => putSel(isText, { italic: !tx.italic })}>I</button></Tip>
+        <Tip label={tr("Sottolineato")}><button type="button" aria-pressed={!!tx.underline} aria-label={tr("Sottolineato")} className={`${barBtn} underline underline-offset-2 ${tx.underline ? barOn : ""}`} onClick={() => putSel(isText, { underline: !tx.underline })}>U</button></Tip>
         {(["left", "center", "right"] as const).map((al) => {
           const t = tr(`Allinea testo ${al === "left" ? "a sinistra" : al === "center" ? "al centro" : "a destra"}`);
           return (
@@ -1215,13 +1216,13 @@ export default function CanvasEditor() {
           );
         })}
         <span aria-hidden className="mx-0.5 h-6 w-px shrink-0 bg-laguna" />
-        <label title={tr("Interlinea")} className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-laguna pl-2 text-xs text-ink/70">
+        <label title={tr("Interlinea")} className="glow flex h-9 shrink-0 items-center gap-1 rounded-lg border border-laguna pl-2 text-xs text-ink/70">
           <span aria-hidden>↕</span>
           <input type="number" aria-label={tr("Interlinea")} min={0.5} step={0.1} value={tx.lineHeight ?? 1.2}
             onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v >= 0.5) putSel(isText, { lineHeight: v }); }}
             className="w-12 bg-transparent text-center text-sm text-ink tabular-nums outline-none" />
         </label>
-        <Tip label={tr("Copia stile")}><button type="button" aria-label={tr("Copia stile")} className={barBtn} onClick={() => setStyleClip({ fontFamily: tx.fontFamily, fontSize: tx.fontSize, bold: tx.bold, italic: tx.italic, align: tx.align, fill: tx.fill, grad: tx.grad, lineHeight: tx.lineHeight, opacity: tx.opacity })}><Icon d={ICONS.copy} className="size-[18px]" /></button></Tip>
+        <Tip label={tr("Copia stile")}><button type="button" aria-label={tr("Copia stile")} className={barBtn} onClick={() => setStyleClip({ fontFamily: tx.fontFamily, fontSize: tx.fontSize, bold: tx.bold, italic: tx.italic, underline: tx.underline, align: tx.align, fill: tx.fill, grad: tx.grad, lineHeight: tx.lineHeight, opacity: tx.opacity })}><Icon d={ICONS.copy} className="size-[18px]" /></button></Tip>
         <Tip label={tr("Applica stile")}><button type="button" aria-label={tr("Applica stile")} disabled={!styleClip} className={`${barBtn} text-[13px] font-semibold disabled:opacity-40`} onClick={() => styleClip && putSel(isText, styleClip)}>{tr("Applica")}</button></Tip>
       </div>
       {fontOpen && (
@@ -1603,7 +1604,7 @@ export default function CanvasEditor() {
               {tr("Menù")}
             </Link>
           </Tip>
-          <Link href="/" aria-label="Menudo" className={`hidden rounded-md sm:block ${focus}`}>
+          <Link href="/" aria-label="Menudo" className={`hidden rounded-md ${textBar ? "" : "sm:block"} ${focus}`}>
             <Brand />
           </Link>
           {textBar || (
@@ -1639,7 +1640,7 @@ export default function CanvasEditor() {
             title={tr("Stampa")} disabled={busy} onClick={print}
           >
             <Icon d={ICONS.print} className="size-[18px]" />
-            {tr("Stampa")}
+            {!textBar && tr("Stampa")}
           </button>
         </div>
       </header>
@@ -1792,7 +1793,7 @@ export default function CanvasEditor() {
                 if (el.type === "text")
                   return (
                     <Text key={el.id} {...props} onTransform={textLive} visible={el.visible && editing !== el.id} onDblClick={() => setEditing(el.id)} onDblTap={() => setEditing(el.id)} name={el.table ? "table-number" : undefined} height={undefined} text={el.text} fontSize={el.fontSize} {...fillGrad(el.fill, el.grad, el.width, el.fontSize * (el.lineHeight ?? 1.2) * Math.max(1, el.text.split("\n").length))} fontFamily={fontFamily(el.fontFamily)} align={el.align}
-                      fontStyle={fontStyleOf(el)} lineHeight={el.lineHeight ?? 1.2} />
+                      fontStyle={fontStyleOf(el)} textDecoration={el.underline ? "underline" : ""} lineHeight={el.lineHeight ?? 1.2} />
                   );
                 if (el.type === "rect") return <Rect key={el.id} {...props} {...(el.hollow ? { fill: "transparent", ...strokeGrad(el.fill, el.grad, el.width, el.height), strokeWidth: el.borderW ?? 1 } : { ...fillGrad(el.fill, el.grad, el.width, el.height), stroke: el.stroke, strokeWidth: el.strokeW })} cornerRadius={el.radius} />;
                 if (el.type === "tiles") return <TilesNode key={el.id} el={el} {...props} />;
@@ -1825,7 +1826,7 @@ export default function CanvasEditor() {
               onKeyDown={(e) => { if (e.key === "Escape" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) { e.preventDefault(); e.currentTarget.blur(); } }}
               style={{
                 left: editEl.x * zoom, top: editEl.y * zoom, width: editEl.width * zoom, fontSize: editEl.fontSize * zoom, lineHeight: editEl.lineHeight ?? 1.2,
-                fontFamily: fontFamily(editEl.fontFamily), fontWeight: editEl.bold ? 700 : 400, fontStyle: editEl.italic ? "italic" : "normal",
+                fontFamily: fontFamily(editEl.fontFamily), fontWeight: editEl.bold ? 700 : 400, fontStyle: editEl.italic ? "italic" : "normal", textDecoration: editEl.underline ? "underline" : "none",
                 textAlign: editEl.align, color: editEl.fill, opacity: editEl.opacity, transform: `rotate(${editEl.rotation}deg)`, transformOrigin: "0 0",
               }}
               className="absolute z-10 m-0 block resize-none overflow-hidden border-0 bg-transparent p-0 outline-2 outline-offset-2 outline-mare"
