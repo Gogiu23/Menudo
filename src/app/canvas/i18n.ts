@@ -234,6 +234,15 @@ const ES: Record<string, string> = {
   "Scegli una forma e trascina sulla carta per disegnarla. Maiusc la mantiene proporzionata.": "Elige una forma y arrastra sobre la hoja para dibujarla. Mayús la mantiene proporcionada.",
   "Icone semplici: scegline una e trascina sulla carta per disegnarla. Poi cambia colore e misura.": "Iconos sencillos: elige uno y arrastra sobre la hoja para dibujarlo. Luego cambia el color y el tamaño.",
   "Trascina sulla carta per disegnare · Esc annulla": "Arrastra sobre la hoja para dibujar · Esc cancela",
+  "Riempimento": "Relleno",
+  "Pieno": "Con relleno",
+  "Solo bordo": "Solo borde",
+  "Spessore bordo (mm)": "Grosor del borde (mm)",
+  "Retti": "Rectas",
+  "Morbidi": "Suaves",
+  "Arrotondati": "Redondeadas",
+  "Bordi dell'immagine": "Bordes de la imagen",
+  "Seleziona un'immagine per arrotondarne gli angoli.": "Selecciona una imagen para redondear sus esquinas.",
 };
 
 export type Tr = (s: string, ctx?: string) => string;

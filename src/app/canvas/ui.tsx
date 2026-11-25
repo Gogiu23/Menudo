@@ -129,8 +129,20 @@ export function ColorRow({ value, onChange, tr, label, palette = PALETTE }: { va
       <label title={tr("Altro colore")} className="relative size-7 cursor-pointer rounded-full p-[2.5px] ring-offset-2 ring-offset-surface focus-within:ring-2 focus-within:ring-mare"
         style={{ background: "conic-gradient(#ff5f5f, #ffd24d, #7bd86b, #4dd4e8, #5b8cff, #c26bff, #ff5f5f)" }}>
         <span className="block size-full rounded-full ring-2 ring-surface" style={{ background: value }} />
-        <input type="color" aria-label={`${label}: ${tr("Altro colore")}`} className="absolute inset-0 size-full cursor-pointer opacity-0" value={value} onChange={(e) => onChange(e.target.value)} />
+        <input type="color" aria-label={`${label}: ${tr("Altro colore")}`} className="absolute inset-0 size-full cursor-pointer opacity-0" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"} onChange={(e) => onChange(e.target.value)} />
       </label>
+    </div>
+  );
+}
+
+// Selector de dos o más opciones (como «Tinta unita / Sfumatura»)
+export function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: readonly (readonly [T, string])[]; onChange: (v: T) => void; label: string }) {
+  const seg = (on: boolean) => `h-8 flex-1 rounded-md px-2 text-[13px] font-semibold ${focus} ${on ? "bg-surface shadow-sm" : "text-ink/70 hover:text-ink"}`;
+  return (
+    <div role="group" aria-label={label} className="flex rounded-lg bg-laguna/25 p-0.5">
+      {options.map(([v, t]) => (
+        <button key={v} type="button" aria-pressed={value === v} className={seg(value === v)} onClick={() => onChange(v)}>{t}</button>
+      ))}
     </div>
   );
 }

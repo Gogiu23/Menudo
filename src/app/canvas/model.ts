@@ -43,7 +43,8 @@ export function fontFamily(key: FontKey) {
 
 // Degradado lineal del color del elemento (`fill`) hasta `to`; angle en grados: 0 = de izquierda a derecha, 90 = de arriba abajo
 export type Grad = { to: string; angle: number };
-export type Base = { grad?: Grad; id: string; x: number; y: number; width: number; height: number; rotation: number; opacity: number; visible: boolean; locked: boolean; group?: string };
+// hollow: formas huecas (solo borde, del color del elemento y de grosor borderW en mm)
+export type Base = { hollow?: boolean; borderW?: number; grad?: Grad; id: string; x: number; y: number; width: number; height: number; rotation: number; opacity: number; visible: boolean; locked: boolean; group?: string };
 export type TextEl = Base & {
   type: "text";
   text: string;
@@ -58,7 +59,7 @@ export type TextEl = Base & {
   table?: boolean;
 };
 export type RectEl = Base & { type: "rect"; fill: string; radius: number; stroke?: string; strokeW?: number };
-export type ImageEl = Base & { type: "image"; src: string };
+export type ImageEl = Base & { type: "image"; src: string; radius?: number }; // radius: esquinas redondeadas, en mm
 // Baldosa de mayólica del editor principal: `fill` es el color, `k` el tamaño de la baldosa
 export type TilesEl = Base & { type: "tiles"; fill: string; k: number };
 // Línea horizontal de `width` mm; `fill` es su color. Con dash sale punteada (guías de precio)

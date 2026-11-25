@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { flushSync } from "react-dom";
-import { Image as KImage, Layer, Line, Rect, Shape as KShape, Stage, Text, Transformer } from "react-konva";
+import { Layer, Line, Rect, Shape as KShape, Stage, Text, Transformer } from "react-konva";
 import type Konva from "konva";
 
 /* Fase 1: lienzo con papel A2–A5, elementos básicos y transformador.
@@ -13,7 +13,7 @@ import type Konva from "konva";
 import { common, Copies, COPIES, COPY_NAMES, El, FONTS, fontFamily, fontStyleOf, fillGrad, Grad, gradPoints, DARK_PAPER, LEGACY_WHITE, newText, PALETTE, PAPER_WHITE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
-import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, Range, secondary, ShapeIcon, Switch } from "./ui";
+import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, Range, secondary, Seg, ShapeIcon, Switch } from "./ui";
 import { ArchiveIcon, FilesIcon, ForkKnifeIcon, ImageIcon, LayoutIcon, ShapesIcon, SparkleIcon, StackIcon, TextTIcon, type Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { Tip } from "./Tip";
 import { buildTemplate, cleanMenu } from "./templateBuild";
@@ -69,7 +69,37 @@ function useImage(src: string) {
 
 function ImageNode({ el, ...rest }: { el: Extract<El, { type: "image" }> } & Konva.NodeConfig) {
   const img = useImage(el.src);
-  return <KImage image={img} {...rest} />;
+  return (
+    <KShape
+      {...rest}
+      fill="#000"
+      sceneFunc={(ctx, shape) => {
+        if (!img) return;
+        const c = (ctx as unknown as { _context: CanvasRenderingContext2D })._context;
+        const [w, h] = [shape.width(), shape.height()];
+        const r = Math.max(0, Math.min(el.radius ?? 0, w / 2, h / 2));
+        c.save();
+        if (r > 0) {
+          c.beginPath();
+          c.moveTo(r, 0);
+          c.arcTo(w, 0, w, h, r);
+          c.arcTo(w, h, 0, h, r);
+          c.arcTo(0, h, 0, 0, r);
+          c.arcTo(0, 0, w, 0, r);
+          c.closePath();
+          c.clip();
+        }
+        c.drawImage(img, 0, 0, w, h);
+        c.restore();
+      }}
+      hitFunc={(ctx, shape) => {
+        ctx.beginPath();
+        ctx.rect(0, 0, shape.width(), shape.height());
+        ctx.closePath();
+        ctx.fillStrokeShape(shape);
+      }}
+    />
+  );
 }
 
 // Forma vectorial: se dibuja con Path2D escalado a width/height, así el transformador la redimensiona como a cualquier otro elemento
@@ -96,6 +126,12 @@ function ShapeNode({ el, ...rest }: { el: Extract<El, { type: "shape" }> } & Kon
           c.strokeStyle = paint;
           c.lineWidth = 1.7;
           c.lineCap = "round";
+          c.lineJoin = "round";
+          c.stroke(path);
+        } else if (el.hollow) {
+          // Solo borde: el grosor se da en mm, y el trazado está escalado a la caja: se convierte a unidades del trazado
+          c.strokeStyle = paint;
+          c.lineWidth = Math.max(0.2, (el.borderW ?? 1) / ((shape.width() + shape.height()) / 2 / d.vb));
           c.lineJoin = "round";
           c.stroke(path);
         } else {
@@ -982,6 +1018,24 @@ export default function CanvasEditor() {
   const hasTable = hist.pages.some((pg) => pg.some((e) => e.type === "text" && e.table));
 
   // Panel «Elemento»: columna derecha en escritorio y pestaña «Strumenti» en móvil (mismo JSX en los dos sitios)
+  // Esquinas de la imagen seleccionada: cuatro formas rápidas (fracción del lado menor) y los mm exactos
+  const imageCorners =
+    cur?.type === "image" ? (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-1.5">
+          {([["Retti", 0], ["Morbidi", 0.12], ["Arrotondati", 0.3], ["Cerchio", 0.5]] as const).map(([name, f]) => {
+            const m = Math.min(cur.width, cur.height);
+            const on = Math.abs((cur.radius ?? 0) / m - f) < 0.02;
+            return (
+              <button key={name} type="button" aria-pressed={on} className={`${small} justify-center ${on ? "bg-mare/15" : ""}`} onClick={() => patch(cur.id, { radius: f * m })}>
+                {tr(name)}
+              </button>
+            );
+          })}
+        </div>
+        <Num label={tr("Angoli (mm)")} value={cur.radius ?? 0} min={0} onChange={(v) => patch(cur.id, { radius: v })} />
+      </div>
+    ) : null;
   const properties = sels.length > 0 && (
     <div>
       <div className="border-b border-laguna/50 px-5 py-4">
@@ -1051,12 +1105,19 @@ export default function CanvasEditor() {
           <Switch checked={!!cur.table} onChange={(v) => patch(cur.id, { table: v })}>{tr("Numero di tavolo (diverso per ogni copia)")}</Switch>
         </Block>
       )}
+      {cur && (cur.type === "rect" || (cur.type === "shape" && !SHAPES[cur.kind].stroke)) && (
+        <Block title={tr("Riempimento")}>
+          <Seg label={tr("Riempimento")} value={cur.hollow ? "line" : "fill"} onChange={(v) => patch(cur.id, { hollow: v === "line" })} options={[["fill", tr("Pieno")], ["line", tr("Solo bordo")]] as const} />
+          {cur.hollow && <Num label={tr("Spessore bordo (mm)")} value={cur.borderW ?? 1} min={0.1} step={0.1} onChange={(v) => patch(cur.id, { borderW: v })} />}
+        </Block>
+      )}
       {cur && cur.type !== "image" && (
         <Block title={tr("Colore")}>
           <ColorRow value={cur.fill} onChange={(hex) => patch(cur.id, { fill: hex })} tr={tr} label={cur.grad ? tr("Colore iniziale") : tr("Colore")} />
           {cur.type !== "tiles" && <GradientControls fill={cur.fill} grad={cur.grad} onChange={(g) => patch(cur.id, { grad: g })} tr={tr} />}
         </Block>
       )}
+      {imageCorners && <Block title={tr("Bordi dell'immagine")}>{imageCorners}</Block>}
       {cur && (
         <Block title={tr("Aspetto")}>
           <label className="flex items-center gap-2 text-[13px] font-semibold">
@@ -1150,6 +1211,9 @@ export default function CanvasEditor() {
           {tr("Carica un'immagine")}
           <input type="file" accept="image/*" className="sr-only" onChange={(e) => { addImage(e.target.files?.[0]); e.target.value = ""; }} />
         </label>
+        <hr className="border-laguna/50" />
+        <h3 className="text-[13px] font-semibold">{tr("Bordi dell'immagine")}</h3>
+        {imageCorners ?? <p className="text-sm text-ink/70">{tr("Seleziona un'immagine per arrotondarne gli angoli.")}</p>}
         <hr className="border-laguna/50" />
         <h3 className="text-[13px] font-semibold">{tr("Cerca sul web")}</h3>
         <ImageSearch onPick={addImage} tr={tr} lang={lang} />
@@ -1505,7 +1569,7 @@ export default function CanvasEditor() {
                     <Text key={el.id} {...props} onTransform={textLive} visible={el.visible && editing !== el.id} onDblClick={() => setEditing(el.id)} onDblTap={() => setEditing(el.id)} name={el.table ? "table-number" : undefined} height={undefined} text={el.text} fontSize={el.fontSize} {...fillGrad(el.fill, el.grad, el.width, el.fontSize * (el.lineHeight ?? 1.2) * Math.max(1, el.text.split("\n").length))} fontFamily={fontFamily(el.fontFamily)} align={el.align}
                       fontStyle={fontStyleOf(el)} lineHeight={el.lineHeight ?? 1.2} />
                   );
-                if (el.type === "rect") return <Rect key={el.id} {...props} {...fillGrad(el.fill, el.grad, el.width, el.height)} cornerRadius={el.radius} stroke={el.stroke} strokeWidth={el.strokeW} />;
+                if (el.type === "rect") return <Rect key={el.id} {...props} {...(el.hollow ? { fill: "transparent", ...strokeGrad(el.fill, el.grad, el.width, el.height), strokeWidth: el.borderW ?? 1 } : { ...fillGrad(el.fill, el.grad, el.width, el.height), stroke: el.stroke, strokeWidth: el.strokeW })} cornerRadius={el.radius} />;
                 if (el.type === "tiles") return <TilesNode key={el.id} el={el} {...props} />;
                 if (el.type === "line")
                   return <Line key={el.id} {...props} points={[0, 0, el.width, 0]} {...strokeGrad(el.fill, el.grad, el.width, el.thickness, -el.thickness / 2)} strokeWidth={el.thickness} lineCap="round" dash={el.dash ? [0.01, el.thickness * 2] : undefined} hitStrokeWidth={4} />;
