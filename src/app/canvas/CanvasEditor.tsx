@@ -266,7 +266,7 @@ function FontList({ value, onPick, tr }: { value: string; onPick: (k: FontKey) =
     <div role="radiogroup" aria-label={tr("Carattere")} className="max-h-52 space-y-0.5 overflow-y-auto rounded-lg border border-laguna p-1">
       {FONTS.map((f) => (
         <button key={f.key} type="button" role="radio" aria-checked={value === f.key}
-          className={`glow flex w-full items-center rounded-md px-3 py-1.5 text-left text-lg hover:bg-laguna/30 ${focus} ${value === f.key ? "bg-laguna/40 font-semibold" : ""}`}
+          className={`glow glow-soft flex w-full items-center rounded-md px-3 py-1.5 text-left text-lg hover:bg-laguna/30 ${focus} ${value === f.key ? "bg-laguna/40 font-semibold" : ""}`}
           style={{ fontFamily: `var(${f.cssVar}), ${f.fallback}` }} onClick={() => onPick(f.key)}>
           {f.label}
         </button>
@@ -1172,7 +1172,7 @@ export default function CanvasEditor() {
     setMarquee(null);
   };
 
-  const ball = `glow grid size-11 place-items-center rounded-full bg-surface text-ink shadow-[0_8px_24px_-8px_rgb(14_26_43/0.45)] ring-1 ring-laguna/60 lift hover:text-mare disabled:pointer-events-none disabled:opacity-40 ${focus}`;
+  const ball = `glow glow-soft grid size-11 place-items-center rounded-full bg-surface text-ink shadow-[0_8px_24px_-8px_rgb(14_26_43/0.45)] ring-1 ring-laguna/60 lift hover:text-mare disabled:pointer-events-none disabled:opacity-40 ${focus}`;
   const small = `${secondary} px-3 py-1.5 text-xs`;
   const pillOpt = (on: boolean) => (on ? chipOn : chip);
   const pct = Math.round(Math.min(mul, maxMul) * 100);
@@ -1321,7 +1321,7 @@ export default function CanvasEditor() {
               <span className="min-w-0 flex-1">
                 {tr("Collegato all'editor normale")}: <b>{linkLabel(cur.link, tr)}</b>
               </span>
-              <button type="button" className={`glow rounded-md px-2 py-1 font-semibold hover:bg-laguna/40 ${focus}`} title={tr("Il testo non si aggiornerà più con l'editor normale")} onClick={() => patch(cur.id, { link: undefined })}>{tr("Scollega")}</button>
+              <button type="button" className={`glow glow-soft rounded-md px-2 py-1 font-semibold hover:bg-laguna/40 ${focus}`} title={tr("Il testo non si aggiornerà più con l'editor normale")} onClick={() => patch(cur.id, { link: undefined })}>{tr("Scollega")}</button>
             </div>
           )}
           <Switch checked={!!cur.table} onChange={(v) => patch(cur.id, { table: v })}>{tr("Numero di tavolo (diverso per ogni copia)")}</Switch>
@@ -1507,7 +1507,7 @@ export default function CanvasEditor() {
       <>
         <p className="text-sm text-ink/70">{tr("Descrivi il tuo locale e lo stile che vuoi: creo un modello come nuova pagina.")}</p>
         <div>
-          <span className="glow block rounded-lg">
+          <span className="glow glow-soft block rounded-lg">
             <textarea
               className={`${input} block h-28 resize-none`} maxLength={500} aria-label={tr("Descrizione del modello")} placeholder={tr("Es. pizzeria elegante, toni caldi")}
               value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)}
@@ -1579,7 +1579,7 @@ export default function CanvasEditor() {
               {COPY_NAMES[copies].map((where, c) => (
                 <label key={c} className="flex items-center justify-between gap-2 text-sm">
                   {tr(where)}
-                  <span className="glow block w-24 shrink-0 rounded-lg">
+                  <span className="glow glow-soft block w-24 shrink-0 rounded-lg">
                     <input
                       className={`${input} text-center`} maxLength={4} inputMode="numeric" placeholder={tr("a penna")}
                       value={tables[c] ?? ""}
@@ -1658,8 +1658,8 @@ export default function CanvasEditor() {
                   {label(e, tr)}
                   {e.group && <span className="ml-1 text-xs text-ink/45">{tr("gruppo")}</span>}
                 </button>
-                <button title={tr("Mostra o nascondi")} aria-label={tr("Mostra o nascondi")} aria-pressed={!e.visible} className="glow grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { visible: !e.visible })}><Icon d={e.visible ? ICONS.eye : ICONS.eyeOff} className="size-4" /></button>
-                <button title={tr("Blocca o sblocca")} aria-label={tr("Blocca o sblocca")} aria-pressed={e.locked} className="glow grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { locked: !e.locked })}><Icon d={e.locked ? ICONS.lock : ICONS.unlock} className="size-4" /></button>
+                <button title={tr("Mostra o nascondi")} aria-label={tr("Mostra o nascondi")} aria-pressed={!e.visible} className="glow glow-soft grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { visible: !e.visible })}><Icon d={e.visible ? ICONS.eye : ICONS.eyeOff} className="size-4" /></button>
+                <button title={tr("Blocca o sblocca")} aria-label={tr("Blocca o sblocca")} aria-pressed={e.locked} className="glow glow-soft grid size-8 place-items-center rounded-md text-ink/60 hover:bg-laguna/30 hover:text-ink" onClick={() => patch(e.id, { locked: !e.locked })}><Icon d={e.locked ? ICONS.lock : ICONS.unlock} className="size-4" /></button>
               </li>
                 );
               });
@@ -1693,7 +1693,7 @@ export default function CanvasEditor() {
           {saveError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">{tr("Non c'è spazio per salvare: ci sono troppe immagini. Il lavoro non verrà ripristinato se ricarichi.")}</p>}
         <hr className="border-laguna/50" />
           <div className="flex gap-2">
-            <span className="glow block min-w-0 flex-1 rounded-lg">
+            <span className="glow glow-soft block min-w-0 flex-1 rounded-lg">
               <input
                 aria-label={tr("Nome del design")} className={input} placeholder={tr("Nome del design")} value={designName}
                 onChange={(e) => setDesignName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveDesign()}
@@ -1705,7 +1705,7 @@ export default function CanvasEditor() {
           <ul className="space-y-2">
             {saved.map((d) => (
               <li key={d.id} className="glow flex items-center gap-2 rounded-lg bg-surface px-3 py-2 ring-1 ring-laguna/60">
-                <button className={`glow min-w-0 flex-1 rounded-md text-left ${focus}`} onClick={() => openDesign(d)} title={`${tr("Apri")} «${d.name}»`}>
+                <button className={`glow glow-soft min-w-0 flex-1 rounded-md text-left ${focus}`} onClick={() => openDesign(d)} title={`${tr("Apri")} «${d.name}»`}>
                   <p className="truncate text-sm font-semibold">{d.name}</p>
                   <p className="text-xs text-ink/55">
                     {d.doc.paper} · {d.doc.pages.length} {tr(d.doc.pages.length === 1 ? "pagina" : "pagine")} · {new Date(d.savedAt).toLocaleDateString(lang === "es" ? "es-ES" : "it-IT", { day: "numeric", month: "short" })}
@@ -1729,12 +1729,12 @@ export default function CanvasEditor() {
       <header className="shrink-0 border-b border-laguna/60 bg-app pt-[env(safe-area-inset-top)]">
         <div className="flex h-16 items-center gap-2 px-3 pt-2 md:h-20 md:gap-3 md:px-4">
           <Tip label={tr("Torna al menù")} hint={tr("Esci dall'editor libero. Le modifiche sono già salvate.")}>
-            <Link href="/" className={`glow inline-flex h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold hover:bg-laguna/30 md:h-9 ${focus}`}>
+            <Link href="/" className={`glow glow-soft inline-flex h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold hover:bg-laguna/30 md:h-9 ${focus}`}>
               <Icon d={ICONS.left} className="size-[18px]" />
               {tr("Menù")}
             </Link>
           </Tip>
-          <Link href="/" aria-label="Menudo" className={`glow hidden shrink-0 rounded-md sm:block ${focus}`}>
+          <Link href="/" aria-label="Menudo" className={`glow glow-soft hidden shrink-0 rounded-md sm:block ${focus}`}>
             <Brand />
           </Link>
           {textBar || (
@@ -1755,7 +1755,7 @@ export default function CanvasEditor() {
           <div role="group" aria-label={tr("Lingua")} className="flex shrink-0 rounded-lg bg-laguna/25 p-0.5">
             {(["it", "es"] as const).map((l) => (
               <button key={l} lang={l} aria-label={l === "it" ? "Italiano" : "Español"} aria-pressed={lang === l} title={l === "it" ? "Italiano" : "Español"} onClick={() => changeLang(l)}
-                className={`glow h-10 min-w-9 rounded-md px-2 text-xs font-semibold md:h-8 ${focus} ${lang === l ? "bg-surface shadow-sm" : "text-ink/70 hover:text-ink"}`}>
+                className={`glow glow-soft h-10 min-w-9 rounded-md px-2 text-xs font-semibold md:h-8 ${focus} ${lang === l ? "bg-surface shadow-sm" : "text-ink/70 hover:text-ink"}`}>
                 {l.toUpperCase()}
               </button>
             ))}
@@ -1766,7 +1766,7 @@ export default function CanvasEditor() {
             </button>
           </Tip>
           <button
-            className={`glow hidden h-9 shrink-0 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white lift hover:brightness-110 disabled:opacity-50 md:inline-flex ${focus}`}
+            className={`glow glow-soft hidden h-9 shrink-0 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white lift hover:brightness-110 disabled:opacity-50 md:inline-flex ${focus}`}
             title={tr("Stampa")} disabled={busy} onClick={print}
           >
             <Icon d={ICONS.print} className="size-[18px]" />
@@ -1824,7 +1824,7 @@ export default function CanvasEditor() {
         {hist.pages.length > 1 && (
                       <div role="tablist" aria-label={tr("Pagine")} className="mt-5 flex flex-wrap justify-center gap-1.5 pt-3">
               {hist.pages.map((_, i) => (
-                <button key={i} role="tab" aria-selected={i === page} className={`glow grid size-9 place-items-center rounded-full text-sm font-semibold shadow-[0_8px_24px_-8px_rgb(14_26_43/0.45)] ring-1 ring-laguna/60 lift ${focus} ${i === page ? "bg-brand text-white" : "bg-surface"}`} onClick={() => goPage(i)}>{i + 1}</button>
+                <button key={i} role="tab" aria-selected={i === page} className={`glow glow-soft grid size-9 place-items-center rounded-full text-sm font-semibold shadow-[0_8px_24px_-8px_rgb(14_26_43/0.45)] ring-1 ring-laguna/60 lift ${focus} ${i === page ? "bg-brand text-white" : "bg-surface"}`} onClick={() => goPage(i)}>{i + 1}</button>
               ))}
             </div>
         )}
@@ -1982,20 +1982,20 @@ export default function CanvasEditor() {
       )}
       <nav aria-label={tr("Sezioni")} className="fixed inset-x-0 bottom-0 grid grid-cols-5 border-t border-laguna/60 bg-surface/95 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden">
         {([["canvas", tr("Carta", "tab"), ICONS.canvas], ["tools", tr("Strumenti"), ICONS.tools]] as const).map(([id, t, icon]) => (
-          <button key={id} aria-current={tab === id ? "page" : undefined} className={`glow flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs ${focus} ${tab === id ? "font-semibold" : "text-ink/65"}`} onClick={() => setTab(id)}>
+          <button key={id} aria-current={tab === id ? "page" : undefined} className={`glow glow-soft flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs ${focus} ${tab === id ? "font-semibold" : "text-ink/65"}`} onClick={() => setTab(id)}>
             <span className={`grid h-7 w-12 place-items-center rounded-full transition-colors ${tab === id ? "bg-laguna/50" : ""}`}><Icon d={icon} /></span>
             {t}
           </button>
         ))}
-        <button className={`glow flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs text-ink/65 disabled:opacity-40 ${focus}`} disabled={!hist.past.length} onClick={undo}>
+        <button className={`glow glow-soft flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs text-ink/65 disabled:opacity-40 ${focus}`} disabled={!hist.past.length} onClick={undo}>
           <span className="grid h-7 w-12 place-items-center rounded-full"><Icon d={ICONS.undo} /></span>
           {tr("Annulla")}
         </button>
-        <button aria-pressed={multi} className={`glow flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs ${focus} ${multi ? "font-semibold" : "text-ink/65"}`} onClick={() => setMulti((v) => !v)}>
+        <button aria-pressed={multi} className={`glow glow-soft flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs ${focus} ${multi ? "font-semibold" : "text-ink/65"}`} onClick={() => setMulti((v) => !v)}>
           <span className={`grid h-7 w-12 place-items-center rounded-full transition-colors ${multi ? "bg-laguna/50" : ""}`}><Icon d={ICONS.select} /></span>
           {tr("Multi")}
         </button>
-        <button className={`glow flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs font-semibold disabled:opacity-50 ${focus}`} disabled={busy} onClick={print}>
+        <button className={`glow glow-soft flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs font-semibold disabled:opacity-50 ${focus}`} disabled={busy} onClick={print}>
           <span className="grid h-7 w-12 place-items-center rounded-full bg-brand text-white"><Icon d={ICONS.print} /></span>
           {tr("Stampa")}
         </button>

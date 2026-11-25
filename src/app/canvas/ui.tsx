@@ -7,13 +7,13 @@ import type { Tr } from "./i18n";
 
 export const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink";
 export const input = `w-full rounded-lg border border-transparent bg-laguna/20 px-3 py-2.5 text-base transition-[background-color,box-shadow,border-color] placeholder:text-ink/45 hover:bg-laguna/30 focus:border-mare focus:bg-surface focus:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-mare)_22%,transparent)] focus:outline-none md:py-2 md:text-[0.95em]`;
-export const primary = `glow inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 font-semibold text-white lift hover:brightness-110 ${focus}`;
+export const primary = `glow glow-soft inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 font-semibold text-white lift hover:brightness-110 ${focus}`;
 // relative: contiene el input sr-only (absolute) del botón de subir imagen
 export const secondary = `relative inline-flex cursor-pointer items-center gap-2 rounded-lg border border-mare bg-surface px-3 py-2 text-sm font-semibold glow lift hover:bg-laguna/25 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink disabled:pointer-events-none disabled:opacity-40`;
 export const iconBtn = `grid size-11 shrink-0 place-items-center rounded-lg text-ink/70 glow lift hover:bg-laguna/30 hover:text-ink disabled:pointer-events-none disabled:opacity-25 md:size-9 ${focus}`;
 // Opciones excluyentes (papel, copias): pastilla gris azulada, y con el degradado de la marca cuando está elegida
-export const chip = `glow inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-laguna/30 px-3 py-1.5 text-sm font-semibold lift hover:bg-laguna/45 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink`;
-export const chipOn = `glow inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white lift hover:brightness-110 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink`;
+export const chip = `glow glow-soft inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-laguna/30 px-3 py-1.5 text-sm font-semibold lift hover:bg-laguna/45 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink`;
+export const chipOn = `glow glow-soft inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white lift hover:brightness-110 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink`;
 
 export const ICONS = {
   up: "M6 15l6-6 6 6",
@@ -122,11 +122,11 @@ export function ColorRow({ value, onChange, tr, label, palette = PALETTE }: { va
     <div className="flex flex-wrap items-center gap-2">
       {palette.map((c) => (
         <button key={c.hex} type="button" title={tr(c.name)} aria-label={`${label}: ${tr(c.name)}`} aria-pressed={value.toLowerCase() === c.hex.toLowerCase()}
-          className={`glow size-7 rounded-full ring-1 ring-laguna ring-offset-2 ring-offset-surface aria-pressed:ring-2 aria-pressed:ring-mare ${focus}`}
+          className={`glow glow-soft size-7 rounded-full ring-1 ring-laguna ring-offset-2 ring-offset-surface aria-pressed:ring-2 aria-pressed:ring-mare ${focus}`}
           style={{ background: c.hex }} onClick={() => onChange(c.hex)} />
       ))}
       {/* Color libre: aro de arcoíris (indica «otro color») con el color actual dentro; el input nativo va encima, invisible */}
-      <label title={tr("Altro colore")} className="glow size-7 cursor-pointer rounded-full p-[2.5px] ring-offset-2 ring-offset-surface focus-within:ring-2 focus-within:ring-mare"
+      <label title={tr("Altro colore")} className="glow glow-soft size-7 cursor-pointer rounded-full p-[2.5px] ring-offset-2 ring-offset-surface focus-within:ring-2 focus-within:ring-mare"
         style={{ background: "conic-gradient(#ff5f5f, #ffd24d, #7bd86b, #4dd4e8, #5b8cff, #c26bff, #ff5f5f)" }}>
         <span className="block size-full rounded-full ring-2 ring-surface" style={{ background: value }} />
         <input type="color" aria-label={`${label}: ${tr("Altro colore")}`} className="absolute inset-0 size-full cursor-pointer opacity-0" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"} onChange={(e) => onChange(e.target.value)} />
@@ -205,7 +205,7 @@ export function Range({ value, min, max, step, label, format = String, onChange 
 // Interruptor en vez de casilla: el texto a la izquierda y el botón deslizante a la derecha
 export function Switch({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode }) {
   return (
-    <label className="glow -mx-2 flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2 py-1 text-sm">
+    <label className="glow glow-soft -mx-2 flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2 py-1 text-sm">
       <span>{children}</span>
       <input type="checkbox" role="switch" className="peer sr-only" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span aria-hidden className="relative h-6 w-10 shrink-0 rounded-full bg-laguna/60 transition-colors after:absolute after:top-0.5 after:left-0.5 after:size-5 after:rounded-full after:bg-white after:shadow-md after:transition-transform peer-checked:bg-brand peer-checked:after:translate-x-4 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink" />

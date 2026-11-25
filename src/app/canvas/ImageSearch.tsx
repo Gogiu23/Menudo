@@ -54,7 +54,7 @@ export function ImageSearch({ onPick, tr, lang }: { onPick: (f: File) => void; t
   return (
     <div role="search" className="space-y-3">
       <div className="flex gap-2">
-        <div className="glow min-w-0 flex-1 rounded-lg">
+        <div className="glow glow-soft min-w-0 flex-1 rounded-lg">
           <Icon d={ICONS.search} className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink/50" />
         <input
           className={`${input} pl-9`} type="search" aria-label={tr("Cerca immagini")} placeholder={tr("Es. pizza")} value={q}
@@ -70,7 +70,7 @@ export function ImageSearch({ onPick, tr, lang }: { onPick: (f: File) => void; t
             {hits.map((h) => (
               <button
                 key={h.id} type="button" aria-label={tr("Aggiungi immagine")} disabled={adding !== null} onClick={() => pick(h)}
-                className={`glow aspect-square rounded-lg bg-[repeating-conic-gradient(#e5eef0_0_25%,#fff_0_50%)] bg-[length:16px_16px] p-1 ring-1 ring-laguna transition hover:ring-2 hover:ring-mare disabled:opacity-40 ${focus}`}
+                className={`glow glow-soft aspect-square rounded-lg bg-[repeating-conic-gradient(#e5eef0_0_25%,#fff_0_50%)] bg-[length:16px_16px] p-1 ring-1 ring-laguna transition hover:ring-2 hover:ring-mare disabled:opacity-40 ${focus}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- miniatura de Pixabay, no hay nada que optimizar */}
                 <img src={h.thumb} alt="" loading="lazy" className="h-full w-full object-contain" />
