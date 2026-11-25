@@ -72,11 +72,9 @@ export function ShapeIcon({ kind, className = "size-7" }: { kind: ShapeKind; cla
   );
 }
 
-// weight: trazo fino, normal (por defecto), grueso, o «suave» (trazo normal con relleno translúcido en las figuras cerradas)
-export type IconWeight = "thin" | "regular" | "bold" | "soft";
-export function Icon({ d, className = "size-5", weight = "regular" }: { d: string; className?: string; weight?: IconWeight }) {
+export function Icon({ d, className = "size-5" }: { d: string; className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden className={className} fill={weight === "soft" ? "currentColor" : "none"} fillOpacity={weight === "soft" ? 0.16 : undefined} stroke="currentColor" strokeWidth={weight === "thin" ? 1.3 : weight === "bold" ? 2.4 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" aria-hidden className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d={d} />
     </svg>
   );
