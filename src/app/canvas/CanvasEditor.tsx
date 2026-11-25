@@ -569,7 +569,7 @@ export default function CanvasEditor() {
   const [styleClip, setStyleClip] = useState<Partial<Extract<El, { type: "text" }>> | null>(null);
   const [fontOpen, setFontOpen] = useState(false);
   // Capas: arrastrar una fila (mantener pulsado y mover) la lleva a otro nivel. to = posición en la lista sin la fila arrastrada
-  const [layerDrag, setLayerDrag] = useState<{ id: string; to: number } | null>(null);
+  const [layerDrag, setLayerDrag] = useState<{ id: string; to: number; dy: number; h: number } | null>(null); // dy: cuánto se ha movido el puntero; h: alto de fila + hueco
   const layerPress = useRef<{ id: string; y: number; moved: boolean } | null>(null);
   const layerClickBlock = useRef(false); // lista de letras abierta en la barra de texto
   const lastRef = useRef<Last | null>(null);
@@ -657,8 +657,11 @@ export default function CanvasEditor() {
       const next = rest.reverse();
       return next.every((x, i) => x === a[i]) ? a : next;
     });
-  const layerTarget = (ul: HTMLElement, id: string, y: number) =>
-    [...ul.querySelectorAll<HTMLElement>("li[data-id]")].filter((li) => li.dataset.id !== id).filter((li) => { const r = li.getBoundingClientRect(); return r.top + r.height / 2 < y; }).length;
+  // Se mide con offsetTop (no le afectan los transform de la animación), si no las filas que se apartan cambiarían el destino
+  const layerTarget = (ul: HTMLElement, id: string, y: number) => {
+    const rel = y - ul.getBoundingClientRect().top + ul.offsetTop;
+    return [...ul.querySelectorAll<HTMLElement>("li[data-id]")].filter((li) => li.dataset.id !== id && li.offsetTop + li.offsetHeight / 2 < rel).length;
+  };
   const pick = (id: string, additive: boolean) => {
     const g = els.find((x) => x.id === id)?.group;
     const ids = g ? els.filter((x) => x.group === g).map((x) => x.id) : [id];
@@ -1548,20 +1551,30 @@ export default function CanvasEditor() {
             {(() => {
               const shown = [...els].reverse();
               const others = layerDrag ? shown.filter((x) => x.id !== layerDrag.id) : shown;
-              return shown.map((e) => {
+              return shown.map((e, j) => {
+                const held = layerDrag?.id === e.id;
+                // Las demás filas se apartan con suavidad para dejar hueco donde caerá la arrastrada; esta sigue al puntero
                 const i = others.indexOf(e);
-                const lineTop = layerDrag && layerDrag.id !== e.id && i === layerDrag.to;
-                const lineBottom = layerDrag && layerDrag.id !== e.id && i === others.length - 1 && layerDrag.to === others.length;
+                const shift = layerDrag && !held ? (i + (i >= layerDrag.to ? 1 : 0) - j) * layerDrag.h : 0;
                 return (
-              <li key={e.id} data-id={e.id} className={`glow flex items-center gap-0.5 rounded-lg px-2 py-0.5 ${sels.includes(e.id) ? "bg-laguna/40" : ""} ${layerDrag?.id === e.id ? "opacity-50" : ""} ${lineTop ? "shadow-[inset_0_2px_0_#2f6bff]" : lineBottom ? "shadow-[inset_0_-2px_0_#2f6bff]" : ""}`}>
+              <li key={e.id} data-id={e.id}
+                style={held ? { transform: `translateY(${layerDrag.dy}px) scale(1.03)` } : shift ? { transform: `translateY(${shift}px)` } : undefined}
+                className={`glow flex items-center gap-0.5 rounded-lg px-2 py-0.5 ${sels.includes(e.id) || held ? "bg-laguna/40" : ""} ${held ? "relative z-10 bg-surface shadow-[0_12px_28px_-10px_rgb(14_26_43/0.45)] ring-1 ring-mare/60" : "motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out"}`}>
                 <button title={tr("Trascina per cambiare livello")} className={`min-w-0 flex-1 cursor-grab truncate py-1.5 text-left text-sm active:cursor-grabbing ${focus} ${e.visible ? "" : "text-ink/40 line-through"}`}
-                  onPointerDown={(ev) => { if (ev.button !== 0) return; layerPress.current = { id: e.id, y: ev.clientY, moved: false }; ev.currentTarget.setPointerCapture(ev.pointerId); }}
+                  onPointerDown={(ev) => {
+                    if (ev.button !== 0) return;
+                    layerPress.current = { id: e.id, y: ev.clientY, moved: false };
+                    ev.currentTarget.setPointerCapture(ev.pointerId);
+                    const li = ev.currentTarget.closest("li");
+                    // al pulsar, la fila ya se levanta (se ve que está cogida) aunque aún no se mueva
+                    setLayerDrag({ id: e.id, to: j, dy: 0, h: (li?.offsetHeight ?? 40) + 6 });
+                  }}
                   onPointerMove={(ev) => {
                     const p = layerPress.current;
                     if (!p || (!p.moved && Math.abs(ev.clientY - p.y) < 5)) return;
                     p.moved = true;
                     const ul = ev.currentTarget.closest("ul");
-                    if (ul) setLayerDrag({ id: p.id, to: layerTarget(ul, p.id, ev.clientY) });
+                    if (ul) setLayerDrag((d) => d && { ...d, to: layerTarget(ul, p.id, ev.clientY), dy: ev.clientY - p.y });
                   }}
                   onPointerUp={() => {
                     const p = layerPress.current;
