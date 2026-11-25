@@ -117,10 +117,10 @@ export function Block({ title, children }: { title: string; children: React.Reac
 }
 
 // Muestras de la paleta y un selector libre; `label` da nombre accesible a cada muestra
-export function ColorRow({ value, onChange, tr, label }: { value: string; onChange: (hex: string) => void; tr: Tr; label: string }) {
+export function ColorRow({ value, onChange, tr, label, palette = PALETTE }: { value: string; onChange: (hex: string) => void; tr: Tr; label: string; palette?: readonly { name: string; hex: string }[] }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {PALETTE.map((c) => (
+      {palette.map((c) => (
         <button key={c.hex} type="button" title={tr(c.name)} aria-label={`${label}: ${tr(c.name)}`} aria-pressed={value.toLowerCase() === c.hex.toLowerCase()}
           className={`size-7 rounded-full ring-1 ring-laguna ring-offset-2 ring-offset-surface aria-pressed:ring-2 aria-pressed:ring-mare ${focus}`}
           style={{ background: c.hex }} onClick={() => onChange(c.hex)} />

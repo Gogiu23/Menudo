@@ -10,7 +10,7 @@ import type Konva from "konva";
    Fase 2: panel de propiedades completo y panel de capas (orden, ocultar, bloquear, duplicar).
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
-import { common, Copies, COPIES, COPY_NAMES, El, FONTS, fontFamily, fontStyleOf, fillGrad, Grad, gradPoints, newText, PALETTE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
+import { common, Copies, COPIES, COPY_NAMES, El, FONTS, fontFamily, fontStyleOf, fillGrad, Grad, gradPoints, newText, PALETTE, PAPER_WHITE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
 import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, Range, secondary, ShapeIcon, Switch } from "./ui";
@@ -116,7 +116,10 @@ const cleanPages = (pages: El[][]): El[][] =>
       .filter((e) => e && typeof e === "object" && (e.type !== "shape" || e.kind in SHAPES))
       .map((e) => (e.grad ? { ...e, grad: okGrad(e.grad) } : e)),
   );
-const okBg = (v: unknown) => (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v : "#ffffff");
+// El blanco puro de versiones anteriores (era el valor por defecto) pasa al blanco roto actual
+const okBg = (v: unknown) => (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? (v.toLowerCase() === "#ffffff" ? PAPER_WHITE : v) : PAPER_WHITE);
+// En el selector de la hoja, «Bianco» es el blanco roto de la hoja
+const SHEET_PALETTE = PALETTE.map((c) => (c.name === "Bianco" ? { ...c, hex: PAPER_WHITE } : c));
 const MAX_HISTORY = 100;
 const THEME_KEY = "menudo:theme"; // el mismo que el editor principal
 type History = { past: El[][][]; pages: El[][]; future: El[][][] }; // cada paso del historial guarda todas las páginas
@@ -134,7 +137,7 @@ function load(): { paper: Paper; copies: Copies; pages: El[][]; tables: string[]
       if (Array.isArray(raw.els)) return { paper: raw.paper, copies, pages: cleanPages([raw.els]), tables, bg, bgGrad }; // formato de las fases 3-10: una sola página
     }
   } catch {}
-  return { paper: "A4", copies: 1, pages: [starter()], tables: [], bg: "#ffffff" };
+  return { paper: "A4", copies: 1, pages: [starter()], tables: [], bg: PAPER_WHITE };
 }
 
 // Reduce la foto: las del móvil pesan varios MB y no caben en localStorage
@@ -570,11 +573,16 @@ export default function CanvasEditor() {
     const targetW = (w / MM_PER_INCH) * DPI;
     const targetH = (h / MM_PER_INCH) * DPI;
     const k = Math.min(1, Math.sqrt(MAX_PIXELS / (targetW * targetH * n))); // n copias = n veces los píxeles
+    // En pantalla la hoja es blanco roto para verse sobre la mesa; al exportar o imprimir sale blanco puro
+    const sheet = stage.findOne(".paper") as Konva.Rect | undefined;
+    const screenFill = sheet?.fill();
+    if (sheet && !bgGrad && bg === PAPER_WHITE) sheet.fill("#ffffff");
     tr.visible(false);
     try {
       return { url: stage.toDataURL({ pixelRatio: (targetW * k) / (w * zoom), mimeType: "image/png" }), dpi: Math.round(DPI * k) };
     } finally {
       tr.visible(true);
+      if (sheet && screenFill) sheet.fill(screenFill);
     }
   };
   // La hoja lista para imprimir: la carta repetida en el folio (una sola imagen con 1 copia)
@@ -1106,7 +1114,7 @@ export default function CanvasEditor() {
       <>
           <fieldset className="space-y-3">
             <legend className="mb-1.5 text-sm font-semibold">{tr("Colore della carta")}</legend>
-            <ColorRow value={bg} onChange={setBg} tr={tr} label={bgGrad ? tr("Colore iniziale") : tr("Colore della carta")} />
+            <ColorRow value={bg} onChange={setBg} palette={SHEET_PALETTE} tr={tr} label={bgGrad ? tr("Colore iniziale") : tr("Colore della carta")} />
             <GradientControls fill={bg} grad={bgGrad} onChange={setBgGrad} tr={tr} />
           </fieldset>
           <fieldset>
@@ -1187,7 +1195,7 @@ export default function CanvasEditor() {
             <button className={secondary} disabled={busy} onClick={exportPdf}><Icon d={ICONS.download} className="size-4" />PDF</button>
             <button className={secondary} disabled={busy} onClick={exportPng}><Icon d={ICONS.download} className="size-4" />PNG</button>
             <button className={secondary} disabled={busy} onClick={print}><Icon d={ICONS.print} className="size-4" />{tr("Stampa")}</button>
-            <button className={secondary} onClick={() => { if (confirm(tr("Cancellare tutto e ricominciare?"))) { setPages(() => [starter()]); setBg("#ffffff"); setBgGrad(undefined); goPage(0); } }}><Icon d={ICONS.reset} className="size-4" />{tr("Nuovo")}</button>
+            <button className={secondary} onClick={() => { if (confirm(tr("Cancellare tutto e ricominciare?"))) { setPages(() => [starter()]); setBg(PAPER_WHITE); setBgGrad(undefined); goPage(0); } }}><Icon d={ICONS.reset} className="size-4" />{tr("Nuovo")}</button>
           </div>
           {exportError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">{exportError}</p>}
           {saveError && <p role="alert" className="rounded-lg bg-sabbia px-3 py-2 text-sm font-semibold">{tr("Non c'è spazio per salvare: ci sono troppe immagini. Il lavoro non verrà ripristinato se ricarichi.")}</p>}
@@ -1275,7 +1283,7 @@ export default function CanvasEditor() {
       {/* Escritorio: carril de iconos y una sección cada vez, como en Canva */}
       <div className="hidden md:flex">
         <nav aria-label={tr("Sezioni")} className="flex w-[76px] shrink-0 flex-col overflow-y-auto border-r border-laguna/60 bg-surface py-4">
-          <div className="my-auto flex flex-col items-center gap-1">
+          <div className="my-auto flex flex-col items-center gap-3">
           {sections.map((s, i) => (
             <Fragment key={s.id}>
               {i === 5 && <hr className="my-2 w-9 border-laguna/60" />}
@@ -1329,7 +1337,7 @@ export default function CanvasEditor() {
         )}
         {/* m-auto centra la hoja cuando cabe y deja desplazarse cuando es mayor que el área (justify-center la cortaría) */}
         <div className={`flex py-4 md:py-6 ${hist.pages.length > 1 ? "min-h-[calc(100%-3rem)]" : "min-h-full"}`}>
-        <div className="relative m-auto h-fit shrink-0 shadow-[0_18px_40px_-18px_rgb(14_26_43/0.45)]">
+        <div className="relative m-auto h-fit shrink-0 ring-1 ring-ink/10 shadow-[0_2px_5px_rgb(14_26_43/0.12),0_22px_44px_-14px_rgb(14_26_43/0.45)]">
           <Stage
             ref={stageRef}
             width={w * zoom}
