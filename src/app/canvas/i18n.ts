@@ -266,6 +266,7 @@ const ES: Record<string, string> = {
   "Riduci dimensione": "Reducir tamaño",
   "Aumenta dimensione": "Aumentar tamaño",
   "Applica": "Aplicar",
+  "Seleziona tutti gli elementi del foglio per spostarli insieme": "Selecciona todos los elementos de la hoja para moverlos juntos",
 };
 
 export type Tr = (s: string, ctx?: string) => string;

@@ -1181,7 +1181,7 @@ export default function CanvasEditor() {
   const barOn = "bg-laguna/40 text-ink";
   const stepSize = (k: number) => tx && putSel(isText, { fontSize: Math.max(2, Math.round((tx.fontSize + k) * 10) / 10) });
   const textBar = tx && !editing && (
-    <div className="pointer-events-none sticky top-3 z-30 flex h-0 justify-center">
+    <div className="pointer-events-none sticky top-3 z-30 flex h-0 items-start justify-center">
       <div role="toolbar" aria-label={tr("Testo")} className="pointer-events-auto relative flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-laguna/60 bg-surface p-1 shadow-[0_10px_30px_-10px_rgb(14_26_43/0.35)]"
         onKeyDown={(e) => e.key === "Escape" && fontOpen && (e.stopPropagation(), setFontOpen(false))}>
         <button type="button" aria-haspopup="true" aria-expanded={fontOpen} title={tr("Carattere")} className={`flex h-9 w-36 shrink-0 items-center justify-between gap-1 rounded-lg border border-laguna px-2.5 text-[15px] hover:bg-laguna/30 ${focus}`}
@@ -1512,7 +1512,21 @@ export default function CanvasEditor() {
     { id: "layers", label: tr("Livelli"), hint: tr("Ordine, visibilità e blocco degli elementi"), icon: ICONS.layers, body: (
       <>
           {sels.length === 0 && <p className="text-sm text-ink/70 lg:hidden">{hint}</p>}
-          <ul className="-mx-2 space-y-1.5">
+          {(() => {
+            // La hoja agrupa todos los elementos: al elegirla se seleccionan todos (los no bloqueados) y se mueven juntos sobre el papel
+            const free = els.filter((x) => !x.locked && x.visible).map((x) => x.id);
+            const on = free.length > 0 && free.every((i) => sels.includes(i));
+            return (
+              <button type="button" disabled={!free.length} aria-pressed={on} title={tr("Seleziona tutti gli elementi del foglio per spostarli insieme")}
+                className={`glow -mx-2 mb-1.5 flex w-[calc(100%+1rem)] items-center gap-2 rounded-lg px-2 py-2 text-left text-sm font-semibold disabled:opacity-50 ${focus} ${on ? "bg-laguna/40" : ""}`}
+                onClick={() => { setEditing(null); setSels(on ? [] : free); }}>
+                <Icon d={ICONS.pages} className="size-4 shrink-0" />
+                <span className="flex-1 truncate">{tr("Foglio")} {paper}</span>
+                <span className="text-xs font-normal text-ink/55">{els.length}</span>
+              </button>
+            );
+          })()}
+          <ul className="-mx-2 ml-1 space-y-1.5 border-l border-laguna/70 pl-2">
             {[...els].reverse().map((e) => (
               <li key={e.id} className={`glow flex items-center gap-0.5 rounded-lg px-2 py-0.5 ${sels.includes(e.id) ? "bg-laguna/40" : ""}`}>
                 <button className={`min-w-0 flex-1 truncate py-1.5 text-left text-sm ${focus} ${e.visible ? "" : "text-ink/40 line-through"}`} onClick={(ev) => pick(e.id, ev.shiftKey || ev.ctrlKey || ev.metaKey)}>
