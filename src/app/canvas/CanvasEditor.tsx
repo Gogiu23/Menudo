@@ -1604,7 +1604,7 @@ export default function CanvasEditor() {
               {tr("Menù")}
             </Link>
           </Tip>
-          <Link href="/" aria-label="Menudo" className={`hidden rounded-md ${textBar ? "" : "sm:block"} ${focus}`}>
+          <Link href="/" aria-label="Menudo" className={`hidden shrink-0 rounded-md sm:block ${focus}`}>
             <Brand />
           </Link>
           {textBar || (
