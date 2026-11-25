@@ -10,10 +10,10 @@ import type Konva from "konva";
    Fase 2: panel de propiedades completo y panel de capas (orden, ocultar, bloquear, duplicar).
    Todas las medidas del modelo están en mm; el Stage se escala para mostrarlas. */
 
-import { common, Copies, COPIES, COPY_NAMES, El, FONTS, fontFamily, fontStyleOf, fillGrad, Grad, gradPoints, newText, PALETTE, PAPER_WHITE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
+import { common, Copies, COPIES, COPY_NAMES, El, FONTS, fontFamily, fontStyleOf, fillGrad, Grad, gradPoints, DARK_PAPER, LEGACY_WHITE, newText, PALETTE, PAPER_WHITE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
-import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, Range, secondary, ShapeIcon, Switch } from "./ui";
+import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, type IconWeight, iconBtn, input, Num, primary, Range, secondary, ShapeIcon, Switch } from "./ui";
 import { Tip } from "./Tip";
 import { buildTemplate, cleanMenu } from "./templateBuild";
 import { defaultSpec, parseSpec } from "./templateSpec";
@@ -116,10 +116,8 @@ const cleanPages = (pages: El[][]): El[][] =>
       .filter((e) => e && typeof e === "object" && (e.type !== "shape" || e.kind in SHAPES))
       .map((e) => (e.grad ? { ...e, grad: okGrad(e.grad) } : e)),
   );
-// El blanco puro de versiones anteriores (era el valor por defecto) pasa al blanco roto actual
-const okBg = (v: unknown) => (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? (v.toLowerCase() === "#ffffff" ? PAPER_WHITE : v) : PAPER_WHITE);
-// En el selector de la hoja, «Bianco» es el blanco roto de la hoja
-const SHEET_PALETTE = PALETTE.map((c) => (c.name === "Bianco" ? { ...c, hex: PAPER_WHITE } : c));
+// El blanco roto de una versión intermedia vuelve a ser «blanco» (se muestra suavizado solo en modo oscuro)
+const okBg = (v: unknown) => (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? (v.toLowerCase() === LEGACY_WHITE ? PAPER_WHITE : v) : PAPER_WHITE);
 const MAX_HISTORY = 100;
 const THEME_KEY = "menudo:theme"; // el mismo que el editor principal
 type History = { past: El[][][]; pages: El[][]; future: El[][][] }; // cada paso del historial guarda todas las páginas
@@ -337,7 +335,8 @@ export default function CanvasEditor() {
   };
   const freshText = useRef<string | null>(null); // texto recién creado desde el menú: al abrirlo se selecciona entero
   const [editing, setEditing] = useState<string | null>(null); // texto que se está escribiendo directamente sobre la hoja
-  const [panel, setPanel] = useState("text"); // sección abierta junto al carril de iconos (escritorio)
+  const [panel, setPanel] = useState("text");
+  const [railWeight, setRailWeight] = useState<IconWeight>("regular"); // PROVISIONAL: dibujo de los iconos del raíl para elegir; luego se deja solo el elegido // sección abierta junto al carril de iconos (escritorio)
   const [tab, setTab] = useState<"canvas" | "tools">("canvas"); // solo en móvil; en escritorio se ven las dos
   const [multi, setMulti] = useState(false); // modo táctil: tocar suma elementos a la selección
   const addedOnTouch = useRef(false);
@@ -573,10 +572,10 @@ export default function CanvasEditor() {
     const targetW = (w / MM_PER_INCH) * DPI;
     const targetH = (h / MM_PER_INCH) * DPI;
     const k = Math.min(1, Math.sqrt(MAX_PIXELS / (targetW * targetH * n))); // n copias = n veces los píxeles
-    // En pantalla la hoja es blanco roto para verse sobre la mesa; al exportar o imprimir sale blanco puro
+    // En modo oscuro la hoja blanca se ve en blanco roto; al exportar o imprimir sale blanco puro
     const sheet = stage.findOne(".paper") as Konva.Rect | undefined;
     const screenFill = sheet?.fill();
-    if (sheet && !bgGrad && bg === PAPER_WHITE) sheet.fill("#ffffff");
+    if (sheet && !bgGrad && bg.toLowerCase() === PAPER_WHITE) sheet.fill(PAPER_WHITE);
     tr.visible(false);
     try {
       return { url: stage.toDataURL({ pixelRatio: (targetW * k) / (w * zoom), mimeType: "image/png" }), dpi: Math.round(DPI * k) };
@@ -1114,7 +1113,7 @@ export default function CanvasEditor() {
       <>
           <fieldset className="space-y-3">
             <legend className="mb-1.5 text-sm font-semibold">{tr("Colore della carta")}</legend>
-            <ColorRow value={bg} onChange={setBg} palette={SHEET_PALETTE} tr={tr} label={bgGrad ? tr("Colore iniziale") : tr("Colore della carta")} />
+            <ColorRow value={bg} onChange={setBg} tr={tr} label={bgGrad ? tr("Colore iniziale") : tr("Colore della carta")} />
             <GradientControls fill={bg} grad={bgGrad} onChange={setBgGrad} tr={tr} />
           </fieldset>
           <fieldset>
@@ -1282,22 +1281,28 @@ export default function CanvasEditor() {
       <div className="flex min-h-0 flex-1">
       {/* Escritorio: carril de iconos y una sección cada vez, como en Canva */}
       <div className="hidden md:flex">
-        <nav aria-label={tr("Sezioni")} className="flex w-[76px] shrink-0 flex-col overflow-y-auto border-r border-laguna/60 bg-surface py-4">
-          <div className="my-auto flex flex-col items-center gap-3">
-          {sections.map((s, i) => (
-            <Fragment key={s.id}>
-              {i === 5 && <hr className="my-2 w-9 border-laguna/60" />}
-              <Tip side="right" label={s.label} hint={s.hint}>
-                <button
-                  aria-label={s.label} aria-pressed={panel === s.id} onClick={() => setPanel(s.id)}
-                  className={`glow flex h-14 w-16 flex-col items-center justify-center gap-1 rounded-lg transition-colors ${focus} ${panel === s.id ? "bg-brand text-white" : "text-ink/70 hover:bg-laguna/30 hover:text-ink"}`}
-                >
-                  <Icon d={s.icon} className="size-5" />
-                  <span className="max-w-full truncate px-0.5 text-[10px] leading-none font-semibold">{s.label}</span>
+        <nav aria-label={tr("Sezioni")} className="flex w-[76px] shrink-0 flex-col items-center overflow-x-hidden overflow-y-auto border-r border-laguna/60 bg-surface py-4">
+          <div className="my-auto flex flex-col items-center gap-5">
+            {sections.map((s, i) => (
+              <Fragment key={s.id}>
+                {i === 5 && <hr className="w-9 border-laguna/60" />}
+                <Tip side="right" label={s.label} hint={s.hint}>
+                  <button aria-label={s.label} aria-pressed={panel === s.id} onClick={() => setPanel(s.id)}
+                    className={`glow grid size-12 place-items-center rounded-full transition-all ${focus} ${panel === s.id ? "bg-brand text-white shadow-md" : "text-ink/65 hover:bg-laguna/30 hover:text-ink"}`}>
+                    <Icon d={s.icon} className="size-6" weight={railWeight} />
+                  </button>
+                </Tip>
+              </Fragment>
+            ))}
+            {/* PROVISIONAL: dibujo de los iconos (fino, normal, grueso, suave) */}
+            <div role="group" aria-label="Dibujo de los iconos (provisional)" className="grid grid-cols-2 gap-0.5 rounded-lg bg-laguna/25 p-0.5">
+              {([["thin", "Fino"], ["regular", "Normal"], ["bold", "Grueso"], ["soft", "Suave"]] as const).map(([w, name]) => (
+                <button key={w} type="button" aria-pressed={railWeight === w} title={name} onClick={() => setRailWeight(w)}
+                  className={`grid size-6 place-items-center rounded-md ${focus} ${railWeight === w ? "bg-surface text-ink shadow-sm" : "text-ink/55"}`}>
+                  <Icon d={ICONS.layers} className="size-4" weight={w} />
                 </button>
-              </Tip>
-            </Fragment>
-          ))}
+              ))}
+            </div>
           </div>
         </nav>
         <aside aria-label={active.label} className="w-[248px] shrink-0 overflow-y-auto border-r border-laguna/60 bg-surface lg:w-[264px]">
@@ -1337,7 +1342,7 @@ export default function CanvasEditor() {
         )}
         {/* m-auto centra la hoja cuando cabe y deja desplazarse cuando es mayor que el área (justify-center la cortaría) */}
         <div className={`flex py-4 md:py-6 ${hist.pages.length > 1 ? "min-h-[calc(100%-3rem)]" : "min-h-full"}`}>
-        <div className="relative m-auto h-fit shrink-0 ring-1 ring-ink/10 shadow-[0_2px_5px_rgb(14_26_43/0.12),0_22px_44px_-14px_rgb(14_26_43/0.45)]">
+        <div className="relative m-auto h-fit shrink-0 shadow-[var(--sheet-shadow)]">
           <Stage
             ref={stageRef}
             width={w * zoom}
@@ -1363,7 +1368,7 @@ export default function CanvasEditor() {
             onTouchStart={(e) => (emptyHit(e) && !multi ? setSels([]) : undefined)}
           >
             <Layer ref={layerRef}>
-              <Rect name="paper" width={w} height={h} {...fillGrad(bg, bgGrad, w, h)} />
+              <Rect name="paper" width={w} height={h} {...fillGrad(dark && !bgGrad && bg.toLowerCase() === PAPER_WHITE ? DARK_PAPER : bg, bgGrad, w, h)} />
               {els.map((el) => {
                 const props = {
                   id: el.id,

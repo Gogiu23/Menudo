@@ -10,8 +10,11 @@ export const PAPERS: Record<Paper, { w: number; h: number }> = {
 
 // Misma paleta y tipografías que el editor principal (ver globals.css y layout.tsx)
 export const INK = "#173033";
-// Color por defecto de la hoja en pantalla: blanco roto, para que se distinga de la mesa de trabajo. Al exportar o imprimir sale blanco puro
-export const PAPER_WHITE = "#f9f8f4";
+// La hoja «blanca» (valor por defecto) se ve en blanco roto en el modo oscuro, para que no deslumbre sobre la mesa oscura.
+// Al exportar o imprimir sale siempre blanco puro. LEGACY_WHITE: el blanco roto que se guardó en una versión intermedia.
+export const PAPER_WHITE = "#ffffff";
+export const DARK_PAPER = "#e8e6df";
+export const LEGACY_WHITE = "#f9f8f4";
 export const PALETTE = [
   { name: "Inchiostro", hex: INK },
   { name: "Mare", hex: "#68A7AD" },
