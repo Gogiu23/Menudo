@@ -13,7 +13,8 @@ import type Konva from "konva";
 import { common, Copies, COPIES, COPY_NAMES, El, FONTS, fontFamily, fontStyleOf, fillGrad, Grad, gradPoints, DARK_PAPER, LEGACY_WHITE, newText, PALETTE, PAPER_WHITE, PAPERS, Paper, SHAPES, ShapeKind, sheetFor, strokeGrad, tilePattern, tileScale, uid } from "./model";
 import { designs, type Design } from "./archive";
 import { menuToPages, readSavedMenu } from "./menuTemplate";
-import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, type IconWeight, iconBtn, input, Num, primary, Range, secondary, ShapeIcon, Switch } from "./ui";
+import { Block, Brand, chip, chipOn, focus, Group, ColorRow, GradientControls, Icon, ICONS, iconBtn, input, Num, primary, Range, secondary, ShapeIcon, Switch } from "./ui";
+import { ArchiveIcon, FilesIcon, ForkKnifeIcon, ImageIcon, LayoutIcon, ShapesIcon, SparkleIcon, StackIcon, TextTIcon, type Icon as PhosphorIcon, type IconWeight } from "@phosphor-icons/react";
 import { Tip } from "./Tip";
 import { buildTemplate, cleanMenu } from "./templateBuild";
 import { defaultSpec, parseSpec } from "./templateSpec";
@@ -21,6 +22,10 @@ import { useGlow } from "./glow";
 import type { Lang } from "../i18n";
 import { LANG_KEY, loadLang, makeTr, type Tr } from "./i18n";
 import { ImageSearch } from "./ImageSearch";
+
+// Iconos Phosphor del raíl, por sección
+const RAIL_ICONS: Record<string, PhosphorIcon> = { text: TextTIcon, shapes: ShapesIcon, objects: ForkKnifeIcon, images: ImageIcon, ai: SparkleIcon, pages: FilesIcon, sheet: LayoutIcon, layers: StackIcon, archive: ArchiveIcon };
+const WEIGHTS: [IconWeight, string][] = [["thin", "Fino"], ["light", "Ligero"], ["regular", "Normal"], ["bold", "Grueso"], ["fill", "Relleno"], ["duotone", "Bicolor"]];
 
 const label = (e: El, tr: Tr) =>
   e.type === "text" ? e.text.split("\n")[0].slice(0, 24) || tr("Testo") : e.type === "shape" ? tr(SHAPES[e.kind].label) : tr({ rect: "Rettangolo", image: "Immagine", tiles: "Maioliche", line: "Linea" }[e.type]);
@@ -336,7 +341,7 @@ export default function CanvasEditor() {
   const freshText = useRef<string | null>(null); // texto recién creado desde el menú: al abrirlo se selecciona entero
   const [editing, setEditing] = useState<string | null>(null); // texto que se está escribiendo directamente sobre la hoja
   const [panel, setPanel] = useState("text");
-  const [railWeight, setRailWeight] = useState<IconWeight>("regular"); // PROVISIONAL: dibujo de los iconos del raíl para elegir; luego se deja solo el elegido // sección abierta junto al carril de iconos (escritorio)
+  const [railWeight, setRailWeight] = useState<IconWeight>("regular"); // PROVISIONAL: peso de los iconos Phosphor del raíl para elegir; luego se deja solo el elegido // sección abierta junto al carril de iconos (escritorio)
   const [tab, setTab] = useState<"canvas" | "tools">("canvas"); // solo en móvil; en escritorio se ven las dos
   const [multi, setMulti] = useState(false); // modo táctil: tocar suma elementos a la selección
   const addedOnTouch = useRef(false);
@@ -1289,17 +1294,17 @@ export default function CanvasEditor() {
                 <Tip side="right" label={s.label} hint={s.hint}>
                   <button aria-label={s.label} aria-pressed={panel === s.id} onClick={() => setPanel(s.id)}
                     className={`glow grid size-12 place-items-center rounded-full transition-all ${focus} ${panel === s.id ? "bg-brand text-white shadow-md" : "text-ink/65 hover:bg-laguna/30 hover:text-ink"}`}>
-                    <Icon d={s.icon} className="size-6" weight={railWeight} />
+                    {(() => { const R = RAIL_ICONS[s.id]; return <R size={26} weight={railWeight} aria-hidden />; })()}
                   </button>
                 </Tip>
               </Fragment>
             ))}
-            {/* PROVISIONAL: dibujo de los iconos (fino, normal, grueso, suave) */}
-            <div role="group" aria-label="Dibujo de los iconos (provisional)" className="grid grid-cols-2 gap-0.5 rounded-lg bg-laguna/25 p-0.5">
-              {([["thin", "Fino"], ["regular", "Normal"], ["bold", "Grueso"], ["soft", "Suave"]] as const).map(([w, name]) => (
+            {/* PROVISIONAL: peso de los iconos */}
+            <div role="group" aria-label="Peso de los iconos (provisional)" className="grid grid-cols-3 gap-0.5 rounded-lg bg-laguna/25 p-0.5">
+              {WEIGHTS.map(([w, name]) => (
                 <button key={w} type="button" aria-pressed={railWeight === w} title={name} onClick={() => setRailWeight(w)}
-                  className={`grid size-6 place-items-center rounded-md ${focus} ${railWeight === w ? "bg-surface text-ink shadow-sm" : "text-ink/55"}`}>
-                  <Icon d={ICONS.layers} className="size-4" weight={w} />
+                  className={`grid size-5 place-items-center rounded-md ${focus} ${railWeight === w ? "bg-surface text-ink shadow-sm" : "text-ink/55"}`}>
+                  <StackIcon size={14} weight={w} aria-hidden />
                 </button>
               ))}
             </div>
