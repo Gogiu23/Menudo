@@ -1180,6 +1180,67 @@ export default function CanvasEditor() {
         <h2 className="font-display text-[17px] font-semibold">{cur ? label(cur, tr) : `${sels.length} ${tr("elementi")}`}</h2>
         <p className="text-xs text-ink/70">{cur ? tr("Elemento selezionato") : tr("Selezione multipla")}</p>
       </div>
+      {cur?.type === "text" && (
+        <Block title={tr("Testo")}>
+          <button className={`${secondary} w-full justify-center`} onClick={() => { setTab("canvas"); setEditing(cur.id); }}>
+            <Icon d={ICONS.edit} className="size-4" />
+            {tr("Modifica testo")}
+          </button>
+          <p className="text-xs text-ink/70">{tr("Oppure doppio clic sul testo, sulla carta.")}</p>
+          <div className="grid grid-cols-2 gap-1.5">
+                <button type="button" title={tr("Copia carattere, dimensione, colore e allineamento di questo testo")} className={`${small} justify-center`} onClick={() => { const t = cur; setStyleClip({ fontFamily: t.fontFamily, fontSize: t.fontSize, bold: t.bold, italic: t.italic, align: t.align, fill: t.fill, grad: t.grad, lineHeight: t.lineHeight, opacity: t.opacity }); }}>{tr("Copia stile")}</button>
+                <button type="button" title={tr("Applica lo stile copiato ai testi selezionati")} disabled={!styleClip} className={`${small} justify-center`} onClick={() => styleClip && putSel(isText, styleClip)}>{tr("Applica stile")}</button>
+              </div>
+              <FontList value={cur.fontFamily} tr={tr} onPick={(k) => patch(cur.id, { fontFamily: k })} />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Tip label={tr("Grassetto")}><button aria-pressed={cur.bold} className={`${iconBtn} font-bold ${cur.bold ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Grassetto")} onClick={() => patch(cur.id, { bold: !cur.bold })}>B</button></Tip>
+            <Tip label={tr("Corsivo")}><button aria-pressed={cur.italic} className={`${iconBtn} italic ${cur.italic ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Corsivo")} onClick={() => patch(cur.id, { italic: !cur.italic })}>I</button></Tip>
+            {(["left", "center", "right"] as const).map((al) => {
+              const t = tr(`Allinea testo ${al === "left" ? "a sinistra" : al === "center" ? "al centro" : "a destra"}`);
+              return (
+                <Tip key={al} label={t}>
+                  <button aria-pressed={cur.align === al} className={`${iconBtn} ${cur.align === al ? "bg-laguna/40 text-ink" : ""}`} aria-label={t} onClick={() => patch(cur.id, { align: al })}>
+                    <Icon d={al === "left" ? ICONS.alignLeft : al === "center" ? ICONS.alignCenter : ICONS.alignRight} className="size-[18px]" />
+                  </button>
+                </Tip>
+              );
+            })}
+          </div>
+          <div className="space-y-3">
+            <Num label={tr("Dimensione (mm)")} value={cur.fontSize} min={2} onChange={(v) => patch(cur.id, { fontSize: v })} />
+            <Num label={tr("Interlinea")} value={cur.lineHeight ?? 1.2} min={0.5} step={0.1} onChange={(v) => patch(cur.id, { lineHeight: v })} />
+          </div>
+          <Switch checked={!!cur.table} onChange={(v) => patch(cur.id, { table: v })}>{tr("Numero di tavolo (diverso per ogni copia)")}</Switch>
+        </Block>
+      )}
+      {sels.length > 1 && (
+        <>
+          {mTexts.length > 0 && (
+            <Block title={tr("Testo")}>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button type="button" title={tr("Copia carattere, dimensione, colore e allineamento di questo testo")} className={`${small} justify-center`} onClick={() => { const t = mTexts[0]; setStyleClip({ fontFamily: t.fontFamily, fontSize: t.fontSize, bold: t.bold, italic: t.italic, align: t.align, fill: t.fill, grad: t.grad, lineHeight: t.lineHeight, opacity: t.opacity }); }}>{tr("Copia stile")}</button>
+                <button type="button" title={tr("Applica lo stile copiato ai testi selezionati")} disabled={!styleClip} className={`${small} justify-center`} onClick={() => styleClip && putSel(isText, styleClip)}>{tr("Applica stile")}</button>
+              </div>
+              <FontList value={mTexts[0].fontFamily} tr={tr} onPick={(k) => putSel(isText, { fontFamily: k })} />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Tip label={tr("Grassetto")}><button type="button" aria-pressed={mTexts[0].bold} className={`${iconBtn} font-bold ${mTexts[0].bold ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Grassetto")} onClick={() => putSel(isText, { bold: !mTexts[0].bold })}>B</button></Tip>
+                <Tip label={tr("Corsivo")}><button type="button" aria-pressed={mTexts[0].italic} className={`${iconBtn} italic ${mTexts[0].italic ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Corsivo")} onClick={() => putSel(isText, { italic: !mTexts[0].italic })}>I</button></Tip>
+                {(["left", "center", "right"] as const).map((al) => {
+                  const t = tr(`Allinea testo ${al === "left" ? "a sinistra" : al === "center" ? "al centro" : "a destra"}`);
+                  return (
+                    <Tip key={al} label={t}>
+                      <button type="button" aria-pressed={mTexts[0].align === al} className={`${iconBtn} ${mTexts[0].align === al ? "bg-laguna/40 text-ink" : ""}`} aria-label={t} onClick={() => putSel(isText, { align: al })}>
+                        <Icon d={al === "left" ? ICONS.alignLeft : al === "center" ? ICONS.alignCenter : ICONS.alignRight} className="size-[18px]" />
+                      </button>
+                    </Tip>
+                  );
+                })}
+              </div>
+              <Num label={tr("Dimensione (mm)")} value={mTexts[0].fontSize} min={2} onChange={(v) => putSel(isText, { fontSize: v })} />
+            </Block>
+          )}
+        </>
+      )}
       <Block title={tr("Azioni")}>
         <div className="flex flex-wrap gap-1.5">
           <Tip label={tr("Duplica")} hint="Ctrl+D"><button className={iconBtn} aria-label={tr("Duplica")} onClick={duplicateSel}><Icon d={ICONS.copy} className="size-[18px]" /></button></Tip>
@@ -1205,30 +1266,6 @@ export default function CanvasEditor() {
               <button type="button" title={tr("Stessa altezza")} className={`${small} justify-center`} onClick={() => sameSize("height")}>{tr("Altezza")}</button>
             </div>
           </Block>
-          {mTexts.length > 0 && (
-            <Block title={tr("Testo")}>
-              <div className="grid grid-cols-2 gap-1.5">
-                <button type="button" title={tr("Copia carattere, dimensione, colore e allineamento di questo testo")} className={`${small} justify-center`} onClick={() => { const t = mTexts[0]; setStyleClip({ fontFamily: t.fontFamily, fontSize: t.fontSize, bold: t.bold, italic: t.italic, align: t.align, fill: t.fill, grad: t.grad, lineHeight: t.lineHeight, opacity: t.opacity }); }}>{tr("Copia stile")}</button>
-                <button type="button" title={tr("Applica lo stile copiato ai testi selezionati")} disabled={!styleClip} className={`${small} justify-center`} onClick={() => styleClip && putSel(isText, styleClip)}>{tr("Applica stile")}</button>
-              </div>
-              <FontList value={mTexts[0].fontFamily} tr={tr} onPick={(k) => putSel(isText, { fontFamily: k })} />
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Tip label={tr("Grassetto")}><button type="button" aria-pressed={mTexts[0].bold} className={`${iconBtn} font-bold ${mTexts[0].bold ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Grassetto")} onClick={() => putSel(isText, { bold: !mTexts[0].bold })}>B</button></Tip>
-                <Tip label={tr("Corsivo")}><button type="button" aria-pressed={mTexts[0].italic} className={`${iconBtn} italic ${mTexts[0].italic ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Corsivo")} onClick={() => putSel(isText, { italic: !mTexts[0].italic })}>I</button></Tip>
-                {(["left", "center", "right"] as const).map((al) => {
-                  const t = tr(`Allinea testo ${al === "left" ? "a sinistra" : al === "center" ? "al centro" : "a destra"}`);
-                  return (
-                    <Tip key={al} label={t}>
-                      <button type="button" aria-pressed={mTexts[0].align === al} className={`${iconBtn} ${mTexts[0].align === al ? "bg-laguna/40 text-ink" : ""}`} aria-label={t} onClick={() => putSel(isText, { align: al })}>
-                        <Icon d={al === "left" ? ICONS.alignLeft : al === "center" ? ICONS.alignCenter : ICONS.alignRight} className="size-[18px]" />
-                      </button>
-                    </Tip>
-                  );
-                })}
-              </div>
-              <Num label={tr("Dimensione (mm)")} value={mTexts[0].fontSize} min={2} onChange={(v) => putSel(isText, { fontSize: v })} />
-            </Block>
-          )}
           {mShapes.length > 0 && (
             <Block title={tr("Riempimento")}>
               <Seg label={tr("Riempimento")} value={mShapes[0].hollow ? "line" : "fill"} onChange={(v) => putSel(isShapeLike, { hollow: v === "line" })} options={[["fill", tr("Pieno")], ["line", tr("Solo bordo")]] as const} />
@@ -1264,39 +1301,6 @@ export default function CanvasEditor() {
             {cur.type !== "text" && <Num label={tr("Altezza (mm)")} value={cur.height} min={1} onChange={(v) => patch(cur.id, { height: v })} />}
             <Num label={tr("Rotazione (°)")} value={cur.rotation} onChange={(v) => patch(cur.id, { rotation: v })} />
           </div>
-        </Block>
-      )}
-      {cur?.type === "text" && (
-        <Block title={tr("Testo")}>
-          <button className={`${secondary} w-full justify-center`} onClick={() => { setTab("canvas"); setEditing(cur.id); }}>
-            <Icon d={ICONS.edit} className="size-4" />
-            {tr("Modifica testo")}
-          </button>
-          <p className="text-xs text-ink/70">{tr("Oppure doppio clic sul testo, sulla carta.")}</p>
-          <div className="grid grid-cols-2 gap-1.5">
-                <button type="button" title={tr("Copia carattere, dimensione, colore e allineamento di questo testo")} className={`${small} justify-center`} onClick={() => { const t = cur; setStyleClip({ fontFamily: t.fontFamily, fontSize: t.fontSize, bold: t.bold, italic: t.italic, align: t.align, fill: t.fill, grad: t.grad, lineHeight: t.lineHeight, opacity: t.opacity }); }}>{tr("Copia stile")}</button>
-                <button type="button" title={tr("Applica lo stile copiato ai testi selezionati")} disabled={!styleClip} className={`${small} justify-center`} onClick={() => styleClip && putSel(isText, styleClip)}>{tr("Applica stile")}</button>
-              </div>
-              <FontList value={cur.fontFamily} tr={tr} onPick={(k) => patch(cur.id, { fontFamily: k })} />
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Tip label={tr("Grassetto")}><button aria-pressed={cur.bold} className={`${iconBtn} font-bold ${cur.bold ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Grassetto")} onClick={() => patch(cur.id, { bold: !cur.bold })}>B</button></Tip>
-            <Tip label={tr("Corsivo")}><button aria-pressed={cur.italic} className={`${iconBtn} italic ${cur.italic ? "bg-laguna/40 text-ink" : ""}`} aria-label={tr("Corsivo")} onClick={() => patch(cur.id, { italic: !cur.italic })}>I</button></Tip>
-            {(["left", "center", "right"] as const).map((al) => {
-              const t = tr(`Allinea testo ${al === "left" ? "a sinistra" : al === "center" ? "al centro" : "a destra"}`);
-              return (
-                <Tip key={al} label={t}>
-                  <button aria-pressed={cur.align === al} className={`${iconBtn} ${cur.align === al ? "bg-laguna/40 text-ink" : ""}`} aria-label={t} onClick={() => patch(cur.id, { align: al })}>
-                    <Icon d={al === "left" ? ICONS.alignLeft : al === "center" ? ICONS.alignCenter : ICONS.alignRight} className="size-[18px]" />
-                  </button>
-                </Tip>
-              );
-            })}
-          </div>
-          <div className="space-y-3">
-            <Num label={tr("Dimensione (mm)")} value={cur.fontSize} min={2} onChange={(v) => patch(cur.id, { fontSize: v })} />
-            <Num label={tr("Interlinea")} value={cur.lineHeight ?? 1.2} min={0.5} step={0.1} onChange={(v) => patch(cur.id, { lineHeight: v })} />
-          </div>
-          <Switch checked={!!cur.table} onChange={(v) => patch(cur.id, { table: v })}>{tr("Numero di tavolo (diverso per ogni copia)")}</Switch>
         </Block>
       )}
       {cur && (cur.type === "rect" || (cur.type === "shape" && !SHAPES[cur.kind].stroke)) && (
