@@ -785,6 +785,12 @@ export default function CanvasEditor() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
+      // Esc: deja de seleccionar, aunque el foco esté en un campo del panel (se le quita el foco). Escribiendo sobre la hoja, Esc solo cierra la caja
+      if (e.key === "Escape" && !(t.tagName === "TEXTAREA" && t.getAttribute("aria-label") === tr("Testo"))) {
+        if (/INPUT|TEXTAREA|SELECT/.test(t.tagName)) t.blur();
+        setSels([]);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && !/INPUT|TEXTAREA|SELECT/.test(t.tagName)) {
         const k = e.key.toLowerCase();
         if (k === "z") {
@@ -799,7 +805,6 @@ export default function CanvasEditor() {
         return;
       }
       if (/INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
-      if (e.key === "Escape") setSels([]);
       if (!sels.length) return;
       if (e.key === "Delete" || e.key === "Backspace") removeSel();
       const step = e.shiftKey ? 5 : 1;
@@ -1403,7 +1408,7 @@ export default function CanvasEditor() {
               {guides.v.map((x) => <Line key={"v" + x} points={[x, 0, x, h]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
               {guides.h.map((y) => <Line key={"h" + y} points={[0, y, w, y]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
               {marquee && <Rect x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h} fill={PALETTE[1].hex} opacity={0.18} stroke={PALETTE[1].hex} strokeWidth={1 / zoom} listening={false} />}
-              <Transformer ref={trRef} borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" anchorSize={coarse ? 26 : 10} anchorCornerRadius={coarse ? 13 : 0} rotateAnchorOffset={coarse ? 40 : 50} rotateEnabled keepRatio={false} boundBoxFunc={(o, n) => (n.width < 5 || n.height < 5 ? o : n)} />
+              <Transformer ref={trRef} shouldOverdrawWholeArea borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" anchorSize={coarse ? 26 : 10} anchorCornerRadius={coarse ? 13 : 0} rotateAnchorOffset={coarse ? 40 : 50} rotateEnabled keepRatio={false} boundBoxFunc={(o, n) => (n.width < 5 || n.height < 5 ? o : n)} />
             </Layer>
           </Stage>
           {editEl && (
