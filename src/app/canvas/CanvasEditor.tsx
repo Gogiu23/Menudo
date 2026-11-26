@@ -481,7 +481,7 @@ export default function CanvasEditor() {
   };
   const freshText = useRef<string | null>(null); // texto recién creado desde el menú: al abrirlo se selecciona entero
   const [editing, setEditing] = useState<string | null>(null); // texto que se está escribiendo directamente sobre la hoja
-  const [panel, setPanel] = useState("text"); // sección abierta junto al carril de iconos (escritorio)
+  const [panel, setPanel] = useState("text"); // sección abierta junto al carril de iconos (escritorio); "" = ninguna
   const [tab, setTab] = useState<"canvas" | "tools">("canvas"); // solo en móvil; en escritorio se ven las dos
   const [multi, setMulti] = useState(false); // modo táctil: tocar suma elementos a la selección
   const addedOnTouch = useRef(false);
@@ -1123,7 +1123,9 @@ export default function CanvasEditor() {
       }
       if (e.key === "Escape" && !(t.tagName === "TEXTAREA" && t.getAttribute("aria-label") === tr("Testo"))) {
         if (/INPUT|TEXTAREA|SELECT/.test(t.tagName)) t.blur();
-        setSels([]);
+        // Primero se quita la selección; sin nada seleccionado, Esc cierra la sección abierta del panel izquierdo
+        if (sels.length) setSels([]);
+        else setPanel("");
         return;
       }
       if ((e.ctrlKey || e.metaKey) && !/INPUT|TEXTAREA|SELECT/.test(t.tagName)) {
@@ -1869,14 +1871,14 @@ export default function CanvasEditor() {
 
       <div className="flex min-h-0 flex-1 md:pointer-events-none md:gap-3">
       {/* Escritorio: carril de iconos y una sección cada vez, como en Canva */}
-      <div className="hidden md:pointer-events-auto md:relative md:z-10 md:flex md:gap-3">
-        <nav aria-label={tr("Sezioni")} className="flex max-h-full w-[76px] shrink-0 flex-col items-center self-center overflow-x-hidden overflow-y-auto py-4 md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50">
+      <div className="hidden md:relative md:z-10 md:flex md:gap-3">
+        <nav aria-label={tr("Sezioni")} className="pointer-events-auto flex max-h-full w-[76px] shrink-0 flex-col items-center self-center overflow-x-hidden overflow-y-auto py-4 md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50">
           <div className="my-auto flex flex-col items-center gap-5">
             {sections.map((s, i) => (
               <Fragment key={s.id}>
                 {i === 5 && <hr className="w-9 border-laguna/60" />}
                 <Tip side="right" label={s.label} hint={s.hint}>
-                  <button aria-label={s.label} aria-pressed={panel === s.id} onClick={() => setPanel(s.id)}
+                  <button aria-label={s.label} aria-pressed={panel === s.id} onClick={() => setPanel((p) => (p === s.id ? "" : s.id))}
                     className={`glow grid size-12 place-items-center rounded-full transition-all ${focus} ${panel === s.id ? "bg-brand text-white shadow-md" : "text-ink/65 hover:bg-laguna/30 hover:text-ink"}`}>
                     {(() => { const R = RAIL_ICONS[s.id]; return <R size={26} weight="fill" aria-hidden />; })()}
                   </button>
@@ -1885,7 +1887,8 @@ export default function CanvasEditor() {
             ))}
           </div>
         </nav>
-        <aside aria-label={active.label} className="w-[248px] shrink-0 overflow-y-auto lg:w-[264px] md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50">
+        {/* Mide lo que su contenido; con Esc o pulsando el icono activo se cierra (fundido y desplazamiento) */}
+        <aside aria-label={active.label} inert={!panel} className={`max-h-full w-[248px] shrink-0 self-center overflow-y-auto transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none lg:w-[264px] ${panel ? "pointer-events-auto" : "-translate-x-4 opacity-0"} md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50`}>
           <div className="bg-brand px-5 pt-6 pb-5 text-white">
             <h2 className="font-display text-2xl leading-tight font-bold">{active.label}</h2>
             <p className="mt-1.5 text-xs leading-snug text-white/85">{active.hint}</p>
