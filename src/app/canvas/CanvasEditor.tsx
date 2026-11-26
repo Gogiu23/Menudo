@@ -1384,6 +1384,15 @@ export default function CanvasEditor() {
       )}
     </div>
   );
+  // Fondo del lienzo. Modo claro: degradado del color de la hoja (aclarado) a blanco, con los puntos encima; con la hoja
+  // blanca, azul claro. Si la hoja lleva degradado, se toma su segundo color. Modo oscuro: blanco.
+  const tint = (() => {
+    const c = bgGrad && bgGrad.to !== TRANSPARENT ? bgGrad.to : bg;
+    return /^#f{6}$/i.test(c) || c.toLowerCase() === PAPER_WHITE ? "#d3e3ff" : `color-mix(in oklab, ${c} 35%, white)`;
+  })();
+  const canvasBg = (dark
+    ? { backgroundColor: "#ffffff", "--canvas-dot": "#d3dae6" }
+    : { backgroundColor: "#ffffff", backgroundImage: `radial-gradient(#c5d3ea 1px, transparent 1px), linear-gradient(160deg, ${tint} 0%, #ffffff 75%)`, backgroundSize: "16px 16px, 100% 100%" }) as React.CSSProperties;
   const properties = sels.length > 0 && (
     <div>
       <div className="bg-brand px-5 pt-6 pb-5 text-white">
@@ -1907,7 +1916,7 @@ export default function CanvasEditor() {
         ))}
       </aside>
 
-      <main ref={wrap} style={{ backgroundColor: "#ffffff", "--canvas-dot": "#d3dae6" } as React.CSSProperties} className={`${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:pointer-events-auto md:fixed md:inset-0 md:z-0 md:block md:pt-[116px] md:pr-6 md:pb-6 md:pl-[372px] lg:pr-[316px] lg:pl-[388px]`}>
+      <main ref={wrap} style={canvasBg} className={`${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:pointer-events-auto md:fixed md:inset-0 md:z-0 md:block md:pt-[116px] md:pr-6 md:pb-6 md:pl-[372px] lg:pr-[316px] lg:pl-[388px]`}>
         {/* sticky dentro de la zona que se desplaza (no fixed): las bolas quedan dentro de su caja, como en el editor principal */}
         <div className="pointer-events-none sticky top-1/2 z-20 -mb-5 h-0">
           <div role="group" aria-label={`Zoom ${pct}%`} className="pointer-events-auto absolute right-0 flex -translate-y-1/2 flex-col gap-2">
