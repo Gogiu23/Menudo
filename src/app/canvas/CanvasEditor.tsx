@@ -1392,7 +1392,8 @@ export default function CanvasEditor() {
   })();
   const canvasBg = (dark
     ? { backgroundColor: "#ffffff", "--canvas-dot": "#d3dae6" }
-    : { backgroundColor: "#ffffff", backgroundImage: `radial-gradient(#c5d3ea 1px, transparent 1px), linear-gradient(160deg, ${tint} 0%, #ffffff 75%)`, backgroundSize: "16px 16px, 100% 100%" }) as React.CSSProperties;
+    // Varios colores claros que se van alternando (canvas-drift, globals.css); el primero, el de la hoja
+    : { backgroundColor: "#ffffff", backgroundImage: `radial-gradient(#c5d3ea 1px, transparent 1px), linear-gradient(135deg, ${tint} 0%, #ffffff 18%, #d6e4ff 34%, #ffffff 46%, #e8defc 60%, #ffffff 72%, #d4f2e8 84%, #ffe3d1 100%)`, backgroundSize: "16px 16px, 400% 400%" }) as React.CSSProperties;
   const properties = sels.length > 0 && (
     <div>
       <div className="bg-brand px-5 pt-6 pb-5 text-white">
@@ -1917,7 +1918,7 @@ export default function CanvasEditor() {
         ))}
       </aside>
 
-      <main ref={wrap} style={canvasBg} className={`${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:pointer-events-auto md:fixed md:inset-0 md:z-0 md:block md:pt-[116px] md:pr-6 md:pb-6 md:pl-[372px] lg:pr-[316px] lg:pl-[388px]`}>
+      <main ref={wrap} style={canvasBg} className={`${dark ? "" : "canvas-drift"} ${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:pointer-events-auto md:fixed md:inset-0 md:z-0 md:block md:pt-[116px] md:pr-6 md:pb-6 md:pl-[372px] lg:pr-[316px] lg:pl-[388px]`}>
         {/* sticky dentro de la zona que se desplaza (no fixed): las bolas quedan dentro de su caja, como en el editor principal */}
         <div className="pointer-events-none sticky top-1/2 z-20 -mb-5 h-0">
           <div role="group" aria-label={`Zoom ${pct}%`} className="pointer-events-auto absolute right-0 flex -translate-y-1/2 flex-col gap-2">

@@ -212,6 +212,20 @@ input[type="range"] {
   }
 }
 
+/* Fondo del lienzo que va cambiando de color: un degradado de varios colores 4 veces más grande que la zona se desplaza
+   despacio (la 1.ª capa, los puntos, se queda quieta). Sin animación con «reducir movimiento» */
+@keyframes canvas-drift {
+  0% { background-position: 0 0, 0% 0%; }
+  50% { background-position: 0 0, 100% 60%; }
+  100% { background-position: 0 0, 30% 100%; }
+}
+@utility canvas-drift {
+  animation: canvas-drift 40s ease-in-out infinite alternate;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
 /* Glow sin borde: solo el brillo de fondo que sigue al ratón (textos, enlaces, botones planos, campos) */
 @utility glow-soft {
   &::before {
