@@ -972,11 +972,31 @@ function readCanvasDoc(): CanvasDoc | null {
   }
 }
 
+// Fila horizontal que se desliza (táctil, trackpad o flechas); cada tarjeta encaja al soltar
+function Carousel({ label, children }: { label: string; children: React.ReactNode }) {
+  const t = useT();
+  const ref = useRef<HTMLUListElement>(null);
+  const go = (d: number) => {
+    const el = ref.current;
+    if (el) el.scrollBy({ left: d * el.clientWidth * 0.85, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  };
+  const arrow = `absolute top-1/2 z-10 hidden size-10 -translate-y-1/2 place-items-center rounded-full bg-surface text-ink shadow-lg ring-1 ring-laguna/60 lift hover:text-mare md:grid ${focus}`;
+  return (
+    <div className="relative">
+      <ul ref={ref} aria-label={label} className="no-scrollbar flex snap-x snap-mandatory scroll-px-1 gap-4 overflow-x-auto px-1 py-2">
+        {children}
+      </ul>
+      <button type="button" className={`${arrow} -left-3`} aria-label={t.prevItems} onClick={() => go(-1)}><Icon d="M15 6l-6 6 6 6" /></button>
+      <button type="button" className={`${arrow} -right-3`} aria-label={t.nextItems} onClick={() => go(1)}><Icon d="M9 6l6 6-6 6" /></button>
+    </div>
+  );
+}
+
 // Tarjeta de un diseño del editor libre: la tarjeta entera abre el diseño en el lienzo
 function FreeCard({ doc, title, note, href, label }: { doc: CanvasDoc; title: string; note: string; href: string; label: string }) {
   const t = useT();
   return (
-    <li className="lift relative flex gap-4 rounded-lg bg-surface p-3 shadow-sm ring-1 ring-laguna/60 hover:ring-mare/60 has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ink">
+    <li className="lift relative flex w-[300px] shrink-0 snap-start gap-4 rounded-lg bg-surface p-3 shadow-sm ring-1 ring-laguna/60 hover:ring-mare/60 has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ink">
       <Link href={href} aria-label={label} className="shrink-0 rounded-sm outline-none before:absolute before:inset-0 before:rounded-lg">
         <span className="block overflow-hidden rounded-sm bg-white shadow ring-1 ring-ink/10" style={{ width: "25.2mm", aspectRatio: `${PAPERS[doc.paper].w} / ${PAPERS[doc.paper].h}` }}>
           <FreeSvg page={doc.pages[0]} paper={doc.paper} bg={doc.bg ?? "#ffffff"} bgGrad={doc.bgGrad} />
@@ -1507,7 +1527,7 @@ function SiteFooter({ email }: { email: string }) {
   const [contact, setContact] = useState(false);
   const link = `rounded text-ink/70 underline-offset-4 hover:text-ink hover:underline ${focus}`;
   return (
-    <footer className="mx-auto mt-auto w-full max-w-5xl border-t border-laguna/60 pt-6 pb-2 text-sm">
+    <footer className="mx-auto mt-auto w-full max-w-5xl rounded-2xl bg-surface p-6 text-sm shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50">
       <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
         <div>
           <Brand />
@@ -2394,10 +2414,14 @@ export default function Editor() {
             // Como el lienzo del editor libre: en claro, colores suaves que se van alternando bajo los puntos
             style={dark ? undefined : { backgroundColor: "#ffffff", backgroundImage: "radial-gradient(#c5d3ea 1px, transparent 1px), linear-gradient(135deg, #d3e3ff 0%, #ffffff 18%, #d6e4ff 34%, #ffffff 46%, #e8defc 60%, #ffffff 72%, #d4f2e8 84%, #ffe3d1 100%)", backgroundSize: "16px 16px, 400% 400%" }}>
             <div className="mx-auto w-full max-w-5xl space-y-10">
-              <div className="space-y-4">
-                <div>
-                  <h1 className="font-display text-[32px] leading-tight font-semibold">{t.archive}</h1>
-                  <p className="mt-1 max-w-prose text-ink/70">{t.archiveIntro}</p>
+              <div className="space-y-4 rounded-2xl bg-surface p-5 md:p-6 shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50">
+                <div className="flex items-center gap-4">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/icon-192.png" alt="" className="size-14 shrink-0 rounded-2xl shadow-md" />
+                  <div>
+                    <h1 className="font-display text-[32px] leading-tight font-bold">{t.archive}</h1>
+                    <p className="mt-1 max-w-prose text-ink/80">{t.archiveIntro}</p>
+                  </div>
                 </div>
                 <label className="relative block max-w-md">
                   <span className="sr-only">{t.searchLabel}</span>
@@ -2423,12 +2447,12 @@ export default function Editor() {
                   const list = freeSaved.filter((d) => !q || d.name.toLowerCase().includes(q));
                   if (!freeDoc && !list.length) return <p className="rounded-lg bg-surface p-6 text-ink/70">{t.freeEmpty}</p>;
                   return (
-                    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <Carousel label={t.freeEditor}>
                       {freeDoc && !q && <FreeCard doc={freeDoc} title={t.inProgress} note={t.autosave} href="/canvas" label={t.openFreeEditor} />}
                       {list.map((d) => (
                         <FreeCard key={d.id} doc={d.doc} title={d.name} note={t.modified(fmtDate(d.savedAt, t.locale), fmtTime(d.savedAt, t.locale))} href={`/canvas?design=${encodeURIComponent(d.id)}`} label={t.openA(d.name)} />
                       ))}
-                    </ul>
+                    </Carousel>
                   );
                 })()}
                 </div>
@@ -2452,7 +2476,7 @@ export default function Editor() {
               ) : found.length === 0 ? (
                 <p className="rounded-lg bg-surface p-6 text-ink/70">{t.notFound(query)}</p>
               ) : (
-                <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <Carousel label={t.classicTitle}>
                   {found.map((a) => {
                     const inUse = a.id === currentId;
                     const am = { ...EMPTY, ...a.menu };
@@ -2461,7 +2485,7 @@ export default function Editor() {
                       // imprimir y borrar quedan sobre él (relative z-10); el foco de teclado se ve en la tarjeta entera
                       <li
                         key={a.id}
-                        className={`lift relative flex gap-4 rounded-lg bg-surface p-3 shadow-sm has-[[data-open]:focus-visible]:outline-2 has-[[data-open]:focus-visible]:outline-offset-2 has-[[data-open]:focus-visible]:outline-ink ${inUse ? "ring-2 ring-mare" : "ring-1 ring-laguna/60 hover:ring-mare/60"}`}
+                        className={`lift relative flex w-[300px] shrink-0 snap-start gap-4 rounded-lg bg-surface p-3 shadow-sm has-[[data-open]:focus-visible]:outline-2 has-[[data-open]:focus-visible]:outline-offset-2 has-[[data-open]:focus-visible]:outline-ink ${inUse ? "ring-2 ring-mare" : "ring-1 ring-laguna/60 hover:ring-mare/60"}`}
                       >
                         <button data-open className="rounded-sm outline-none before:absolute before:inset-0 before:rounded-lg" aria-label={t.openA(am.name)} onClick={() => openSaved(a)}>
                           <Thumbnail m={am} />
@@ -2486,7 +2510,7 @@ export default function Editor() {
                       </li>
                     );
                   })}
-                </ul>
+                </Carousel>
               )}
               </div>
               </section>
