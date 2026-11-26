@@ -972,23 +972,36 @@ function readCanvasDoc(): CanvasDoc | null {
   }
 }
 
-// Fila horizontal que se desliza (táctil, trackpad o flechas); cada tarjeta encaja al soltar
-function Carousel({ label, children }: { label: string; children: React.ReactNode }) {
+// Proyectos de un editor: desplegable (abierto al empezar) con la vista previa de los 5 primeros y «Ver todos»
+const PREVIEW = 5;
+const SHADOW = "shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50";
+function ProjectGroup({ id, title, intro, action, items, empty }: { id: string; title: string; intro: string; action: React.ReactNode; items: React.ReactNode[]; empty: string }) {
   const t = useT();
-  const ref = useRef<HTMLUListElement>(null);
-  const go = (d: number) => {
-    const el = ref.current;
-    if (el) el.scrollBy({ left: d * el.clientWidth * 0.85, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-  };
-  const arrow = `absolute top-1/2 z-10 hidden size-10 -translate-y-1/2 place-items-center rounded-full bg-surface text-ink shadow-lg ring-1 ring-laguna/60 lift hover:text-mare md:grid ${focus}`;
+  const [all, setAll] = useState(false);
+  const shown = all ? items : items.slice(0, PREVIEW);
   return (
-    <div className="relative">
-      <ul ref={ref} aria-label={label} className="no-scrollbar flex snap-x snap-mandatory scroll-px-1 gap-4 overflow-x-auto px-1 py-2">
-        {children}
-      </ul>
-      <button type="button" className={`${arrow} -left-3`} aria-label={t.prevItems} onClick={() => go(-1)}><Icon d="M15 6l-6 6 6 6" /></button>
-      <button type="button" className={`${arrow} -right-3`} aria-label={t.nextItems} onClick={() => go(1)}><Icon d="M9 6l6 6-6 6" /></button>
-    </div>
+    <details open className={`group overflow-hidden rounded-2xl bg-surface ${SHADOW}`}>
+      <summary className={`flex cursor-pointer list-none items-center justify-between gap-3 bg-brand px-4 pt-4 pb-3.5 text-white [&::-webkit-details-marker]:hidden ${focus}`}>
+        <span>
+          <h2 id={id} className="font-display text-xl leading-tight font-bold">
+            {title} <span className="ml-1 rounded-full bg-white/20 px-2 py-0.5 align-middle text-xs font-semibold tabular-nums">{items.length}</span>
+          </h2>
+          <span className="mt-1 block text-xs text-white/85">{intro}</span>
+        </span>
+        <Icon d="M6 9l6 6 6-6" className="size-5 shrink-0 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none" />
+      </summary>
+      <div className="space-y-3 p-3 md:p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {action}
+          {items.length > PREVIEW && (
+            <button type="button" className={`rounded-lg px-3 py-2 text-sm font-semibold text-mare hover:bg-laguna/25 ${focus}`} onClick={() => setAll((a) => !a)}>
+              {all ? t.showLess : t.seeAll(items.length)}
+            </button>
+          )}
+        </div>
+        {items.length ? <ul aria-labelledby={id} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{shown}</ul> : <p className="rounded-lg p-4 text-ink/70">{empty}</p>}
+      </div>
+    </details>
   );
 }
 
@@ -996,7 +1009,7 @@ function Carousel({ label, children }: { label: string; children: React.ReactNod
 function FreeCard({ doc, title, note, href, label }: { doc: CanvasDoc; title: string; note: string; href: string; label: string }) {
   const t = useT();
   return (
-    <li className="lift relative flex w-[300px] shrink-0 snap-start gap-4 rounded-lg bg-surface p-3 shadow-sm ring-1 ring-laguna/60 hover:ring-mare/60 has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ink">
+    <li className="lift relative flex gap-4 rounded-lg bg-surface p-3 shadow-sm ring-1 ring-laguna/60 hover:ring-mare/60 has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ink">
       <Link href={href} aria-label={label} className="shrink-0 rounded-sm outline-none before:absolute before:inset-0 before:rounded-lg">
         <span className="block overflow-hidden rounded-sm bg-white shadow ring-1 ring-ink/10" style={{ width: "25.2mm", aspectRatio: `${PAPERS[doc.paper].w} / ${PAPERS[doc.paper].h}` }}>
           <FreeSvg page={doc.pages[0]} paper={doc.paper} bg={doc.bg ?? "#ffffff"} bgGrad={doc.bgGrad} />
@@ -1550,7 +1563,7 @@ function SiteFooter({ email, compact }: { email: string; compact?: boolean }) {
   const [contact, setContact] = useState(false);
   const link = `rounded text-ink/70 underline-offset-4 hover:text-ink hover:underline ${focus}`;
   return (
-    <footer className={`mx-auto mt-auto w-full rounded-2xl bg-surface text-sm shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50 ${compact ? "max-w-6xl px-5 py-3" : "max-w-5xl p-6"}`}>
+    <footer className={`mx-auto mt-auto w-full rounded-2xl bg-surface text-sm shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50 ${compact ? "max-w-6xl px-6 py-5" : "max-w-5xl p-6"}`}>
       <div className={`flex flex-wrap justify-between gap-x-8 ${compact ? "items-center gap-y-2" : "items-start gap-y-4"}`}>
         <div className={compact ? "flex items-center gap-3" : ""}>
           <Brand />
@@ -2442,72 +2455,49 @@ export default function Editor() {
           <main data-scroll="archive" className={`flex flex-1 flex-col gap-4 canvas px-4 py-4 md:overflow-auto md:px-8 md:py-5 ${dark ? "" : "canvas-drift"}`}
             // Como el lienzo del editor libre: en claro, colores suaves que se van alternando bajo los puntos
             style={dark ? undefined : { backgroundColor: "#ffffff", backgroundImage: "radial-gradient(#c5d3ea 1px, transparent 1px), linear-gradient(135deg, #d3e3ff 0%, #ffffff 18%, #d6e4ff 34%, #ffffff 46%, #e8defc 60%, #ffffff 72%, #d4f2e8 84%, #ffe3d1 100%)", backgroundSize: "16px 16px, 400% 400%" }}>
-            <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
-              <div className="flex flex-col gap-4 rounded-2xl bg-surface p-4 md:flex-row md:items-center md:justify-between md:px-5 shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50">
-                <div className="flex items-center gap-4">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/squema.svg" alt="Squema" className="size-12 shrink-0 rounded-[22%] shadow-md" />
-                  <div>
-                    <h1 className="font-display text-[26px] leading-tight font-bold">{t.archive}</h1>
-                    <p className="mt-0.5 max-w-prose text-sm text-ink/80">{t.archiveIntro}</p>
-                  </div>
+            <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 md:flex-row md:items-start">
+              {/* Lateral suelto: el archivo y su buscador (se queda fijo al desplazar) */}
+              <aside className="flex shrink-0 flex-col gap-4 rounded-2xl bg-surface p-5 shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50 md:sticky md:top-0 md:w-72">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/squema.svg" alt="Squema" className="size-12 rounded-[22%] shadow-md" />
+                <div>
+                  <h1 className="font-display text-[26px] leading-tight font-bold">{t.archive}</h1>
+                  <p className="mt-1 text-sm text-ink/80">{t.archiveIntro}</p>
                 </div>
-                <label className="relative block w-full md:max-w-xs">
+                <label className="relative block">
                   <span className="sr-only">{t.searchLabel}</span>
                   <Icon d={ICONS.search} className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink/50" />
                   <input className={`${input} pl-10`} type="search" placeholder={t.searchPh} value={query} onChange={(e) => setQuery(e.target.value)} />
                 </label>
-              </div>
+              </aside>
 
-              <div className="grid gap-4 lg:grid-cols-2">
-              {/* Editor libre: el documento en curso y los diseños guardados (abren el lienzo con ese diseño) */}
-              <section aria-labelledby="free-title" className="overflow-hidden rounded-2xl bg-surface shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50">
-                <div className="flex flex-wrap items-center justify-between gap-3 bg-brand px-4 pt-4 pb-3.5 text-white">
-                  <div>
-                    <h2 id="free-title" className="font-display text-xl leading-tight font-bold">{t.freeEditor}</h2>
-                    <p className="mt-1 max-w-prose text-xs text-white/85">{t.freeIntro}</p>
-                  </div>
-                  <Link href="/canvas" className={`inline-flex items-center justify-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-[#0b2a6f] lift hover:bg-white/90 ${focus}`}>
-                    <Icon d={ICONS.canvas} />
-                    {t.openFreeEditor}
-                  </Link>
-                </div>
-                <div className="p-3 md:p-4">
-                {(() => {
-                  const list = freeSaved.filter((d) => !q || d.name.toLowerCase().includes(q));
-                  if (!freeDoc && !list.length) return <p className="rounded-lg bg-surface p-6 text-ink/70">{t.freeEmpty}</p>;
-                  return (
-                    <Carousel label={t.freeEditor}>
-                      {freeDoc && !q && <FreeCard doc={freeDoc} title={t.inProgress} note={t.autosave} href="/canvas" label={t.openFreeEditor} />}
-                      {list.map((d) => (
-                        <FreeCard key={d.id} doc={d.doc} title={d.name} note={t.modified(fmtDate(d.savedAt, t.locale), fmtTime(d.savedAt, t.locale))} href={`/canvas?design=${encodeURIComponent(d.id)}`} label={t.openA(d.name)} />
-                      ))}
-                    </Carousel>
-                  );
-                })()}
-                </div>
-              </section>
-
-              <section aria-labelledby="classic-title" className="overflow-hidden rounded-2xl bg-surface shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50">
-                <div className="flex flex-wrap items-center justify-between gap-3 bg-brand px-4 pt-4 pb-3.5 text-white">
-                  <div>
-                    <h2 id="classic-title" className="font-display text-xl leading-tight font-bold">{t.classicTitle}</h2>
-                    <p className="mt-1 max-w-prose text-xs text-white/85">{t.classicIntro}</p>
-                  </div>
-                  <button className={`inline-flex items-center justify-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-[#0b2a6f] lift hover:bg-white/90 ${focus}`} onClick={newMenu}>
-                    <Icon d={ICONS.plus} />
-                    {t.newMenu}
-                  </button>
-                </div>
-
-              <div className="p-3 md:p-4">
-              {saved.length === 0 ? (
-                <p className="rounded-lg bg-surface p-6 text-ink/70">{t.emptyArchive}</p>
-              ) : found.length === 0 ? (
-                <p className="rounded-lg bg-surface p-6 text-ink/70">{t.notFound(query)}</p>
-              ) : (
-                <Carousel label={t.classicTitle}>
-                  {found.map((a) => {
+              {/* Centro: los proyectos de cada editor */}
+              <div className="flex min-w-0 flex-1 flex-col gap-4">
+                <ProjectGroup
+                  id="free-title" title={t.freeEditor} intro={t.freeIntro} empty={t.freeEmpty}
+                  action={
+                    <Link href="/canvas" className={primary}>
+                      <Icon d={ICONS.canvas} />
+                      {t.openFreeEditor}
+                    </Link>
+                  }
+                  items={[
+                    ...(freeDoc && !q ? [<FreeCard key="current" doc={freeDoc} title={t.inProgress} note={t.autosave} href="/canvas" label={t.openFreeEditor} />] : []),
+                    ...freeSaved.filter((d) => !q || d.name.toLowerCase().includes(q)).map((d) => (
+                      <FreeCard key={d.id} doc={d.doc} title={d.name} note={t.modified(fmtDate(d.savedAt, t.locale), fmtTime(d.savedAt, t.locale))} href={`/canvas?design=${encodeURIComponent(d.id)}`} label={t.openA(d.name)} />
+                    )),
+                  ]}
+                />
+                <ProjectGroup
+                  id="classic-title" title={t.classicTitle} intro={t.classicIntro}
+                  empty={saved.length === 0 ? t.emptyArchive : t.notFound(query)}
+                  action={
+                    <button className={primary} onClick={newMenu}>
+                      <Icon d={ICONS.plus} />
+                      {t.newMenu}
+                    </button>
+                  }
+                  items={found.map((a) => {
                     const inUse = a.id === currentId;
                     const am = { ...EMPTY, ...a.menu };
                     return (
@@ -2515,7 +2505,7 @@ export default function Editor() {
                       // imprimir y borrar quedan sobre él (relative z-10); el foco de teclado se ve en la tarjeta entera
                       <li
                         key={a.id}
-                        className={`lift relative flex w-[300px] shrink-0 snap-start gap-4 rounded-lg bg-surface p-3 shadow-sm has-[[data-open]:focus-visible]:outline-2 has-[[data-open]:focus-visible]:outline-offset-2 has-[[data-open]:focus-visible]:outline-ink ${inUse ? "ring-2 ring-mare" : "ring-1 ring-laguna/60 hover:ring-mare/60"}`}
+                        className={`lift relative flex gap-4 rounded-lg bg-surface p-3 shadow-sm has-[[data-open]:focus-visible]:outline-2 has-[[data-open]:focus-visible]:outline-offset-2 has-[[data-open]:focus-visible]:outline-ink ${inUse ? "ring-2 ring-mare" : "ring-1 ring-laguna/60 hover:ring-mare/60"}`}
                       >
                         <button data-open className="rounded-sm outline-none before:absolute before:inset-0 before:rounded-lg" aria-label={t.openA(am.name)} onClick={() => openSaved(a)}>
                           <Thumbnail m={am} />
@@ -2540,10 +2530,7 @@ export default function Editor() {
                       </li>
                     );
                   })}
-                </Carousel>
-              )}
-              </div>
-              </section>
+                />
               </div>
             </div>
             <SiteFooter email={user} compact />
