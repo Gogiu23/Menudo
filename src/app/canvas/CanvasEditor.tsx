@@ -1826,7 +1826,8 @@ export default function CanvasEditor() {
     <>
     {/* Medidas explícitas: los nombres A2 y A1 no son tamaños de página válidos en CSS */}
     <style>{`@page { size: ${sheet.w}mm ${sheet.h}mm; margin: 0; }`}</style>
-    <div ref={rootRef} className="flex h-dvh flex-col bg-app text-ink md:gap-3 md:p-3 print:hidden">
+    {/* overflow-hidden: los paneles ocultos (desplazados fuera de la ventana para animarlos) no deben crear scroll */}
+    <div ref={rootRef} className="flex h-dvh flex-col overflow-hidden bg-app text-ink md:gap-3 md:p-3 print:hidden">
       <header className="relative z-10 shrink-0 overflow-hidden bg-app pt-[env(safe-area-inset-top)] md:rounded-2xl md:bg-surface md:shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] md:ring-1 md:ring-laguna/50">
         {/* Borde inferior: gris; con la barra de texto abierta, la línea degradada en la que se apoya */}
         <div aria-hidden className={`pointer-events-none absolute inset-x-0 bottom-0 ${textBar ? "h-0.5 bg-brand" : "h-px bg-laguna/60"}`} />
