@@ -2390,7 +2390,9 @@ export default function Editor() {
         </header>
 
         {tab === "archive" ? (
-          <main data-scroll="archive" className="flex flex-1 flex-col gap-10 canvas px-4 py-6 md:overflow-auto md:px-8">
+          <main data-scroll="archive" className={`flex flex-1 flex-col gap-10 canvas px-4 py-6 md:overflow-auto md:px-8 ${dark ? "" : "canvas-drift"}`}
+            // Como el lienzo del editor libre: en claro, colores suaves que se van alternando bajo los puntos
+            style={dark ? undefined : { backgroundColor: "#ffffff", backgroundImage: "radial-gradient(#c5d3ea 1px, transparent 1px), linear-gradient(135deg, #d3e3ff 0%, #ffffff 18%, #d6e4ff 34%, #ffffff 46%, #e8defc 60%, #ffffff 72%, #d4f2e8 84%, #ffe3d1 100%)", backgroundSize: "16px 16px, 400% 400%" }}>
             <div className="mx-auto w-full max-w-5xl space-y-10">
               <div className="space-y-4">
                 <div>
@@ -2405,17 +2407,18 @@ export default function Editor() {
               </div>
 
               {/* Editor libre: el documento en curso y los diseños guardados (abren el lienzo con ese diseño) */}
-              <section aria-labelledby="free-title" className="space-y-4">
-                <div className="flex flex-wrap items-end justify-between gap-4 border-b border-laguna/60 pb-3">
+              <section aria-labelledby="free-title" className="overflow-hidden rounded-2xl bg-surface shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50">
+                <div className="flex flex-wrap items-end justify-between gap-4 bg-brand px-5 pt-6 pb-5 text-white">
                   <div>
-                    <h2 id="free-title" className="font-display text-2xl leading-tight font-semibold">{t.freeEditor}</h2>
-                    <p className="mt-1 max-w-prose text-sm text-ink/70">{t.freeIntro}</p>
+                    <h2 id="free-title" className="font-display text-2xl leading-tight font-bold">{t.freeEditor}</h2>
+                    <p className="mt-1.5 max-w-prose text-sm text-white/85">{t.freeIntro}</p>
                   </div>
-                  <Link href="/canvas" className={primary}>
+                  <Link href="/canvas" className={`inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 font-semibold text-[#0b2a6f] lift hover:bg-white/90 ${focus}`}>
                     <Icon d={ICONS.canvas} />
                     {t.openFreeEditor}
                   </Link>
                 </div>
+                <div className="p-4 md:p-5">
                 {(() => {
                   const list = freeSaved.filter((d) => !q || d.name.toLowerCase().includes(q));
                   if (!freeDoc && !list.length) return <p className="rounded-lg bg-surface p-6 text-ink/70">{t.freeEmpty}</p>;
@@ -2428,20 +2431,22 @@ export default function Editor() {
                     </ul>
                   );
                 })()}
+                </div>
               </section>
 
-              <section aria-labelledby="classic-title" className="space-y-4">
-                <div className="flex flex-wrap items-end justify-between gap-4 border-b border-laguna/60 pb-3">
+              <section aria-labelledby="classic-title" className="overflow-hidden rounded-2xl bg-surface shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50">
+                <div className="flex flex-wrap items-end justify-between gap-4 bg-brand px-5 pt-6 pb-5 text-white">
                   <div>
-                    <h2 id="classic-title" className="font-display text-2xl leading-tight font-semibold">{t.classicTitle}</h2>
-                    <p className="mt-1 max-w-prose text-sm text-ink/70">{t.classicIntro}</p>
+                    <h2 id="classic-title" className="font-display text-2xl leading-tight font-bold">{t.classicTitle}</h2>
+                    <p className="mt-1.5 max-w-prose text-sm text-white/85">{t.classicIntro}</p>
                   </div>
-                  <button className={primary} onClick={newMenu}>
+                  <button className={`inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 font-semibold text-[#0b2a6f] lift hover:bg-white/90 ${focus}`} onClick={newMenu}>
                     <Icon d={ICONS.plus} />
                     {t.newMenu}
                   </button>
                 </div>
 
+              <div className="p-4 md:p-5">
               {saved.length === 0 ? (
                 <p className="rounded-lg bg-surface p-6 text-ink/70">{t.emptyArchive}</p>
               ) : found.length === 0 ? (
@@ -2483,6 +2488,7 @@ export default function Editor() {
                   })}
                 </ul>
               )}
+              </div>
               </section>
             </div>
             <SiteFooter email={user} />
