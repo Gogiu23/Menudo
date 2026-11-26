@@ -1873,9 +1873,9 @@ export default function CanvasEditor() {
           </div>
         </nav>
         <aside aria-label={active.label} className="w-[248px] shrink-0 overflow-y-auto border-r border-laguna/60 bg-app lg:w-[264px]">
-          <div className="border-b border-laguna/50 px-5 pt-5 pb-4">
-            <h2 className="font-display text-[17px] font-semibold">{active.label}</h2>
-            <p className="mt-1 text-xs leading-snug text-ink/70">{active.hint}</p>
+          <div className="border-b border-mare/30 bg-gradient-to-br from-mare/15 via-mare/5 to-transparent px-5 pt-6 pb-5">
+            <h2 className="text-grad font-display text-2xl leading-tight font-bold">{active.label}</h2>
+            <p className="mt-1.5 text-xs leading-snug text-ink/70">{active.hint}</p>
           </div>
           <form className="space-y-5 px-5 py-5" onSubmit={(e) => e.preventDefault()}>{active.body}</form>
           <div className="border-t border-laguna/50 lg:hidden">{properties}</div>

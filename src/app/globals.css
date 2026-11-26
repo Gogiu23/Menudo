@@ -25,6 +25,8 @@
   /* Extremos del degradado del fondo general de la interfaz (bg-app) */
   --app-from: #ffffff;
   --app-to: #e6efff;
+  --grad-from: #0b2a6f;
+  --grad-to: #2f6bff;
   --sheet-shadow: 0 0 0 1px rgb(14 26 43 / 0.1), 0 2px 5px rgb(14 26 43 / 0.12), 0 22px 44px -14px rgb(14 26 43 / 0.4);
 }
 
@@ -40,6 +42,8 @@
   --canvas-dot: #24324c;
   --app-from: #0f1b30;
   --app-to: #1a2e55;
+  --grad-from: #a9c4ff;
+  --grad-to: #56c2ff;
 }
 
 body {
@@ -173,6 +177,14 @@ input[type="range"] {
     z-index: -1;
     background: radial-gradient(200px circle at var(--gx, -999px) var(--gy, -999px), color-mix(in oklab, var(--color-mare) 16%, transparent), transparent 70%);
   }
+}
+
+/* Texto con el degradado azul de la marca (títulos de sección). En oscuro, tonos claros para que se lea */
+@utility text-grad {
+  background-image: linear-gradient(120deg, var(--grad-from), var(--grad-to));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 /* Glow sin borde: solo el brillo de fondo que sigue al ratón (textos, enlaces, botones planos, campos) */
