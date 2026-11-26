@@ -1812,8 +1812,8 @@ export default function CanvasEditor() {
     <>
     {/* Medidas explícitas: los nombres A2 y A1 no son tamaños de página válidos en CSS */}
     <style>{`@page { size: ${sheet.w}mm ${sheet.h}mm; margin: 0; }`}</style>
-    <div ref={rootRef} className="flex h-dvh flex-col bg-app text-ink print:hidden">
-      <header className="relative shrink-0 bg-app pt-[env(safe-area-inset-top)]">
+    <div ref={rootRef} className="flex h-dvh flex-col bg-app text-ink md:gap-3 md:p-3 print:hidden">
+      <header className="relative shrink-0 overflow-hidden bg-app pt-[env(safe-area-inset-top)] md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50">
         {/* Borde inferior: gris; con la barra de texto abierta, la línea degradada en la que se apoya */}
         <div aria-hidden className={`pointer-events-none absolute inset-x-0 bottom-0 ${textBar ? "h-0.5 bg-brand" : "h-px bg-laguna/60"}`} />
         <div className="flex h-16 items-center gap-2 px-3 pt-2 md:h-20 md:gap-3 md:px-4">
@@ -1864,10 +1864,10 @@ export default function CanvasEditor() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 md:gap-3">
       {/* Escritorio: carril de iconos y una sección cada vez, como en Canva */}
-      <div className="hidden md:flex">
-        <nav aria-label={tr("Sezioni")} className="flex w-[76px] shrink-0 flex-col items-center overflow-x-hidden overflow-y-auto border-r border-laguna/60 bg-app py-4">
+      <div className="hidden md:flex md:gap-3">
+        <nav aria-label={tr("Sezioni")} className="flex w-[76px] shrink-0 flex-col items-center overflow-x-hidden overflow-y-auto py-4 md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50">
           <div className="my-auto flex flex-col items-center gap-5">
             {sections.map((s, i) => (
               <Fragment key={s.id}>
@@ -1882,7 +1882,7 @@ export default function CanvasEditor() {
             ))}
           </div>
         </nav>
-        <aside aria-label={active.label} className="w-[248px] shrink-0 overflow-y-auto border-r border-laguna/60 bg-app lg:w-[264px]">
+        <aside aria-label={active.label} className="w-[248px] shrink-0 overflow-y-auto lg:w-[264px] md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50">
           <div className="bg-brand px-5 pt-6 pb-5 text-white">
             <h2 className="font-display text-2xl leading-tight font-bold">{active.label}</h2>
             <p className="mt-1.5 text-xs leading-snug text-white/85">{active.hint}</p>
@@ -1901,7 +1901,7 @@ export default function CanvasEditor() {
         ))}
       </aside>
 
-      <main ref={wrap} style={{ backgroundColor: "#ffffff", "--canvas-dot": "#d3dae6" } as React.CSSProperties} className={`${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:block md:px-6 md:pb-6`}>
+      <main ref={wrap} style={{ backgroundColor: "#ffffff", "--canvas-dot": "#d3dae6" } as React.CSSProperties} className={`${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:block md:rounded-2xl md:px-6 md:pb-6 md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50`}>
         {/* sticky dentro de la zona que se desplaza (no fixed): las bolas quedan dentro de su caja, como en el editor principal */}
         <div className="pointer-events-none sticky top-1/2 z-20 -mb-5 h-0">
           <div role="group" aria-label={`Zoom ${pct}%`} className="pointer-events-auto absolute right-0 flex -translate-y-1/2 flex-col gap-2">
@@ -2062,7 +2062,7 @@ export default function CanvasEditor() {
         </div>
         </div>
       </main>
-      <aside aria-label={tr("Proprietà")} className="hidden w-[280px] shrink-0 overflow-y-auto border-l border-laguna/60 bg-app lg:block">
+      <aside aria-label={tr("Proprietà")} className="hidden w-[280px] shrink-0 overflow-y-auto lg:block md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50">
         {properties}
         {sels.length === 0 && <p className="p-4 text-sm text-ink/70">{hint}</p>}
       </aside>
@@ -2077,7 +2077,7 @@ export default function CanvasEditor() {
           <button className={secondary} onClick={removeSel}><Icon d={ICONS.trash} className="size-4" />{tr("Elimina")}</button>
         </div>
       )}
-      <nav aria-label={tr("Sezioni")} className="fixed inset-x-0 bottom-0 grid grid-cols-5 border-t border-laguna/60 bg-surface/95 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden">
+      <nav aria-label={tr("Sezioni")} className="fixed inset-x-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] grid grid-cols-5 rounded-2xl bg-surface/95 px-1 py-1.5 shadow-lg ring-1 ring-laguna/60 backdrop-blur md:hidden">
         {([["canvas", tr("Carta", "tab"), ICONS.canvas], ["tools", tr("Strumenti"), ICONS.tools]] as const).map(([id, t, icon]) => (
           <button key={id} aria-current={tab === id ? "page" : undefined} className={`glow glow-soft flex flex-col items-center gap-0.5 rounded-lg py-1 text-xs ${focus} ${tab === id ? "font-semibold" : "text-ink/65"}`} onClick={() => setTab(id)}>
             <span className={`grid h-7 w-12 place-items-center rounded-full transition-colors ${tab === id ? "bg-laguna/50" : ""}`}><Icon d={icon} /></span>
