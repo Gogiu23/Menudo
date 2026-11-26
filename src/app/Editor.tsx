@@ -7,6 +7,8 @@ import { formatPrice } from "./price";
 import type { FreeDoc } from "./canvas/model";
 import { FreeSvg } from "./canvas/FreeSvg";
 import { pullLinks } from "./canvas/menuLink";
+import { designs, type Design } from "./canvas/archive";
+import type { El, Grad } from "./canvas/model";
 import { LangCtx, T, useT, type Dict, type Lang } from "./i18n";
 
 type Item = { name: string; desc: string; price: string };
@@ -958,6 +960,37 @@ function Preview({ layout, paper, scale, children }: { layout: Layout; paper: Pa
   );
 }
 
+// Documento en curso del editor libre (su guardado automático), para la página principal
+const CANVAS_KEY = "menudo:canvas:v1";
+type CanvasDoc = { paper: Paper; pages: El[][]; bg?: string; bgGrad?: Grad };
+function readCanvasDoc(): CanvasDoc | null {
+  try {
+    const d = JSON.parse(localStorage.getItem(CANVAS_KEY) ?? "null");
+    return d && d.paper in PAPERS && Array.isArray(d.pages) && d.pages.length && d.pages.every(Array.isArray) ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+// Tarjeta de un diseño del editor libre: la tarjeta entera abre el diseño en el lienzo
+function FreeCard({ doc, title, note, href, label }: { doc: CanvasDoc; title: string; note: string; href: string; label: string }) {
+  const t = useT();
+  return (
+    <li className="lift relative flex gap-4 rounded-lg bg-surface p-3 shadow-sm ring-1 ring-laguna/60 hover:ring-mare/60 has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ink">
+      <Link href={href} aria-label={label} className="shrink-0 rounded-sm outline-none before:absolute before:inset-0 before:rounded-lg">
+        <span className="block overflow-hidden rounded-sm bg-white shadow ring-1 ring-ink/10" style={{ width: "25.2mm", aspectRatio: `${PAPERS[doc.paper].w} / ${PAPERS[doc.paper].h}` }}>
+          <FreeSvg page={doc.pages[0]} paper={doc.paper} bg={doc.bg ?? "#ffffff"} bgGrad={doc.bgGrad} />
+        </span>
+      </Link>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <p className="truncate font-display text-lg leading-tight font-semibold">{title}</p>
+        <p className="mt-2 text-sm text-ink/70">{note}</p>
+        <p className="text-sm text-ink/70">{t.freePages(doc.pages.length)}</p>
+      </div>
+    </li>
+  );
+}
+
 function Thumbnail({ m, k = 0.12 }: { m: Menu; k?: number }) {
   return (
     <div className="shrink-0 overflow-hidden rounded-sm bg-white shadow ring-1 ring-ink/10" style={{ width: `${210 * k}mm`, height: `${297 * k}mm` }}>
@@ -1870,6 +1903,9 @@ export default function Editor() {
   const [saveError, setSaveError] = useState(false);
   const [tab, setTab] = useState<"edit" | "preview" | "archive">("archive");
   const [saved, setSaved] = useState<Saved[]>([]);
+  // Editor libre en la página principal: el documento en curso y los diseños guardados en su archivo
+  const [freeSaved, setFreeSaved] = useState<Design[]>([]);
+  const [freeDoc, setFreeDoc] = useState(readCanvasDoc);
   const [pending, setPending] = useState(false);
   const [archiveError, setArchiveError] = useState<"" | "archiveFull" | "archiveUnavailable">("");
   const [query, setQuery] = useState("");
@@ -1937,6 +1973,8 @@ export default function Editor() {
       try {
         setDark(localStorage.getItem(THEME_KEY) === "dark");
       } catch {}
+      setFreeDoc(readCanvasDoc());
+      designs.list().then(setFreeSaved, () => {});
     });
     return () => cancelAnimationFrame(id);
   }, []);
@@ -2353,23 +2391,56 @@ export default function Editor() {
 
         {tab === "archive" ? (
           <main data-scroll="archive" className="flex flex-1 flex-col gap-10 canvas px-4 py-6 md:overflow-auto md:px-8">
-            <div className="mx-auto w-full max-w-5xl space-y-5">
-              <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="mx-auto w-full max-w-5xl space-y-10">
+              <div className="space-y-4">
                 <div>
                   <h1 className="font-display text-[32px] leading-tight font-semibold">{t.archive}</h1>
                   <p className="mt-1 max-w-prose text-ink/70">{t.archiveIntro}</p>
                 </div>
-                <button className={primary} onClick={newMenu}>
-                  <Icon d={ICONS.plus} />
-                  {t.newMenu}
-                </button>
+                <label className="relative block max-w-md">
+                  <span className="sr-only">{t.searchLabel}</span>
+                  <Icon d={ICONS.search} className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink/50" />
+                  <input className={`${input} pl-10`} type="search" placeholder={t.searchPh} value={query} onChange={(e) => setQuery(e.target.value)} />
+                </label>
               </div>
 
-              <label className="relative block max-w-md">
-                <span className="sr-only">{t.searchLabel}</span>
-                <Icon d={ICONS.search} className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink/50" />
-                <input className={`${input} pl-10`} type="search" placeholder={t.searchPh} value={query} onChange={(e) => setQuery(e.target.value)} />
-              </label>
+              {/* Editor libre: el documento en curso y los diseños guardados (abren el lienzo con ese diseño) */}
+              <section aria-labelledby="free-title" className="space-y-4">
+                <div className="flex flex-wrap items-end justify-between gap-4 border-b border-laguna/60 pb-3">
+                  <div>
+                    <h2 id="free-title" className="font-display text-2xl leading-tight font-semibold">{t.freeEditor}</h2>
+                    <p className="mt-1 max-w-prose text-sm text-ink/70">{t.freeIntro}</p>
+                  </div>
+                  <Link href="/canvas" className={primary}>
+                    <Icon d={ICONS.canvas} />
+                    {t.openFreeEditor}
+                  </Link>
+                </div>
+                {(() => {
+                  const list = freeSaved.filter((d) => !q || d.name.toLowerCase().includes(q));
+                  if (!freeDoc && !list.length) return <p className="rounded-lg bg-surface p-6 text-ink/70">{t.freeEmpty}</p>;
+                  return (
+                    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {freeDoc && !q && <FreeCard doc={freeDoc} title={t.inProgress} note={t.autosave} href="/canvas" label={t.openFreeEditor} />}
+                      {list.map((d) => (
+                        <FreeCard key={d.id} doc={d.doc} title={d.name} note={t.modified(fmtDate(d.savedAt, t.locale), fmtTime(d.savedAt, t.locale))} href={`/canvas?design=${encodeURIComponent(d.id)}`} label={t.openA(d.name)} />
+                      ))}
+                    </ul>
+                  );
+                })()}
+              </section>
+
+              <section aria-labelledby="classic-title" className="space-y-4">
+                <div className="flex flex-wrap items-end justify-between gap-4 border-b border-laguna/60 pb-3">
+                  <div>
+                    <h2 id="classic-title" className="font-display text-2xl leading-tight font-semibold">{t.classicTitle}</h2>
+                    <p className="mt-1 max-w-prose text-sm text-ink/70">{t.classicIntro}</p>
+                  </div>
+                  <button className={primary} onClick={newMenu}>
+                    <Icon d={ICONS.plus} />
+                    {t.newMenu}
+                  </button>
+                </div>
 
               {saved.length === 0 ? (
                 <p className="rounded-lg bg-surface p-6 text-ink/70">{t.emptyArchive}</p>
@@ -2412,6 +2483,7 @@ export default function Editor() {
                   })}
                 </ul>
               )}
+              </section>
             </div>
             <SiteFooter email={user} />
           </main>

@@ -27,6 +27,7 @@ import { MAX_PAGES, readPdf, type PdfError } from "./pdfLoad";
 import { okLink, pullLinks, pushLinks } from "./menuLink";
 import { convertToMenu } from "./menuConvert";
 import { formatPrice } from "../price";
+import { FreeSvg } from "./FreeSvg";
 
 /* Dibujar formas arrastrando: cada herramienta sabe construir su elemento a partir de una geometría (caja, o línea con ángulo).
    Geo: x/y = esquina superior izquierda (o inicio de la línea), w/h = caja (o w = largo de la línea), angle en grados (solo líneas). */
@@ -983,6 +984,17 @@ export default function CanvasEditor() {
     goPage(0);
     setArchiveMsg(lang === "es" ? `Abierto «${d.name}».` : `Aperto «${d.name}».`);
   };
+  // Desde la página principal: /canvas?design=<id> abre ese diseño guardado (y se quita de la URL para no repetirlo)
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get("design");
+    if (!id) return;
+    history.replaceState(null, "", location.pathname);
+    designs.list().then((all) => {
+      const d = all.find((x) => x.id === id);
+      if (d) openDesign(d);
+    }, () => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al llegar con ?design= (openDesign cambia en cada render)
+  }, []);
   const removeDesign = async (d: Design) => {
     if (!confirm(lang === "es" ? `¿Eliminar «${d.name}» del archivo?` : `Eliminare «${d.name}» dall'archivio?`)) return;
     await designs.remove(d.id).catch(() => setArchiveMsg(tr("Non sono riuscito a eliminarlo.")));
@@ -1583,6 +1595,20 @@ export default function CanvasEditor() {
     { id: "pages", label: tr("Pagine"), hint: tr("Aggiungi, duplica e ordina le pagine"), icon: ICONS.pages, body: (
       <>
           <p className="text-sm font-semibold">{tr("Pagina")} {page + 1} {tr("di")} {hist.pages.length}</p>
+          {/* Miniatura de cada página: se ve cuál es la actual y se salta a otra con un clic */}
+          <ol className="grid grid-cols-3 gap-3">
+            {hist.pages.map((pg, i) => (
+              <li key={i}>
+                <button type="button" aria-current={i === page ? "page" : undefined} aria-label={`${tr("Pagina")} ${i + 1}`} onClick={() => goPage(i)}
+                  className={`glow glow-soft block w-full rounded-md p-1 ${focus} ${i === page ? "bg-mare/15 ring-2 ring-mare" : "ring-1 ring-laguna hover:ring-mare/60"}`}>
+                  <span className="block overflow-hidden rounded-sm bg-white shadow-sm" style={{ aspectRatio: `${w} / ${h}` }}>
+                    <FreeSvg page={pg} paper={paper} bg={bg} bgGrad={bgGrad} />
+                  </span>
+                  <span className={`mt-1 block text-center text-xs tabular-nums ${i === page ? "font-semibold" : "text-ink/70"}`}>{i + 1}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
           <div className="flex flex-wrap gap-1">
             <button className={iconBtn} aria-label={tr("Nuova pagina")} title={tr("Nuova pagina")} onClick={addPage}><Icon d={ICONS.plus} /></button>
             <button className={iconBtn} aria-label={tr("Duplica pagina")} title={tr("Duplica pagina")} onClick={duplicatePage}><Icon d={ICONS.copy} /></button>
