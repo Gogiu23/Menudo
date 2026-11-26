@@ -1603,7 +1603,7 @@ export default function CanvasEditor() {
             <button className={iconBtn} aria-label={tr("Elimina pagina")} title={tr("Elimina pagina")} disabled={hist.pages.length < 2} onClick={deletePage}><Icon d={ICONS.trash} /></button>
           </div>
           {/* Miniatura de cada página: se ve cuál es la actual y se salta a otra con un clic */}
-          <ol className="grid grid-cols-2 gap-4">
+          <ol className="space-y-4">
             {hist.pages.map((pg, i) => (
               <li key={i}>
                 <button type="button" aria-current={i === page ? "page" : undefined} aria-label={`${tr("Pagina")} ${i + 1}`} onClick={() => goPage(i)}
