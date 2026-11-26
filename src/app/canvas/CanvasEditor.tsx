@@ -2065,9 +2065,10 @@ export default function CanvasEditor() {
         </div>
         </div>
       </main>
-      <aside aria-label={tr("Proprietà")} className="hidden w-[280px] shrink-0 overflow-y-auto md:pointer-events-auto md:relative md:z-10 md:ml-auto lg:block md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50">
+      {/* Solo con algo seleccionado: entra deslizándose desde la derecha; oculto no se puede pulsar ni enfocar (inert) */}
+      <aside aria-label={tr("Proprietà")} inert={!sels.length}
+        className={`hidden w-[280px] shrink-0 overflow-y-auto transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none md:relative md:z-10 md:ml-auto lg:block md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50 ${sels.length ? "md:pointer-events-auto" : "translate-x-[calc(100%+24px)] opacity-0"}`}>
         {properties}
-        {sels.length === 0 && <p className="p-4 text-sm text-ink/70">{hint}</p>}
       </aside>
       </div>
 
