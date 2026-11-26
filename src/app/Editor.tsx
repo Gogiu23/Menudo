@@ -1522,16 +1522,39 @@ function ContactDialog({ open, onClose, email }: { open: boolean; onClose: () =>
 }
 
 // Pie del archivo (pantalla de inicio): nombre, textos legales y contacto con el desarrollador
-function SiteFooter({ email }: { email: string }) {
+// Icono de usuario de la cabecera: abre un menú con el correo de la cuenta y «Salir»
+function UserMenu({ email, onLogout }: { email: string; onLogout: () => void }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  useLayoutEffect(() => () => setOpen(false), []); // al ocultarse la página (Activity), se cierra
+  return (
+    <div className="relative" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setOpen(false)} onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
+      <button className={iconBtn} aria-label={t.account} aria-haspopup="menu" aria-expanded={open} title={email} onClick={() => setOpen((o) => !o)}>
+        <Icon d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 15 0" className="size-[18px]" />
+      </button>
+      {open && (
+        <div role="menu" className="absolute top-full right-0 z-30 mt-2 w-60 rounded-xl bg-surface p-2 shadow-[0_18px_40px_-12px_rgb(14_26_43/0.45)] ring-1 ring-laguna/60">
+          <p className="truncate px-3 py-2 text-sm text-ink/70">{email}</p>
+          <button role="menuitem" className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold hover:bg-laguna/30 ${focus}`} onClick={onLogout}>
+            <Icon d={ICONS.logout} className="size-4" />
+            {t.logout}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SiteFooter({ email, compact }: { email: string; compact?: boolean }) {
   const t = useT();
   const [contact, setContact] = useState(false);
   const link = `rounded text-ink/70 underline-offset-4 hover:text-ink hover:underline ${focus}`;
   return (
-    <footer className="mx-auto mt-auto w-full max-w-5xl rounded-2xl bg-surface p-6 text-sm shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50">
-      <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
-        <div>
+    <footer className={`mx-auto mt-auto w-full rounded-2xl bg-surface text-sm shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50 ${compact ? "max-w-6xl px-5 py-3" : "max-w-5xl p-6"}`}>
+      <div className={`flex flex-wrap justify-between gap-x-8 ${compact ? "items-center gap-y-2" : "items-start gap-y-4"}`}>
+        <div className={compact ? "flex items-center gap-3" : ""}>
           <Brand />
-          <p className="mt-2 text-ink/60">{t.tagline}</p>
+          <p className={compact ? "text-xs text-ink/60" : "mt-2 text-ink/60"}>{t.tagline}</p>
         </div>
         <nav aria-label={t.legal} className="flex flex-wrap gap-x-6 gap-y-2">
           <a className={link} href="/privacy">
@@ -1546,7 +1569,7 @@ function SiteFooter({ email }: { email: string }) {
         </nav>
         <ContactDialog open={contact} onClose={() => setContact(false)} email={email} />
       </div>
-      <p className="mt-6 text-xs text-ink/50">{t.rights(new Date().getFullYear())}</p>
+      <p className={compact ? "mt-1 text-xs text-ink/50" : "mt-6 text-xs text-ink/50"}>{t.rights(new Date().getFullYear())}</p>
     </footer>
   );
 }
@@ -2354,15 +2377,15 @@ export default function Editor() {
           <div className="flex h-12 items-center gap-2 px-3 md:gap-3 md:px-4">
             <Brand />
             <p className="min-w-0 flex-1 truncate text-xs text-ink/60" aria-live="polite">
-              {status}
+              {tab !== "archive" && status}
             </p>
 
-            {/* Pestañas de escritorio */}
-            <nav className="hidden gap-1 border-r border-laguna/60 pr-2 md:flex md:pr-3" aria-label={t.sections}>
+            {/* Pestañas de escritorio (en la página principal no: cada sección lleva a su editor) */}
+            {tab !== "archive" && <nav className="hidden gap-1 border-r border-laguna/60 pr-2 md:flex md:pr-3" aria-label={t.sections}>
               {(
                 [
-                  { label: t.menu, icon: ICONS.edit, target: "edit", on: tab !== "archive" },
-                  { label: t.archive, icon: ICONS.archive, target: "archive", on: tab === "archive" },
+                  { label: t.menu, icon: ICONS.edit, target: "edit", on: true }, // estas pestañas solo salen fuera del archivo
+                  { label: t.archive, icon: ICONS.archive, target: "archive", on: false },
                 ] as const
               ).map((x) => (
                 <button
@@ -2381,26 +2404,32 @@ export default function Editor() {
                   )}
                 </button>
               ))}
-            </nav>
+            </nav>}
 
-            <Link href="/canvas" className={iconBtn} aria-label={t.freeEditor} title={t.freeEditor}>
-              <Icon d={ICONS.canvas} className="size-[18px]" />
-            </Link>
+            {tab !== "archive" && (
+              <Link href="/canvas" className={iconBtn} aria-label={t.freeEditor} title={t.freeEditor}>
+                <Icon d={ICONS.canvas} className="size-[18px]" />
+              </Link>
+            )}
             <button className={iconBtn} aria-label={dark ? t.lightTheme : t.darkTheme} title={dark ? t.lightTheme : t.darkTheme} onClick={toggleTheme}>
               <Icon d={dark ? ICONS.sun : ICONS.moon} className="size-[18px]" />
             </button>
             <LangToggle lang={lang} onChange={changeLang} />
-            <button className={iconBtn} aria-label={t.logout} title={`${t.logout} (${user})`} onClick={logout}>
-              <Icon d={ICONS.logout} className="size-[18px]" />
-            </button>
-            <button
+            {tab === "archive" ? (
+              <UserMenu email={user ?? ""} onLogout={logout} />
+            ) : (
+              <button className={iconBtn} aria-label={t.logout} title={`${t.logout} (${user})`} onClick={logout}>
+                <Icon d={ICONS.logout} className="size-[18px]" />
+              </button>
+            )}
+            {tab !== "archive" && <button
               className={`hidden h-9 shrink-0 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white lift hover:brightness-110 md:inline-flex ${focus}`}
               title={t.print}
               onClick={() => window.print()}
             >
               <Icon d={ICONS.print} className="size-[18px]" />
               {t.print}
-            </button>
+            </button>}
           </div>
           {(saveError || archiveError) && (
             <p role="alert" className="bg-sabbia px-5 py-2 text-sm font-semibold">
@@ -2410,39 +2439,40 @@ export default function Editor() {
         </header>
 
         {tab === "archive" ? (
-          <main data-scroll="archive" className={`flex flex-1 flex-col gap-10 canvas px-4 py-6 md:overflow-auto md:px-8 ${dark ? "" : "canvas-drift"}`}
+          <main data-scroll="archive" className={`flex flex-1 flex-col gap-4 canvas px-4 py-4 md:overflow-auto md:px-8 md:py-5 ${dark ? "" : "canvas-drift"}`}
             // Como el lienzo del editor libre: en claro, colores suaves que se van alternando bajo los puntos
             style={dark ? undefined : { backgroundColor: "#ffffff", backgroundImage: "radial-gradient(#c5d3ea 1px, transparent 1px), linear-gradient(135deg, #d3e3ff 0%, #ffffff 18%, #d6e4ff 34%, #ffffff 46%, #e8defc 60%, #ffffff 72%, #d4f2e8 84%, #ffe3d1 100%)", backgroundSize: "16px 16px, 400% 400%" }}>
-            <div className="mx-auto w-full max-w-5xl space-y-10">
-              <div className="space-y-4 rounded-2xl bg-surface p-5 md:p-6 shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50">
+            <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+              <div className="flex flex-col gap-4 rounded-2xl bg-surface p-4 md:flex-row md:items-center md:justify-between md:px-5 shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50">
                 <div className="flex items-center gap-4">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/squema.svg" alt="Squema" className="size-14 shrink-0 rounded-[22%] shadow-md" />
+                  <img src="/squema.svg" alt="Squema" className="size-12 shrink-0 rounded-[22%] shadow-md" />
                   <div>
-                    <h1 className="font-display text-[32px] leading-tight font-bold">{t.archive}</h1>
-                    <p className="mt-1 max-w-prose text-ink/80">{t.archiveIntro}</p>
+                    <h1 className="font-display text-[26px] leading-tight font-bold">{t.archive}</h1>
+                    <p className="mt-0.5 max-w-prose text-sm text-ink/80">{t.archiveIntro}</p>
                   </div>
                 </div>
-                <label className="relative block max-w-md">
+                <label className="relative block w-full md:max-w-xs">
                   <span className="sr-only">{t.searchLabel}</span>
                   <Icon d={ICONS.search} className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink/50" />
                   <input className={`${input} pl-10`} type="search" placeholder={t.searchPh} value={query} onChange={(e) => setQuery(e.target.value)} />
                 </label>
               </div>
 
+              <div className="grid gap-4 lg:grid-cols-2">
               {/* Editor libre: el documento en curso y los diseños guardados (abren el lienzo con ese diseño) */}
               <section aria-labelledby="free-title" className="overflow-hidden rounded-2xl bg-surface shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50">
-                <div className="flex flex-wrap items-end justify-between gap-4 bg-brand px-5 pt-6 pb-5 text-white">
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-brand px-4 pt-4 pb-3.5 text-white">
                   <div>
-                    <h2 id="free-title" className="font-display text-2xl leading-tight font-bold">{t.freeEditor}</h2>
-                    <p className="mt-1.5 max-w-prose text-sm text-white/85">{t.freeIntro}</p>
+                    <h2 id="free-title" className="font-display text-xl leading-tight font-bold">{t.freeEditor}</h2>
+                    <p className="mt-1 max-w-prose text-xs text-white/85">{t.freeIntro}</p>
                   </div>
-                  <Link href="/canvas" className={`inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 font-semibold text-[#0b2a6f] lift hover:bg-white/90 ${focus}`}>
+                  <Link href="/canvas" className={`inline-flex items-center justify-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-[#0b2a6f] lift hover:bg-white/90 ${focus}`}>
                     <Icon d={ICONS.canvas} />
                     {t.openFreeEditor}
                   </Link>
                 </div>
-                <div className="p-4 md:p-5">
+                <div className="p-3 md:p-4">
                 {(() => {
                   const list = freeSaved.filter((d) => !q || d.name.toLowerCase().includes(q));
                   if (!freeDoc && !list.length) return <p className="rounded-lg bg-surface p-6 text-ink/70">{t.freeEmpty}</p>;
@@ -2459,18 +2489,18 @@ export default function Editor() {
               </section>
 
               <section aria-labelledby="classic-title" className="overflow-hidden rounded-2xl bg-surface shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50">
-                <div className="flex flex-wrap items-end justify-between gap-4 bg-brand px-5 pt-6 pb-5 text-white">
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-brand px-4 pt-4 pb-3.5 text-white">
                   <div>
-                    <h2 id="classic-title" className="font-display text-2xl leading-tight font-bold">{t.classicTitle}</h2>
-                    <p className="mt-1.5 max-w-prose text-sm text-white/85">{t.classicIntro}</p>
+                    <h2 id="classic-title" className="font-display text-xl leading-tight font-bold">{t.classicTitle}</h2>
+                    <p className="mt-1 max-w-prose text-xs text-white/85">{t.classicIntro}</p>
                   </div>
-                  <button className={`inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 font-semibold text-[#0b2a6f] lift hover:bg-white/90 ${focus}`} onClick={newMenu}>
+                  <button className={`inline-flex items-center justify-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-[#0b2a6f] lift hover:bg-white/90 ${focus}`} onClick={newMenu}>
                     <Icon d={ICONS.plus} />
                     {t.newMenu}
                   </button>
                 </div>
 
-              <div className="p-4 md:p-5">
+              <div className="p-3 md:p-4">
               {saved.length === 0 ? (
                 <p className="rounded-lg bg-surface p-6 text-ink/70">{t.emptyArchive}</p>
               ) : found.length === 0 ? (
@@ -2514,8 +2544,9 @@ export default function Editor() {
               )}
               </div>
               </section>
+              </div>
             </div>
-            <SiteFooter email={user} />
+            <SiteFooter email={user} compact />
           </main>
         ) : (
           <div className="flex flex-1 flex-col md:min-h-0 md:flex-row">
