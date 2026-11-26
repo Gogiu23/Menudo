@@ -1373,9 +1373,9 @@ export default function CanvasEditor() {
   );
   const properties = sels.length > 0 && (
     <div>
-      <div className="border-b border-laguna/50 px-5 py-4">
-        <h2 className="font-display text-[17px] font-semibold">{cur ? label(cur, tr) : `${sels.length} ${tr("elementi")}`}</h2>
-        <p className="text-xs text-ink/70">{cur ? tr("Elemento selezionato") : tr("Selezione multipla")}</p>
+      <div className="bg-brand px-5 pt-6 pb-5 text-white">
+        <h2 className="truncate font-display text-2xl leading-tight font-bold">{cur ? label(cur, tr) : `${sels.length} ${tr("elementi")}`}</h2>
+        <p className="mt-1.5 text-xs leading-snug text-white/85">{cur ? tr("Elemento selezionato") : tr("Selezione multipla")}</p>
       </div>
       {cur?.type === "text" && (
         <Block title={tr("Testo")}>
