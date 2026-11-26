@@ -1331,7 +1331,7 @@ export default function CanvasEditor() {
   const textBar = tx && !editing && (
     <div className="relative flex min-w-0 flex-1 items-end justify-center self-stretch">
       {/* Pestaña: borde degradado arriba y a los lados; abajo se funde con la línea degradada de la cabecera */}
-      <div role="toolbar" aria-label={tr("Testo")} className="ring-grad ring-grad-open relative flex items-center gap-1 rounded-t-xl px-1.5 pt-1 pb-2"
+      <div role="toolbar" aria-label={tr("Testo")} className="ring-grad ring-grad-open relative flex items-center gap-1.5 rounded-t-2xl px-4 pt-2.5 pb-3"
         onKeyDown={(e) => e.key === "Escape" && fontOpen && (e.stopPropagation(), setFontOpen(false))}>
         {/* Curvas hacia fuera en las esquinas de abajo: los lados de la pestaña se funden con la línea de la cabecera */}
         <svg aria-hidden viewBox="0 0 14 13" className="pointer-events-none absolute bottom-0 -left-3 h-[13px] w-[14px] overflow-visible"><path d="M13 0 A12 12 0 0 1 1 12" fill="none" stroke="#13398f" strokeWidth="2" /></svg>
