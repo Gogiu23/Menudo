@@ -198,7 +198,7 @@ input[type="range"] {
 @utility ring-grad-open {
   &::before {
     padding-bottom: 0;
-    bottom: 12px;
+    bottom: 12px !important; /* si no, el inset: 0 de ring-grad lo anula (orden de las utilidades) */
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
