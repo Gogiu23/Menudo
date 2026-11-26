@@ -1185,6 +1185,13 @@ export default function CanvasEditor() {
     }
     if (upd.size) setEls((a) => a.map((x) => (upd.has(x.id) ? ({ ...x, ...upd.get(x.id) } as El) : x)));
   };
+  // Doble clic sobre la caja del transformador (que queda encima del elemento seleccionado, ver shouldOverdrawWholeArea):
+  // en un tirador ajusta los textos a su contenido; dentro de la caja, si es un solo texto, se edita
+  const trDblClick = (t: Konva.Node) => {
+    if (t.hasName("_anchor")) return fitTexts();
+    const el = sel ? els.find((x) => x.id === sel) : undefined;
+    if (el?.type === "text" && !el.locked) setEditing(el.id);
+  };
   const commit = () => {
     const layer = layerRef.current!;
     const upd = new Map<string, Partial<El>>();
@@ -1320,8 +1327,9 @@ export default function CanvasEditor() {
   const barOn = "bg-laguna/40 text-ink";
   const stepSize = (k: number) => tx && putSel(isText, { fontSize: Math.max(2, Math.round((tx.fontSize + k) * 10) / 10) });
   const textBar = tx && !editing && (
-    <div className="relative flex min-w-0 flex-1 justify-center">
-      <div role="toolbar" aria-label={tr("Testo")} className="ring-grad relative flex items-center gap-1 rounded-xl px-1.5 py-1"
+    <div className="relative flex min-w-0 flex-1 items-end justify-center self-stretch">
+      {/* Pestaña: borde degradado arriba y a los lados; abajo se funde con la línea degradada de la cabecera */}
+      <div role="toolbar" aria-label={tr("Testo")} className="ring-grad ring-grad-open relative flex items-center gap-1 rounded-t-xl px-1.5 pt-1 pb-2"
         onKeyDown={(e) => e.key === "Escape" && fontOpen && (e.stopPropagation(), setFontOpen(false))}>
         <button type="button" aria-haspopup="true" aria-expanded={fontOpen} title={tr("Carattere")} className={`glow flex h-9 w-36 shrink-0 items-center justify-between gap-1 rounded-lg border border-laguna px-2.5 text-[15px] hover:bg-laguna/30 ${focus}`}
           style={{ fontFamily: (() => { const f = FONTS.find((x) => x.key === tx.fontFamily); return f ? `var(${f.cssVar}), ${f.fallback}` : undefined; })() }} onClick={() => setFontOpen((o) => !o)}>
@@ -1805,7 +1813,9 @@ export default function CanvasEditor() {
     {/* Medidas explícitas: los nombres A2 y A1 no son tamaños de página válidos en CSS */}
     <style>{`@page { size: ${sheet.w}mm ${sheet.h}mm; margin: 0; }`}</style>
     <div ref={rootRef} className="flex h-dvh flex-col bg-app text-ink print:hidden">
-      <header className="shrink-0 border-b border-laguna/60 bg-app pt-[env(safe-area-inset-top)]">
+      <header className="relative shrink-0 bg-app pt-[env(safe-area-inset-top)]">
+        {/* Borde inferior: gris; con la barra de texto abierta, la línea degradada en la que se apoya */}
+        <div aria-hidden className={`pointer-events-none absolute inset-x-0 bottom-0 ${textBar ? "h-0.5 bg-brand" : "h-px bg-laguna/60"}`} />
         <div className="flex h-16 items-center gap-2 px-3 pt-2 md:h-20 md:gap-3 md:px-4">
           <Tip label={tr("Torna al menù")} hint={tr("Esci dall'editor libero. Le modifiche sono già salvate.")}>
             <Link href="/" className={`glow glow-soft inline-flex h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold hover:bg-laguna/30 md:h-9 ${focus}`}>
@@ -2022,7 +2032,7 @@ export default function CanvasEditor() {
               {guides.v.map((x) => <Line key={"v" + x} points={[x, 0, x, h]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
               {guides.h.map((y) => <Line key={"h" + y} points={[0, y, w, y]} stroke={PALETTE[1].hex} strokeWidth={1.2 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />)}
               {marquee && <Rect x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h} fill={PALETTE[1].hex} opacity={0.18} stroke={PALETTE[1].hex} strokeWidth={1 / zoom} listening={false} />}
-              <Transformer ref={trRef} onDblClick={(e) => e.target.hasName("_anchor") && fitTexts()} onDblTap={(e) => e.target.hasName("_anchor") && fitTexts()} shouldOverdrawWholeArea borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" anchorSize={coarse ? 26 : 10} anchorCornerRadius={coarse ? 13 : 0} rotateAnchorOffset={coarse ? 40 : 50} rotateEnabled keepRatio={false} enabledAnchors={onlyLines ? ["middle-left", "middle-right"] : ALL_ANCHORS} boundBoxFunc={(o, n) => (n.width < 5 || (!onlyLines && n.height < 5) ? o : n)} />
+              <Transformer ref={trRef} onDblClick={(e) => trDblClick(e.target)} onDblTap={(e) => trDblClick(e.target)} shouldOverdrawWholeArea borderStroke={PALETTE[1].hex} anchorStroke={PALETTE[1].hex} anchorFill="#fff" anchorSize={coarse ? 26 : 10} anchorCornerRadius={coarse ? 13 : 0} rotateAnchorOffset={coarse ? 40 : 50} rotateEnabled keepRatio={false} enabledAnchors={onlyLines ? ["middle-left", "middle-right"] : ALL_ANCHORS} boundBoxFunc={(o, n) => (n.width < 5 || (!onlyLines && n.height < 5) ? o : n)} />
             </Layer>
           </Stage>
           {editEl && (
