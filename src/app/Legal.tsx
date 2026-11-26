@@ -179,7 +179,7 @@ export default function Legal({ doc }: { doc: "privacy" | "terms" }) {
       <article className="mx-auto max-w-2xl rounded-xl bg-surface p-6 shadow-sm ring-1 ring-laguna/60 md:p-10">
         <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-mare hover:underline">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/icon-192.png" alt="" className="size-6 rounded-md" />
+          <img src="/squema.svg" alt="" className="size-6" />
           {BACK[lang]}
         </Link>
         <h1 className="mt-6 text-[28px] leading-tight font-semibold tracking-tight">{d.title}</h1>

@@ -1556,7 +1556,7 @@ function Brand() {
   return (
     <p className="flex shrink-0 items-center gap-2 text-[17px] leading-none font-semibold tracking-tight">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/icon-192.png" alt="" className="size-7 rounded-md" />
+      <img src="/squema.svg" alt="Squema" className="size-7" />
       Menudo
     </p>
   );
@@ -2417,7 +2417,7 @@ export default function Editor() {
               <div className="space-y-4 rounded-2xl bg-surface p-5 md:p-6 shadow-[0_2px_6px_rgb(14_26_43/0.1),0_22px_48px_-12px_rgb(14_26_43/0.38)] ring-1 ring-laguna/50">
                 <div className="flex items-center gap-4">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/icon-192.png" alt="" className="size-14 shrink-0 rounded-2xl shadow-md" />
+                  <img src="/squema.svg" alt="Squema" className="size-14 shrink-0 rounded-[22%] shadow-md" />
                   <div>
                     <h1 className="font-display text-[32px] leading-tight font-bold">{t.archive}</h1>
                     <p className="mt-1 max-w-prose text-ink/80">{t.archiveIntro}</p>

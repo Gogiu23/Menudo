@@ -84,7 +84,7 @@ export function Brand() {
   return (
     <p className="flex shrink-0 items-center gap-2 text-[17px] leading-none font-semibold tracking-tight">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/icon-192.png" alt="" className="size-7 rounded-md" />
+      <img src="/squema.svg" alt="Squema" className="size-7" />
       Menudo
     </p>
   );
