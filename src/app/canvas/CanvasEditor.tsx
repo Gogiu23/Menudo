@@ -1321,7 +1321,7 @@ export default function CanvasEditor() {
   const stepSize = (k: number) => tx && putSel(isText, { fontSize: Math.max(2, Math.round((tx.fontSize + k) * 10) / 10) });
   const textBar = tx && !editing && (
     <div className="relative flex min-w-0 flex-1 justify-center">
-      <div role="toolbar" aria-label={tr("Testo")} className="flex items-center gap-1"
+      <div role="toolbar" aria-label={tr("Testo")} className="ring-grad relative flex items-center gap-1 rounded-xl px-1.5 py-1"
         onKeyDown={(e) => e.key === "Escape" && fontOpen && (e.stopPropagation(), setFontOpen(false))}>
         <button type="button" aria-haspopup="true" aria-expanded={fontOpen} title={tr("Carattere")} className={`glow flex h-9 w-36 shrink-0 items-center justify-between gap-1 rounded-lg border border-laguna px-2.5 text-[15px] hover:bg-laguna/30 ${focus}`}
           style={{ fontFamily: (() => { const f = FONTS.find((x) => x.key === tx.fontFamily); return f ? `var(${f.cssVar}), ${f.fallback}` : undefined; })() }} onClick={() => setFontOpen((o) => !o)}>
