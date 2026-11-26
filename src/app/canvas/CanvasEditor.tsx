@@ -1602,20 +1602,13 @@ export default function CanvasEditor() {
             <button className={iconBtn} aria-label={tr("Sposta avanti")} title={tr("Sposta avanti")} disabled={page === hist.pages.length - 1} onClick={() => movePage(1)}><Icon d={ICONS.right} /></button>
             <button className={iconBtn} aria-label={tr("Elimina pagina")} title={tr("Elimina pagina")} disabled={hist.pages.length < 2} onClick={deletePage}><Icon d={ICONS.trash} /></button>
           </div>
-          {/* Miniatura de cada página: se ve cuál es la actual y se salta a otra con un clic */}
-          <ol className="space-y-4">
-            {hist.pages.map((pg, i) => (
-              <li key={i}>
-                <button type="button" aria-current={i === page ? "page" : undefined} aria-label={`${tr("Pagina")} ${i + 1}`} onClick={() => goPage(i)}
-                  className={`glow glow-soft block w-full rounded-md p-1 ${focus} ${i === page ? "bg-mare/15 ring-2 ring-mare" : "ring-1 ring-laguna hover:ring-mare/60"}`}>
-                  <span className="block overflow-hidden rounded-sm bg-white shadow-sm" style={{ aspectRatio: `${w} / ${h}` }}>
-                    <FreeSvg page={pg} paper={paper} bg={bg} bgGrad={bgGrad} />
-                  </span>
-                  <span className={`mt-1.5 block text-center text-sm tabular-nums ${i === page ? "font-semibold" : "text-ink/70"}`}>{i + 1}</span>
-                </button>
-              </li>
-            ))}
-          </ol>
+          {/* Vista previa de la página que se está viendo (para saber cuál es) */}
+          <figure className="space-y-1.5">
+            <span className="block overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-laguna" style={{ aspectRatio: `${w} / ${h}` }}>
+              <FreeSvg page={els} paper={paper} bg={bg} bgGrad={bgGrad} />
+            </span>
+            <figcaption className="text-center text-sm font-semibold tabular-nums">{tr("Pagina")} {page + 1}</figcaption>
+          </figure>
       </>
     ) },
     { id: "sheet", label: tr("Foglio"), hint: tr("Carta, copie e numeri di tavolo"), icon: ICONS.sheet, body: (
