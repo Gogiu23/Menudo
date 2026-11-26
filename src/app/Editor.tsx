@@ -2030,6 +2030,10 @@ export default function Editor() {
         setDark(localStorage.getItem(THEME_KEY) === "dark");
       } catch {}
       setFreeDoc(readCanvasDoc());
+      if (new URLSearchParams(location.search).has("home")) {
+        setTab("archive");
+        history.replaceState(null, "", location.pathname);
+      }
       designs.list().then(setFreeSaved, () => {});
     });
     return () => cancelAnimationFrame(id);
@@ -2394,47 +2398,16 @@ export default function Editor() {
             </p>
 
             {/* Pestañas de escritorio (en la página principal no: cada sección lleva a su editor) */}
-            {tab !== "archive" && <nav className="hidden gap-1 border-r border-laguna/60 pr-2 md:flex md:pr-3" aria-label={t.sections}>
-              {(
-                [
-                  { label: t.menu, icon: ICONS.edit, target: "edit", on: true }, // estas pestañas solo salen fuera del archivo
-                  { label: t.archive, icon: ICONS.archive, target: "archive", on: false },
-                ] as const
-              ).map((x) => (
-                <button
-                  key={x.target}
-                  aria-current={x.on ? "page" : undefined}
-                  aria-label={x.label}
-                  title={x.label}
-                  className={`relative grid size-9 place-items-center rounded-lg lift ${focus} ${x.on ? "bg-laguna/40 text-ink" : "text-ink/60 hover:bg-laguna/20 hover:text-ink"}`}
-                  onClick={() => go(x.target)}
-                >
-                  <Icon d={x.icon} className="size-[18px]" />
-                  {x.target === "archive" && saved.length > 0 && (
-                    <span className="absolute -top-1 -right-1 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
-                      {saved.length}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </nav>}
-
             {tab !== "archive" && (
-              <Link href="/canvas" className={iconBtn} aria-label={t.freeEditor} title={t.freeEditor}>
-                <Icon d={ICONS.canvas} className="size-[18px]" />
-              </Link>
+              <button className={iconBtn} aria-label={t.home} title={t.home} onClick={() => go("archive")}>
+                <Icon d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10" className="size-[18px]" />
+              </button>
             )}
             <button className={iconBtn} aria-label={dark ? t.lightTheme : t.darkTheme} title={dark ? t.lightTheme : t.darkTheme} onClick={toggleTheme}>
               <Icon d={dark ? ICONS.sun : ICONS.moon} className="size-[18px]" />
             </button>
             <LangToggle lang={lang} onChange={changeLang} />
-            {tab === "archive" ? (
-              <UserMenu email={user ?? ""} onLogout={logout} />
-            ) : (
-              <button className={iconBtn} aria-label={t.logout} title={`${t.logout} (${user})`} onClick={logout}>
-                <Icon d={ICONS.logout} className="size-[18px]" />
-              </button>
-            )}
+            {tab === "archive" && <UserMenu email={user ?? ""} onLogout={logout} />}
             {tab !== "archive" && <button
               className={`hidden h-9 shrink-0 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white lift hover:brightness-110 md:inline-flex ${focus}`}
               title={t.print}

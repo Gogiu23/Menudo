@@ -301,6 +301,7 @@ const ES: Record<string, string> = {
   "Aprilo": "Abrirlo",
   "Pagina precedente": "Página anterior",
   "Pagina successiva": "Página siguiente",
+  "Home": "Inicio",
 };
 
 export type Tr = (s: string, ctx?: string) => string;

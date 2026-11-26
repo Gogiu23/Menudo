@@ -1833,10 +1833,9 @@ export default function CanvasEditor() {
         {/* Borde inferior: gris; con la barra de texto abierta, la línea degradada en la que se apoya */}
         <div aria-hidden className={`pointer-events-none absolute inset-x-0 bottom-0 ${textBar ? "h-0.5 bg-brand" : "h-px bg-laguna/60"}`} />
         <div className="flex h-16 items-center gap-2 px-3 pt-2 md:h-20 md:gap-3 md:px-4">
-          <Tip label={tr("Torna al menù")} hint={tr("Esci dall'editor avanzato. Le modifiche sono già salvate.")}>
-            <Link href="/" className={`glow glow-soft inline-flex h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold hover:bg-laguna/30 md:h-9 ${focus}`}>
-              <Icon d={ICONS.left} className="size-[18px]" />
-              {tr("Menù")}
+          <Tip label={tr("Home")} hint={tr("Esci dall'editor avanzato. Le modifiche sono già salvate.")}>
+            <Link href="/?home" aria-label={tr("Home")} className={iconBtn}>
+              <Icon d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10" className="size-[18px]" />
             </Link>
           </Tip>
           <Link href="/" aria-label="Menudo" className={`glow glow-soft hidden shrink-0 rounded-md sm:block ${focus}`}>
