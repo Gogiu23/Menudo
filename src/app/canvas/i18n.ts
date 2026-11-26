@@ -299,6 +299,8 @@ const ES: Record<string, string> = {
   "Aprire il design del menù dell'editor normale? Il lavoro attuale verrà sostituito (salvalo prima nell'archivio se ti serve).": "¿Abrir el diseño de la carta del editor normal? El trabajo actual se sustituirá (guárdalo antes en el archivo si lo necesitas).",
   "Il menù dell'editor normale ha un altro design": "La carta del editor normal tiene otro diseño",
   "Aprilo": "Abrirlo",
+  "Pagina precedente": "Página anterior",
+  "Pagina successiva": "Página siguiente",
 };
 
 export type Tr = (s: string, ctx?: string) => string;

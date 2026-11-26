@@ -1598,16 +1598,20 @@ export default function CanvasEditor() {
           <div className="flex flex-wrap gap-1">
             <button className={iconBtn} aria-label={tr("Nuova pagina")} title={tr("Nuova pagina")} onClick={addPage}><Icon d={ICONS.plus} /></button>
             <button className={iconBtn} aria-label={tr("Duplica pagina")} title={tr("Duplica pagina")} onClick={duplicatePage}><Icon d={ICONS.copy} /></button>
-            <button className={iconBtn} aria-label={tr("Sposta indietro")} title={tr("Sposta indietro")} disabled={page === 0} onClick={() => movePage(-1)}><Icon d={ICONS.left} /></button>
-            <button className={iconBtn} aria-label={tr("Sposta avanti")} title={tr("Sposta avanti")} disabled={page === hist.pages.length - 1} onClick={() => movePage(1)}><Icon d={ICONS.right} /></button>
+            <button className={iconBtn} aria-label={tr("Sposta indietro")} title={tr("Sposta indietro")} disabled={page === 0} onClick={() => movePage(-1)}><Icon d={ICONS.up} /></button>
+            <button className={iconBtn} aria-label={tr("Sposta avanti")} title={tr("Sposta avanti")} disabled={page === hist.pages.length - 1} onClick={() => movePage(1)}><Icon d={ICONS.down} /></button>
             <button className={iconBtn} aria-label={tr("Elimina pagina")} title={tr("Elimina pagina")} disabled={hist.pages.length < 2} onClick={deletePage}><Icon d={ICONS.trash} /></button>
           </div>
-          {/* Vista previa de la página que se está viendo (para saber cuál es) */}
+          {/* Vista previa de la página que se está viendo, con flechas para ir a la anterior y a la siguiente */}
           <figure className="space-y-1.5">
             <span className="block overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-laguna" style={{ aspectRatio: `${w} / ${h}` }}>
               <FreeSvg page={els} paper={paper} bg={bg} bgGrad={bgGrad} />
             </span>
-            <figcaption className="text-center text-sm font-semibold tabular-nums">{tr("Pagina")} {page + 1}</figcaption>
+            <figcaption className="flex items-center justify-between gap-2">
+              <button type="button" className={iconBtn} aria-label={tr("Pagina precedente")} title={tr("Pagina precedente")} disabled={page === 0} onClick={() => goPage(page - 1)}><Icon d={ICONS.left} /></button>
+              <span className="text-sm font-semibold tabular-nums">{tr("Pagina")} {page + 1} {tr("di")} {hist.pages.length}</span>
+              <button type="button" className={iconBtn} aria-label={tr("Pagina successiva")} title={tr("Pagina successiva")} disabled={page === hist.pages.length - 1} onClick={() => goPage(page + 1)}><Icon d={ICONS.right} /></button>
+            </figcaption>
           </figure>
       </>
     ) },
