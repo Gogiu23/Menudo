@@ -204,6 +204,14 @@ input[type="range"] {
   }
 }
 
+/* Sin barra de desplazamiento visible (se sigue desplazando con rueda, trackpad o teclado) */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Glow sin borde: solo el brillo de fondo que sigue al ratón (textos, enlaces, botones planos, campos) */
 @utility glow-soft {
   &::before {

@@ -1872,7 +1872,7 @@ export default function CanvasEditor() {
       <div className="flex min-h-0 flex-1 md:pointer-events-none md:gap-3">
       {/* Escritorio: carril de iconos y una sección cada vez, como en Canva */}
       <div className="hidden md:relative md:z-10 md:flex md:gap-3">
-        <nav aria-label={tr("Sezioni")} className="pointer-events-auto flex max-h-full w-[76px] shrink-0 flex-col items-center self-center overflow-x-hidden overflow-y-auto py-4 md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50">
+        <nav aria-label={tr("Sezioni")} className="no-scrollbar pointer-events-auto flex max-h-full w-[76px] shrink-0 flex-col items-center self-center overflow-x-hidden overflow-y-auto py-4 md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50">
           <div className="my-auto flex flex-col items-center gap-5">
             {sections.map((s, i) => (
               <Fragment key={s.id}>
@@ -1888,7 +1888,7 @@ export default function CanvasEditor() {
           </div>
         </nav>
         {/* Mide lo que su contenido; con Esc o pulsando el icono activo se cierra (fundido y desplazamiento) */}
-        <aside aria-label={active.label} inert={!panel} className={`max-h-full w-[248px] shrink-0 self-center overflow-y-auto transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none lg:w-[264px] ${panel ? "pointer-events-auto" : "-translate-x-4 opacity-0"} md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50`}>
+        <aside aria-label={active.label} inert={!panel} className={`no-scrollbar max-h-full w-[248px] shrink-0 self-center overflow-y-auto transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none lg:w-[264px] ${panel ? "pointer-events-auto" : "-translate-x-4 opacity-0"} md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50`}>
           <div className="bg-brand px-5 pt-6 pb-5 text-white">
             <h2 className="font-display text-2xl leading-tight font-bold">{active.label}</h2>
             <p className="mt-1.5 text-xs leading-snug text-white/85">{active.hint}</p>
@@ -2070,7 +2070,7 @@ export default function CanvasEditor() {
       </main>
       {/* Solo con algo seleccionado: entra deslizándose desde la derecha; oculto no se puede pulsar ni enfocar (inert) */}
       <aside aria-label={tr("Proprietà")} inert={!sels.length}
-        className={`hidden w-[280px] shrink-0 overflow-y-auto transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none md:relative md:z-10 md:ml-auto lg:block md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50 ${sels.length ? "md:pointer-events-auto" : "translate-x-[calc(100%+24px)] opacity-0"}`}>
+        className={`no-scrollbar hidden w-[280px] shrink-0 overflow-y-auto transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none md:relative md:z-10 md:ml-auto lg:block md:rounded-2xl md:bg-surface md:shadow-[0_10px_30px_-14px_rgb(14_26_43/0.3)] md:ring-1 md:ring-laguna/50 ${sels.length ? "md:pointer-events-auto" : "translate-x-[calc(100%+24px)] opacity-0"}`}>
         {properties}
       </aside>
       </div>
