@@ -2492,10 +2492,16 @@ export default function Editor() {
                   id="classic-title" title={t.classicTitle} intro={t.classicIntro}
                   empty={saved.length === 0 ? t.emptyArchive : t.notFound(query)}
                   action={
-                    <button className={primary} onClick={newMenu}>
-                      <Icon d={ICONS.plus} />
-                      {t.newMenu}
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button className={primary} onClick={() => go("edit")}>
+                        <Icon d={ICONS.edit} />
+                        {t.openSimpleEditor}
+                      </button>
+                      <button className={secondary} onClick={newMenu}>
+                        <Icon d={ICONS.plus} />
+                        {t.newMenu}
+                      </button>
+                    </div>
                   }
                   items={found.map((a) => {
                     const inUse = a.id === currentId;

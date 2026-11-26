@@ -19,8 +19,8 @@ export default function Gate() {
   return (
     <main className="grid min-h-screen place-items-center bg-surface p-6 text-center text-ink">
       <div className="max-w-sm space-y-4">
-        <p>Accedi dall&apos;editor principale per usare l&apos;editor libero.</p>
-        <p className="text-ink/65">Inicia sesión en el editor principal para usar el editor libre.</p>
+        <p>Accedi dall&apos;editor semplice per usare l&apos;editor avanzato.</p>
+        <p className="text-ink/65">Inicia sesión en el editor simple para usar el editor avanzado.</p>
         <Link href="/" className="inline-block rounded-lg bg-brand px-4 py-2 font-semibold text-white">
           Menudo
         </Link>

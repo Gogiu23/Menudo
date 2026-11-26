@@ -1011,7 +1011,7 @@ export default function CanvasEditor() {
       setImportMsg(tr("In questa pagina non ci sono testi da convertire."));
       return;
     }
-    if (!confirm(tr("Il menù dell'editor normale (nome, sezioni e piatti) verrà sostituito da questa pagina. Continuare?"))) return;
+    if (!confirm(tr("Il menù dell'editor semplice (nome, sezioni e piatti) verrà sostituito da questa pagina. Continuare?"))) return;
     try {
       const free: FreeDoc = { docId, paper, pages: hist.pages, bg, bgGrad, at: Date.now() }; // el guardado lo pone al día con los enlaces
       localStorage.setItem(MENU_KEY, JSON.stringify({ ...(readMenuRaw() ?? {}), ...menu, free }));
@@ -1027,12 +1027,12 @@ export default function CanvasEditor() {
       const v = l.f === "price" ? formatPrice(e.text) : e.text.trim();
       return { ...e, text: v, link: { ...l, v } };
     }));
-    setImportMsg(`${tr("Fatto")}: ${menu.sections.length} ${tr("sezioni")}, ${dishes} ${tr("piatti")}. ${tr("Aprilo nell'editor normale con «Menù».")}`);
+    setImportMsg(`${tr("Fatto")}: ${menu.sections.length} ${tr("sezioni")}, ${dishes} ${tr("piatti")}. ${tr("Aprilo nell'editor semplice con «Menù».")}`);
   };
   // La carta del editor normal dibuja otro documento del lienzo: abrirlo aquí (sustituye el actual)
   const otherDoc = menuFree && menuFree.docId !== docId ? menuFree : null;
   const openMenuDesign = () => {
-    if (!otherDoc || !confirm(tr("Aprire il design del menù dell'editor normale? Il lavoro attuale verrà sostituito (salvalo prima nell'archivio se ti serve)."))) return;
+    if (!otherDoc || !confirm(tr("Aprire il design del menù dell'editor semplice? Il lavoro attuale verrà sostituito (salvalo prima nell'archivio se ti serve)."))) return;
     setPaper(otherDoc.paper);
     setBg(okBg(otherDoc.bg));
     setBgGrad(okGrad(otherDoc.bgGrad));
@@ -1044,7 +1044,7 @@ export default function CanvasEditor() {
     run(async () => {
       setImportMsg("");
       const menu = readSavedMenu();
-      if (!menu) return setImportMsg(tr("Nessun menù trovato: crealo prima nell'editor principale."));
+      if (!menu) return setImportMsg(tr("Nessun menù trovato: crealo prima nell'editor semplice."));
       const pages = await menuToPages(menu, paper, tr("Tavolo n.:"));
       setPages(() => pages);
       // Documento nuevo, enlazado a la carta: el editor normal dibujará este diseño
@@ -1410,9 +1410,9 @@ export default function CanvasEditor() {
           {cur.link && (
             <div className="flex items-center gap-2 rounded-lg bg-laguna/25 px-3 py-2 text-xs">
               <span className="min-w-0 flex-1">
-                {tr("Collegato all'editor normale")}: <b>{linkLabel(cur.link, tr)}</b>
+                {tr("Collegato all'editor semplice")}: <b>{linkLabel(cur.link, tr)}</b>
               </span>
-              <button type="button" className={`glow glow-soft rounded-md px-2 py-1 font-semibold hover:bg-laguna/40 ${focus}`} title={tr("Il testo non si aggiornerà più con l'editor normale")} onClick={() => patch(cur.id, { link: undefined })}>{tr("Scollega")}</button>
+              <button type="button" className={`glow glow-soft rounded-md px-2 py-1 font-semibold hover:bg-laguna/40 ${focus}`} title={tr("Il testo non si aggiornerà più con l'editor semplice")} onClick={() => patch(cur.id, { link: undefined })}>{tr("Scollega")}</button>
             </div>
           )}
           <Switch checked={!!cur.table} onChange={(v) => patch(cur.id, { table: v })}>{tr("Numero di tavolo (diverso per ogni copia)")}</Switch>
@@ -1775,7 +1775,7 @@ export default function CanvasEditor() {
             <Icon d={ICONS.edit} className="size-[18px]" />
             {tr("Importa il menù attuale")}
           </button>
-          <button type="button" className={`${secondary} w-full justify-center`} disabled={busy} title={tr("Trasforma i testi di questa pagina nel menù dell'editor normale")} onClick={convertPage}>
+          <button type="button" className={`${secondary} w-full justify-center`} disabled={busy} title={tr("Trasforma i testi di questa pagina nel menù dell'editor semplice")} onClick={convertPage}>
             <Icon d={ICONS.pages} className="size-[18px]" />
             {tr("Converti in menù")}
           </button>
@@ -1833,7 +1833,7 @@ export default function CanvasEditor() {
         {/* Borde inferior: gris; con la barra de texto abierta, la línea degradada en la que se apoya */}
         <div aria-hidden className={`pointer-events-none absolute inset-x-0 bottom-0 ${textBar ? "h-0.5 bg-brand" : "h-px bg-laguna/60"}`} />
         <div className="flex h-16 items-center gap-2 px-3 pt-2 md:h-20 md:gap-3 md:px-4">
-          <Tip label={tr("Torna al menù")} hint={tr("Esci dall'editor libero. Le modifiche sono già salvate.")}>
+          <Tip label={tr("Torna al menù")} hint={tr("Esci dall'editor avanzato. Le modifiche sono già salvate.")}>
             <Link href="/" className={`glow glow-soft inline-flex h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold hover:bg-laguna/30 md:h-9 ${focus}`}>
               <Icon d={ICONS.left} className="size-[18px]" />
               {tr("Menù")}
@@ -1844,7 +1844,7 @@ export default function CanvasEditor() {
           </Link>
           {textBar || (
             <p className="min-w-0 flex-1 truncate text-xs text-ink/70" aria-live="polite">
-              {tr("Editor libero · Le modifiche si salvano da sole")}
+              {tr("Editor avanzato · Le modifiche si salvano da sole")}
             </p>
           )}
           <Tip label={tr("Annulla")} hint="Ctrl+Z">
@@ -1937,7 +1937,7 @@ export default function CanvasEditor() {
         {otherDoc && !tool && (
           <div className="pointer-events-none sticky top-3 z-30 flex h-0 items-start justify-center">
             <div role="status" className="pointer-events-auto flex items-center gap-3 rounded-full bg-ink py-1.5 pr-1.5 pl-4 text-xs font-semibold text-surface shadow-lg">
-              {tr("Il menù dell'editor normale ha un altro design")}
+              {tr("Il menù dell'editor semplice ha un altro design")}
               <button type="button" className={`glow glow-soft rounded-full bg-surface px-3 py-1 text-ink ${focus}`} onClick={openMenuDesign}>{tr("Aprilo")}</button>
             </div>
           </div>
