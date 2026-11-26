@@ -1331,6 +1331,9 @@ export default function CanvasEditor() {
       {/* Pestaña: borde degradado arriba y a los lados; abajo se funde con la línea degradada de la cabecera */}
       <div role="toolbar" aria-label={tr("Testo")} className="ring-grad ring-grad-open relative flex items-center gap-1 rounded-t-xl px-1.5 pt-1 pb-2"
         onKeyDown={(e) => e.key === "Escape" && fontOpen && (e.stopPropagation(), setFontOpen(false))}>
+        {/* Curvas hacia fuera en las esquinas de abajo: los lados de la pestaña se funden con la línea de la cabecera */}
+        <svg aria-hidden viewBox="0 0 14 13" className="pointer-events-none absolute bottom-0 -left-3 h-[13px] w-[14px] overflow-visible"><path d="M13 0 A12 12 0 0 1 1 12" fill="none" stroke="#13398f" strokeWidth="2" /></svg>
+        <svg aria-hidden viewBox="0 0 14 13" className="pointer-events-none absolute -right-3 bottom-0 h-[13px] w-[14px] overflow-visible"><path d="M1 0 A12 12 0 0 0 13 12" fill="none" stroke="#56c2ff" strokeWidth="2" /></svg>
         <button type="button" aria-haspopup="true" aria-expanded={fontOpen} title={tr("Carattere")} className={`glow flex h-9 w-36 shrink-0 items-center justify-between gap-1 rounded-lg border border-laguna px-2.5 text-[15px] hover:bg-laguna/30 ${focus}`}
           style={{ fontFamily: (() => { const f = FONTS.find((x) => x.key === tx.fontFamily); return f ? `var(${f.cssVar}), ${f.fallback}` : undefined; })() }} onClick={() => setFontOpen((o) => !o)}>
           <span className="truncate">{FONTS.find((x) => x.key === tx.fontFamily)?.label ?? tx.fontFamily}</span>

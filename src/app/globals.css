@@ -193,10 +193,14 @@ input[type="range"] {
   }
 }
 
-/* Variante abierta por abajo (pestaña apoyada en una línea): sin borde inferior */
+/* Variante abierta por abajo (pestaña apoyada en una línea): sin borde inferior y los lados paran 12 px antes,
+   donde empiezan las curvas hacia fuera que los unen con la línea (ver la barra de texto en CanvasEditor) */
 @utility ring-grad-open {
   &::before {
     padding-bottom: 0;
+    bottom: 12px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
   }
 }
 
