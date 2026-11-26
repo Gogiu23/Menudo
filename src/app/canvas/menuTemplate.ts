@@ -31,7 +31,11 @@ const DEFAULTS: Menu = {
 export function readSavedMenu(): Menu | null {
   try {
     const raw = localStorage.getItem("menudo:menu");
-    return raw ? { ...DEFAULTS, ...JSON.parse(raw) } : null;
+    if (!raw) return null;
+    const m = { ...DEFAULTS, ...JSON.parse(raw) } as Menu;
+    // Campos vacíos guardados como null (cartas antiguas): siempre texto, si no la maquetación falla al medirlos
+    const str = (v: unknown) => (v == null ? "" : String(v));
+    return { ...m, sections: (Array.isArray(m.sections) ? m.sections : []).map((s) => ({ title: str(s?.title), items: (Array.isArray(s?.items) ? s.items : []).map((i) => ({ name: str(i?.name), desc: str(i?.desc), price: str(i?.price) })) })) };
   } catch {
     return null;
   }
