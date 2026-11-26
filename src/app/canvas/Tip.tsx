@@ -1,19 +1,21 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 /* Tooltip al pasar el ratón o al enfocar con teclado. Va en `fixed` y se coloca al abrir: así los paneles con
    overflow (que recortarían un tooltip absoluto) no lo cortan. Envuelve un botón o enlace. */
 export function Tip({ label, hint, side = "bottom", children }: { label: string; hint?: string; side?: "right" | "bottom"; children: React.ReactNode }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
+  // Next conserva la página oculta al navegar (Activity): sin esto, el tooltip del enlace pulsado reaparece abierto al volver
+  useLayoutEffect(() => () => setAt(null), []);
   const show = () => {
     const r = ref.current!.getBoundingClientRect();
     // Abajo: centrado, sin salirse de la ventana (el tooltip mide como mucho 220 px)
     setAt(side === "right" ? { x: r.right + 8, y: r.top + r.height / 2 } : { x: Math.min(Math.max(r.left + r.width / 2, 116), window.innerWidth - 116), y: r.bottom + 8 });
   };
   return (
-    <span ref={ref} className="relative inline-flex" onMouseEnter={show} onMouseLeave={() => setAt(null)} onFocus={show} onBlur={() => setAt(null)}>
+    <span ref={ref} className="relative inline-flex" onMouseEnter={show} onMouseLeave={() => setAt(null)} onFocus={show} onBlur={() => setAt(null)} onClick={() => setAt(null)}>
       {children}
       {at && (
         <span
