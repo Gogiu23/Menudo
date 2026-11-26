@@ -1595,20 +1595,6 @@ export default function CanvasEditor() {
     { id: "pages", label: tr("Pagine"), hint: tr("Aggiungi, duplica e ordina le pagine"), icon: ICONS.pages, body: (
       <>
           <p className="text-sm font-semibold">{tr("Pagina")} {page + 1} {tr("di")} {hist.pages.length}</p>
-          {/* Miniatura de cada página: se ve cuál es la actual y se salta a otra con un clic */}
-          <ol className="grid grid-cols-3 gap-3">
-            {hist.pages.map((pg, i) => (
-              <li key={i}>
-                <button type="button" aria-current={i === page ? "page" : undefined} aria-label={`${tr("Pagina")} ${i + 1}`} onClick={() => goPage(i)}
-                  className={`glow glow-soft block w-full rounded-md p-1 ${focus} ${i === page ? "bg-mare/15 ring-2 ring-mare" : "ring-1 ring-laguna hover:ring-mare/60"}`}>
-                  <span className="block overflow-hidden rounded-sm bg-white shadow-sm" style={{ aspectRatio: `${w} / ${h}` }}>
-                    <FreeSvg page={pg} paper={paper} bg={bg} bgGrad={bgGrad} />
-                  </span>
-                  <span className={`mt-1 block text-center text-xs tabular-nums ${i === page ? "font-semibold" : "text-ink/70"}`}>{i + 1}</span>
-                </button>
-              </li>
-            ))}
-          </ol>
           <div className="flex flex-wrap gap-1">
             <button className={iconBtn} aria-label={tr("Nuova pagina")} title={tr("Nuova pagina")} onClick={addPage}><Icon d={ICONS.plus} /></button>
             <button className={iconBtn} aria-label={tr("Duplica pagina")} title={tr("Duplica pagina")} onClick={duplicatePage}><Icon d={ICONS.copy} /></button>
@@ -1616,6 +1602,20 @@ export default function CanvasEditor() {
             <button className={iconBtn} aria-label={tr("Sposta avanti")} title={tr("Sposta avanti")} disabled={page === hist.pages.length - 1} onClick={() => movePage(1)}><Icon d={ICONS.right} /></button>
             <button className={iconBtn} aria-label={tr("Elimina pagina")} title={tr("Elimina pagina")} disabled={hist.pages.length < 2} onClick={deletePage}><Icon d={ICONS.trash} /></button>
           </div>
+          {/* Miniatura de cada página: se ve cuál es la actual y se salta a otra con un clic */}
+          <ol className="grid grid-cols-2 gap-4">
+            {hist.pages.map((pg, i) => (
+              <li key={i}>
+                <button type="button" aria-current={i === page ? "page" : undefined} aria-label={`${tr("Pagina")} ${i + 1}`} onClick={() => goPage(i)}
+                  className={`glow glow-soft block w-full rounded-md p-1 ${focus} ${i === page ? "bg-mare/15 ring-2 ring-mare" : "ring-1 ring-laguna hover:ring-mare/60"}`}>
+                  <span className="block overflow-hidden rounded-sm bg-white shadow-sm" style={{ aspectRatio: `${w} / ${h}` }}>
+                    <FreeSvg page={pg} paper={paper} bg={bg} bgGrad={bgGrad} />
+                  </span>
+                  <span className={`mt-1.5 block text-center text-sm tabular-nums ${i === page ? "font-semibold" : "text-ink/70"}`}>{i + 1}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
       </>
     ) },
     { id: "sheet", label: tr("Foglio"), hint: tr("Carta, copie e numeri di tavolo"), icon: ICONS.sheet, body: (
