@@ -1907,7 +1907,7 @@ export default function CanvasEditor() {
         ))}
       </aside>
 
-      <main ref={wrap} style={{ backgroundColor: "#ffffff", "--canvas-dot": "#d3dae6" } as React.CSSProperties} className={`${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:fixed md:inset-0 md:z-0 md:block md:pt-[116px] md:pr-6 md:pb-6 md:pl-[372px] lg:pr-[316px] lg:pl-[388px]`}>
+      <main ref={wrap} style={{ backgroundColor: "#ffffff", "--canvas-dot": "#d3dae6" } as React.CSSProperties} className={`${tab === "canvas" ? "block" : "hidden"} canvas min-w-0 flex-1 overflow-auto px-4 pb-40 md:pointer-events-auto md:fixed md:inset-0 md:z-0 md:block md:pt-[116px] md:pr-6 md:pb-6 md:pl-[372px] lg:pr-[316px] lg:pl-[388px]`}>
         {/* sticky dentro de la zona que se desplaza (no fixed): las bolas quedan dentro de su caja, como en el editor principal */}
         <div className="pointer-events-none sticky top-1/2 z-20 -mb-5 h-0">
           <div role="group" aria-label={`Zoom ${pct}%`} className="pointer-events-auto absolute right-0 flex -translate-y-1/2 flex-col gap-2">
